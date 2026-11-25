@@ -44,17 +44,8 @@ internal static class WinUiNowPlayingHero
     /// <summary>The playing track's artists as links (each opens its artist), or null with no credited artist.</summary>
     internal static Element? ArtistLinks(NowPlayingHeroProps props, Track track, CanvasInk ink = default)
     {
-        var artists = track.ArtistSlots;
-        if (artists.Length == 0) return null;
-        var spans = new TextSpan[artists.Length * 2 - 1];
-        for (int i = 0, n = 0; i < artists.Length; i++)
-        {
-            if (i > 0) spans[n++] = new TextSpan(", ");
-            var a = new Artist(artists[i]);
-            string name = a.Name;
-            var uri = a.Uri;
-            spans[n++] = new TextSpan(name, OnClick: () => props.GoTo(uri, name));
-        }
+        // The names (and which open a page) are the core credit run's: a local row reads its tag, else "Unknown artist".
+        if (Track.CreditSpans(track, props.GoTo, ink.Secondary) is not { } spans) return null;
         return new SpanTextEl(spans)
         {
             Size = P.HeroArtistSize, LineHeight = P.HeroArtistLine, Color = ink.Accent, Wrap = TextWrap.NoWrap, MaxLines = 1,

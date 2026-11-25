@@ -430,7 +430,7 @@ internal static class ClassicTransport
         return new BoxEl
         {
             // The slot is a reservation at rest (0:09 → 0:10 moves nothing) and a FLOOR while live (h:mm:ss).
-            Width = props.IsLive ? float.NaN : ClassicTransportLayout.TimeSlotWidth, MinWidth = ClassicTransportLayout.TimeSlotWidth, Shrink = 0f,
+            Width = float.NaN, MinWidth = ClassicTransportLayout.TimeSlotWidth, Shrink = 0f,
             Direction = 0, AlignItems = FlexAlign.Center,
             Justify = right ? FlexJustify.Start : FlexJustify.End,   // the digits hug the rail
             HoverFill = right ? (ink is null ? Tok.FillSubtleSecondary : R.OnMedia.GlassHover) : ColorF.Transparent,
@@ -444,9 +444,19 @@ internal static class ClassicTransport
             HitSlop = right ? new Edges4(0f, ClassicTransportLayout.TimeSlop(caption.LineHeight), 0f, ClassicTransportLayout.TimeSlop(caption.LineHeight)) : default,
             Children =
             [
-                ink is { } inkColor
-                    ? caption with { Text = label, Color = inkColor, Wrap = TextWrap.NoWrap }
-                    : caption with { Text = label, Wrap = TextWrap.NoWrap },
+                // The slot also holds the widest the label can read (an invisible copy): the digits' width at rest, so nothing changes for
+                // a plain track, and "Mixing into …" while a #48 Mix join is planned, so that swap moves nothing either.
+                new BoxEl
+                {
+                    ZStack = true, Shrink = 0f, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        caption with { Text = Prop.Of(props.Widest ?? s_noWidest), Color = ColorF.Transparent, Wrap = TextWrap.NoWrap },
+                        ink is { } inkColor
+                            ? caption with { Text = label, Color = inkColor, Wrap = TextWrap.NoWrap, JustifySelf = right ? FlexAlign.Start : FlexAlign.End }
+                            : caption with { Text = label, Wrap = TextWrap.NoWrap, JustifySelf = right ? FlexAlign.Start : FlexAlign.End },
+                    ],
+                },
             ],
         };
     }

@@ -129,6 +129,8 @@ public static class App
                 static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
             // "On this PC" (ZC2): the persisted (track, quality) → file id map loads off-thread; the row fact reads the cache index and the key store above. Indicator only (NQ4).
             Playback.OnThisPc.Use(Playback.AudioFileMap.PathUnder(Platform.LocalFolder));
+            // The music folders (#240): the local index loads off-thread beside audiofiles.tsv, then each folder is caught up and watched. No folder: nothing runs.
+            LocalLibrary.Use(Platform.LocalFolder);
         }
         Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
         Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
@@ -158,7 +160,7 @@ public static class App
         if (Platform.Args.Fake) Playback.Audio.UseFake(Entities.FakeOutputs());  // --fake: a stable outputs roster and a format echo for the device picker (audit B5b)
         Modules.Boot(startIdleTimer: gui);   // the headless host sweeps nothing: its idle timer would outlive a test
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
-        Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
+        Video.LinkedVideoMirror.ApplyFakeClip();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.LinkedVideo/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
         HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)

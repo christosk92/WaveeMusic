@@ -1,8 +1,8 @@
 ﻿// ── Entities/Playlist.Page.cs ──────────────────────────────────────────────────────────────────────────────────────
 // owner O's composition: InstallPages (the six routes + O's seams + the playlist verbs), the playlist page over the shared
 // detail frame (identity, FrameSpec, TableProfile, the whole-model demand, the hero ⋯ menu, the cover drag, the deposits),
-// the local route's arm (Local Files: the header settled locally, a dropped / picked file imported and played), and the
-// deposit-target adapter the track menu reads (ch 01 item 42)
+// Local Files' helpers (its header settled locally, a dropped / picked file imported and played; the `local` route itself is the
+// "On this PC" page, LocalCollection.Page.cs), and the deposit-target adapter the track menu reads (ch 01 item 42)
 //
 // Role: UI
 // Owner: O
@@ -63,7 +63,7 @@ public readonly partial struct Playlist
     public static void InstallPages()
     {
         Shell.SetPage(Shell.RouteKind.Playlist, PageFor);
-        Shell.SetPage(Shell.RouteKind.Local, PageFor);
+        Shell.SetPage(Shell.RouteKind.Local, LocalCollectionPage.PageFor);   // #240 P2: "On this PC", the collection page (Songs = this list's table)
         Shell.SetPage(Shell.RouteKind.Liked, User.LikedPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryAlbums, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryArtists, User.LibraryPageFor);
@@ -79,7 +79,6 @@ public readonly partial struct Playlist
         Controls.Library ??= User.LibrarySeam;
         User.InstallSaveVerb();   // the container menus' Save / Follow, through that same seam
         Drag.LikedChipArt ??= User.LikedChipArt();
-        Shell.OnFilesDropped ??= PlayFiles;
         Shell.PickAndPlayFile ??= PickAndPlay;
         Track.MenuSeams.RemoveRows ??= static (host, _) =>
         {
@@ -90,17 +89,18 @@ public readonly partial struct Playlist
         RegisterActions();
     }
 
-    /// <summary><see cref="Shell.RouteKind.Playlist"/> (subject = the playlist uri) and <see cref="Shell.RouteKind.Local"/>.</summary>
+    /// <summary><see cref="Shell.RouteKind.Playlist"/> (subject = the playlist uri). The Local Files list opened by its uri is the "On this PC"
+    /// page, as its own route is (#240 P2).</summary>
     // MOUNT POINT (stage B contract)
     public static Element PageFor(in Shell.Route route)
     {
+        if (route.Subject.IsValid && route.Subject.Text == LocalFilesUri) return LocalCollectionPage.PageFor(route);
         string routeKey = Shell.NameOf(route);
-        bool local = route.Kind == Shell.RouteKind.Local;
-        return Embed.Comp(new PageProps(local ? default : route.Subject, local, routeKey), static () => new PlaylistPage())
+        return Embed.Comp(new PageProps(route.Subject, routeKey), static () => new PlaylistPage())
             with { Key = "playlist-page:" + routeKey };
     }
 
-    sealed record PageProps(EntityUri Subject, bool Local, string RouteKey);
+    sealed record PageProps(EntityUri Subject, string RouteKey);
 
     /// <summary>Is this a playlist route to the account's Your Episodes (<see cref="Playlist.IsYourEpisodes"/>)? The
     /// row's format when this session has one, else the account's known listen-later uri.</summary>
@@ -180,9 +180,6 @@ public readonly partial struct Playlist
         /// <summary>NOTHING: the playlist ROW is not valid yet, so <c>Demand</c> returns before it asks for anything —
         /// and THE OPEN (<c>ListOpen.Open</c> + <c>HeldRows.Opened</c>) sits behind that guard.</summary>
         Bail,
-        /// <summary>Local Files: settled on this device through its own path, and it never opens a list — there is no
-        /// remote to revalidate against. Stable for the life of the route.</summary>
-        Local,
         /// <summary>The whole demand, ending in THE OPEN.</summary>
         Open,
     }
@@ -215,8 +212,8 @@ public readonly partial struct Playlist
         /// arm moves exactly once per page, when the row lands, which is the one transition that strands the open —
         /// and a re-run is cheap, because <c>Opened</c> is idempotent and an open that JOINS its own record writes
         /// nothing (<c>ListOpenPolicy.Decide</c>: no ask, no stamp, the same hold).</para></summary>
-        public static DemandArm DemandArmFor(bool rowValid, bool local)
-            => !rowValid ? DemandArm.Bail : local ? DemandArm.Local : DemandArm.Open;
+        public static DemandArm DemandArmFor(bool rowValid)
+            => !rowValid ? DemandArm.Bail : DemandArm.Open;
 
         /// <summary>What to ask of the playlist's owner row. Identity unknown ⇒ Ensure (Pathfinder refuses to seal
         /// Identity on a nameless ownerV2, so a page that never Ensures the owner paints a blank name forever).
@@ -260,12 +257,12 @@ public readonly partial struct Playlist
         /// <summary>The Recommended Songs section mounts for an editable Spotify playlist on a remote route, once a live
         /// edit path exists OR the recommendations edge has already answered (a signed-out reopen keeps a landed
         /// batch; item 58: absent under <c>--fake</c> until the edge lands).</summary>
-        public static bool ShowsRecommendations(bool local, bool editable, bool spotify, bool editsLive, EdgeState recommendations)
-            => !local && editable && spotify && (editsLive || recommendations != EdgeState.Unknown);
+        public static bool ShowsRecommendations(bool editable, bool spotify, bool editsLive, EdgeState recommendations)
+            => editable && spotify && (editsLive || recommendations != EdgeState.Unknown);
 
         /// <summary>The <c>TableProfile</c> cache key: every input that changes the profile VALUE, and nothing else.</summary>
-        public static int ProfileMask(bool editable, bool recs, bool tune, bool local, float lensExtent)
-            => (editable ? 1 : 0) | (recs ? 2 : 0) | (tune ? 4 : 0) | (local ? 8 : 0) | ((int)lensExtent << 4);
+        public static int ProfileMask(bool editable, bool recs, bool tune, float lensExtent)
+            => (editable ? 1 : 0) | (recs ? 2 : 0) | (tune ? 4 : 0) | ((int)lensExtent << 4);
 
         /// <summary>The <c>FrameSlots</c> cache key: which optional slots are present.</summary>
         public static int SlotsMask(bool editableMeta, bool daylist, bool facts, bool recs = false)
@@ -276,7 +273,6 @@ public readonly partial struct Playlist
     {
         Scope? _scope;
         EntityUri _subject;
-        bool _local;
         Playlist _playlist;
         string? _visibleCover;
         IOverlayService? _overlay;
@@ -306,6 +302,13 @@ public readonly partial struct Playlist
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
         readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes, _bindTune;
+        /// <summary>#48 Mix: the list bar's toggle and its lit read (built once; they read the page's playlist at call time).</summary>
+        readonly Action _mixToggle;
+        readonly Func<bool> _mixLit;
+        readonly Func<IReadOnlyList<MenuFlyoutItem>> _mixMenu;
+        /// <summary>#48 Mix: the Transitions list on this page (Entities/Mix.Transitions.cs).</summary>
+        readonly MixTransitionsSession _mixTransitions = new();
+        readonly Action _bindMix;
         /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
         readonly TuneSession _tuneSession = new();
         string _routeKey = "";
@@ -349,6 +352,10 @@ public readonly partial struct Playlist
             _activated = Activated;
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
+            _mixToggle = () => MixMenu.Toggle(_playlist);
+            _mixMenu = () => MixMenu.Items(_playlist, _mixTransitions.Toggle, _mixTransitions.IsOpen);
+            _bindMix = () => _mixTransitions.Bind(_playlist);
+            _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
             _moveRows = (rows, at) => Spotify.PlaylistEdits.MoveRows(_playlist, rows, at);
@@ -388,13 +395,12 @@ public readonly partial struct Playlist
             _overlay = overlay;
             if (!Controls.IsNullOverlay(overlay)) s_overlay = overlay;
 
-            if (!ReferenceEquals(_scope, scope) || !_subject.Equals(p.Subject) || _local != p.Local)
+            if (!ReferenceEquals(_scope, scope) || !_subject.Equals(p.Subject))
             {
                 _scope = scope;
                 _subject = p.Subject;
-                _local = p.Local;
                 // The factory allocates an empty row for an unseen uri: the page binds it at once and Ensure fills it.
-                _playlist = p.Local ? LocalFiles : p.Subject.IsValid && p.Subject.Kind == EntityKind.Playlist ? Entities.Playlist(p.Subject) : default;
+                _playlist = p.Subject.IsValid && p.Subject.Kind == EntityKind.Playlist ? Entities.Playlist(p.Subject) : default;
                 _source = null;
                 _identity = null;
                 _visibleCover = null;
@@ -414,7 +420,7 @@ public readonly partial struct Playlist
             // when that row lands — so without the arm a cold navigation stranded the open behind that guard forever
             // and the page kept its PRE-open reveal rule for good. Re-running the demand is cheap (HeldRows.Opened is
             // idempotent; an open that joins its own record asks nothing and stamps nothing).
-            _demandKey = DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid, _local), 0);
+            _demandKey = DepKey.From(pl.Slot, (int)scopeEpoch, (int)PageRules.DemandArmFor(pl.IsValid), 0);
             UseEffect(_demand, _demandKey);
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
@@ -422,7 +428,7 @@ public readonly partial struct Playlist
             // Shell.Redirect's late half: a cold open of Your Episodes (format unknown, account's listen-later uri never
             // discovered) only learns what this list is from the page's own read — then the page hands its history
             // entry to the Podcasts library's Your Episodes view.
-            UseEffect(_toYourEpisodes, DepKey.From(!_local && pl.IsValid && pl.IsYourEpisodes ? 1 : 0));
+            UseEffect(_toYourEpisodes, DepKey.From(pl.IsValid && pl.IsYourEpisodes ? 1 : 0));
             // …and the OTHER way that hold ends: its budget simply running out. That edge is the wall clock's, not a
             // table's — nothing settles and nothing publishes — so this page, the only surface holding, arms it on the
             // frame clock and settles it itself (ListOpen.ExpireHold ⇒ Changed ⇒ the Stamp memo below re-runs with
@@ -457,20 +463,22 @@ public readonly partial struct Playlist
             UseEffect(_publishChrome);
             // Another playlist on this page starts with Tune shut and nothing applying.
             UseEffect(_bindTune, DepKey.From(pl.Slot));
+            UseEffect(_bindMix, DepKey.From(pl.Slot));
 
             if (!pl.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             // Your own playlist has no heart (tuned Classic D1): following it means nothing; a followed one keeps it as Unfollow.
-            var cfg = _local ? Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false }
-                : pl.IsOwner ? Detail.Config.Playlist with { Heart = HeartMode.None }
+            var cfg = pl.IsOwner ? Detail.Config.Playlist with { Heart = HeartMode.None }
                 : Detail.Config.Playlist;
             bool editable = pl.Editable;
-            bool recs = PageRules.ShowsRecommendations(_local, editable, pl.Uri.Provider == EntityProvider.Spotify, stamp.EditsLive, stamp.Recommendations);
-            bool tune = !_local && HasTuneChoice(pl) && pl.TuningCurrent;
+            bool recs = PageRules.ShowsRecommendations(editable, pl.Uri.Provider == EntityProvider.Spotify, stamp.EditsLive, stamp.Recommendations);
+            bool tune = HasTuneChoice(pl) && pl.TuningCurrent;
             bool facts = stamp.Facts;
             float lensExtent = lensMemo.Value;
 
-            int profileMask = PageRules.ProfileMask(editable, recs, tune, _local, lensExtent);
+            // #48 Mix: the toggle shows on a mixed playlist, or on the user's own one Spotify says may be mixed (kind 235).
+            bool mixable = MixMenu.Offered(pl);
+            int profileMask = PageRules.ProfileMask(editable, recs, tune, lensExtent) ^ (mixable ? 1 << 30 : 0);
             if (_profile is null || _profileMask != profileMask)
             {
                 _profileMask = profileMask;
@@ -482,15 +490,19 @@ public readonly partial struct Playlist
                     RemoveRows = editable ? _removeRows : null,
                     Recommendations = recs ? _recs : null,
                     Tune = tune ? _tune : null,
-                    TuneStrip = tune ? _tuneSession.Strip : null,
+                    TuneStrip = tune ? _tuneSession.Strip : mixable ? _mixTransitions.Strip : null,
                     TuneLit = tune ? _tuneSession.Lit : null,
+                    MixToggle = mixable ? _mixToggle : null,
+                    MixLit = mixable ? _mixLit : null,
+                    MixMenu = mixable ? _mixMenu : null,
+                    OpenTransitions = mixable ? _mixTransitions.Open : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
                 };
             }
 
-            bool editableMeta = pl.EditableMetadata && !_local;
+            bool editableMeta = pl.EditableMetadata;
             bool daylist = pl.DaylistExpiresAt > 0;
             int slotsMask = PageRules.SlotsMask(editableMeta, daylist, facts, recs);
             if (_slots is null || _slotsMask != slotsMask)
@@ -520,7 +532,7 @@ public readonly partial struct Playlist
                 _identity = identity;
             }
             // The cover slot reads it when the frame invokes it (the identity moves with it, so the hero re-renders).
-            _headHeld = stamp.Holding && !_local;
+            _headHeld = stamp.Holding;
 
             return Detail.Frame(new Detail.FrameSpec
             {
@@ -556,14 +568,14 @@ public readonly partial struct Playlist
 
         /// <summary>The invite affordance's gate, the owner menu's (<see cref="AppendOwnerItems"/>): an owner who can administrate the permissions, on a live edit
         /// path (item 58: absent under <c>--fake</c>).</summary>
-        bool InviteAllowed(Playlist pl) => !_local && pl.IsOwner && pl.Live && pl.CanAdministratePermissions && EditsLiveNow();
+        bool InviteAllowed(Playlist pl) => pl.IsOwner && pl.Live && pl.CanAdministratePermissions && EditsLiveNow();
 
         /// <summary>Row 2's inputs for <paramref name="pl"/> (default while there is no playlist).</summary>
         ChromeInputs ChromeOf(Playlist pl)
             => !pl.IsValid
                 ? default
-                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !_local && !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty,
-                                   Pending: !_local && !pl.Knows(PlaylistFields.Identity));   // Identity.HeaderPending's own test
+                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty,
+                                   Pending: !pl.Knows(PlaylistFields.Identity));   // Identity.HeaderPending's own test
 
         /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
         void PublishChrome()
@@ -591,7 +603,7 @@ public readonly partial struct Playlist
         /// tracked, so a drain of any of them wakes the memo — plus the session phase and, through
         /// <c>_source.Held</c>, the source's own one-shot "the open has run" signal (<see cref="HeldRows.Opened"/>:
         /// <c>Held</c> answers by a DIFFERENT rule either side of it, so the flip has to reach this memo), and folds
-        /// what the render and <see cref="IdentityOf"/> read into a <see cref="PageStamp"/>. <c>_playlist</c>, <c>_local</c> and
+        /// what the render and <see cref="IdentityOf"/> read into a <see cref="PageStamp"/>. <c>_playlist</c> and
         /// <c>_source</c> are Render's fields, written before the memo is read; the page is keyed on its route, so they
         /// change only together with a scope epoch the memo tracks. Runs one member loop (the fold) and the facts
         /// bento's early-exit scan per publication; allocates nothing once the open has run (the pre-open preview reads
@@ -659,7 +671,7 @@ public readonly partial struct Playlist
         /// (<see cref="ListFreshness.BlockingBudgetMs"/>): past it the held copy paints, and a later answer that moves it crossfades.</para></summary>
         Detail.Identity IdentityOf(Playlist pl, bool editableMeta, bool holding)
         {
-            bool headHeld = holding && !_local;
+            bool headHeld = holding;
             var slots = pl.TrackSlots;
             var state = pl.MembershipState;
             // THE reveal discipline the rest of the app already reads (EdgeTableBase.Readiness, G-050): an Unknown list
@@ -676,7 +688,7 @@ public readonly partial struct Playlist
             }
             // A count this page can state WITHOUT the membership: the bit the one length-bearing decoder sets (a real
             // `length: 0` included, bug A1), or a nonzero count some answer wrote beside Identity.
-            bool countKnown = !_local && (pl.Knows(PlaylistFields.TrackCount) || (pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0));
+            bool countKnown = (pl.Knows(PlaylistFields.TrackCount) || (pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0));
             var arm = PageRules.MetaArmFor(holding, readiness, countKnown, slots.Length);
             bool metaLoading = arm == MetaArm.Loading;
             // THE META LINE'S DECISION, ALWAYS ON. This shimmer has now been diagnosed confidently and fixed twice,
@@ -693,6 +705,8 @@ public readonly partial struct Playlist
             int count = countKnown && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
             string? meta = arm != MetaArm.Text ? null
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
+            // #48 Mix: a mixed playlist says so on the meta line, with how many of its transitions are edited (Entities/Mix.Menu.cs).
+            if (meta is not null && MixMenu.MetaSuffix(pl) is { } mixed) meta += " · " + mixed;
 
             // While the head waits with the list, no cover is latched: the held copy's art is never shown, so it can never be swapped out.
             string? incoming = Controls.ArtUrl(pl.ImageId);
@@ -705,30 +719,27 @@ public readonly partial struct Playlist
             {
                 Subject = pl.Uri,
                 Kind = DetailKind.Playlist,
-                // The header has not answered: the rail and the hero shimmer as a whole until it does (Local Files is
-                // settled on this device and never waits).
+                // The header has not answered: the rail and the hero shimmer as a whole until it does.
                 // A header that will never land must STOP shimmering, exactly as the meta line does
                 // (`PageRules.MetaArmFor`'s Absent arm). Pending and Failed are two different states and a
                 // two-state gate cannot say "nothing is coming" - which is how a header whose Identity fetch was
                 // sealed shimmered forever.
-                HeaderPending = !_local && !pl.Knows(PlaylistFields.Identity)
+                HeaderPending = !pl.Knows(PlaylistFields.Identity)
                                 && !Entities.Current.Playlists.IsFailed(pl.Slot, (uint)PlaylistFields.Identity),
-                Title = _local && title.Length == 0 ? Loc.Get("localFile.playlistTitle") : title,
+                Title = title,
                 CoverUrl = headHeld ? null : _visibleCover,
                 CardAccent = pl.Accent,
-                Eyebrow = _local ? Loc.Get(Strings.Nav.LocalFiles)
-                    : Detail.Text.Eyebrow(DetailKind.Playlist, BadgeStyle.OwnerRow, AlbumKind.Album, 0, pl.IsCollaborative, pl.IsPublic,
+                Eyebrow = Detail.Text.Eyebrow(DetailKind.Playlist, BadgeStyle.OwnerRow, AlbumKind.Album, 0, pl.IsCollaborative, pl.IsPublic,
                                           pl.Knows(PlaylistFields.Visibility)),
                 Meta = meta,
                 MetaLoading = metaLoading,
-                MetaSettling = !_local && MetaSettlingOf(pl),
-                OwnerName = _local && !owner.IsValid ? Loc.Get("localFile.onThisDevice") : NameOf(owner),
+                MetaSettling = MetaSettlingOf(pl),
+                OwnerName = NameOf(owner),
                 OwnerImageUrl = Controls.ArtUrl(owner.ImageId),
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
-                IsPublic = !_local && pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
-                DescriptionHtml = _local && pl.DescriptionId.IsEmpty ? Loc.Get("localFile.playlistDescription")
-                                : headHeld && !editableMeta ? null : Entities.Strings.Resolve(pl.DescriptionId),
+                IsPublic = pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
+                DescriptionHtml = headHeld && !editableMeta ? null : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,
                 DaylistExpiresAtMs = pl.DaylistExpiresAt * 1000L,
@@ -746,10 +757,10 @@ public readonly partial struct Playlist
             _demandRan = _demandKey;
             var pl = _playlist;
             if (!pl.IsValid) return;
-            if (_local) { SettleLocalFiles(); return; }
             // Membership owns the playlist-v2 header and revision. Asking its groups here races
             // an unconditional full read against the list-open disk/diff path.
-            Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent);
+            // #48 Mix: the three Mix kinds ride the same batched extended-metadata POST (Entities/Mix.cs).
+            Entities.Ensure(pl, PlaylistFields.Visibility | PlaylistFields.Saves | PlaylistFields.Accent | PlaylistFields.MixKinds);
             // The list goes through THE open rule (§6): an Unknown one is asked once — the disk leg, then the /diff the edge
             // door chains itself — a fresh one paints, a stale one paints and is revalidated behind it (a rolling one holds the
             // reveal on the answer: ListOpenPolicy.HoldsReveal).
@@ -765,7 +776,7 @@ public readonly partial struct Playlist
         {
             Home.Feeds.RearmDaylist();
             var pl = _playlist;
-            if (_local || !pl.IsValid || !ReferenceEquals(_scope, Entities.Current)) return;
+            if (!pl.IsValid || !ReferenceEquals(_scope, Entities.Current)) return;
             ListOpen.Open(pl, ListOpenPolicy.Surface.Revisit);
         }
 
@@ -774,7 +785,7 @@ public readonly partial struct Playlist
         /// already catches the next arrival at it, now that the format is known.</summary>
         void ToYourEpisodes()
         {
-            if (_local || !_playlist.IsValid || !_playlist.IsYourEpisodes) return;
+            if (!_playlist.IsValid || !_playlist.IsYourEpisodes) return;
             if (!string.Equals(Shell.NameOf(Shell.Current.Peek()), _routeKey, StringComparison.Ordinal)) return;
             Shell.ReplaceCurrent(User.YourEpisodesRoute());
         }
@@ -823,17 +834,17 @@ public readonly partial struct Playlist
             // the head any more, and an unasked head would leave the page's pending head with nothing coming. Asking it on its own route makes
             // its state total (in flight, then Known, Absent or Failed: the frame's head readiness, Detail.UI.cs). Not while the open still holds
             // the list for its revalidation (its answer carries the head).
-            if (!_local && !pl.Knows(PlaylistFields.Identity) && scope.Edges.PlaylistTracks.Readiness(pl.Slot) != EdgeState.Unknown
+            if (!pl.Knows(PlaylistFields.Identity) && scope.Edges.PlaylistTracks.Readiness(pl.Slot) != EdgeState.Unknown
                 && !ListOpen.Holding(pl.Slot))
                 Entities.Ensure(pl, PlaylistFields.Identity);
             var slots = pl.TrackSlots;
-            if (slots.Length > 0 && !_local)
+            if (slots.Length > 0)
                 Entities.Ensure(MemoryMarshal.Cast<int, Track>(slots), TrackFields.Row | TrackFields.Audio | TrackFields.Tags | TrackFields.Video);
-            if (slots.Length > 0 && !_local && PlaylistVideo.IsVideoFirst(pl)) DemandVideoLengths(scope, slots);
+            if (slots.Length > 0 && PlaylistVideo.IsVideoFirst(pl)) DemandVideoLengths(scope, slots);
             Span<int> people = stackalloc int[64];
             int n = pl.CollaboratorSlots(people);
-            if (n > 0 && !_local) Entities.Ensure(scope.Users, people[..n], (uint)UserFields.Identity);
-            if (!_local) DemandOwner(scope, pl.Owner.Slot);
+            if (n > 0) Entities.Ensure(scope.Users, people[..n], (uint)UserFields.Identity);
+            DemandOwner(scope, pl.Owner.Slot);
             if (pl.MembershipState == EdgeState.Partial) Entities.EnsureEdge(FetchEdge.PlaylistTracks, pl.Slot, pl.TrackSlots.Length);
             pl.Refold();
         }
@@ -878,17 +889,6 @@ public readonly partial struct Playlist
             Entities.Invalidate(scope.Users, new ReadOnlySpan<int>(in owner), (uint)UserFields.Identity);
         }
 
-        /// <summary>The Local Files header and membership are settled LOCALLY — there is no remote to ask (G-110).</summary>
-        void SettleLocalFiles()
-        {
-            EnsureLocalFilesHeader();
-            var local = LocalFiles;
-            var e = Entities.Current.Edges.PlaylistTracks;
-            if (e.State(local.Slot) != EdgeState.Unknown) return;
-            e.Replace(local.Slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<PlaylistTrackEdge>.Empty, EdgeState.Complete, 0);
-            Entities.Publish();
-        }
-
         void Shuffle()
         {
             var pl = _playlist;
@@ -913,7 +913,7 @@ public readonly partial struct Playlist
             var tail = new List<MenuFlyoutItem>(4);
             // "Video" (PlaylistVideo): play this list's music videos, remembered for the list. A list with Spotify's own "Video" chip keeps
             // the chip (Tune) as its switch.
-            if (!_local && PlaylistVideo.OffersToggle(pl))
+            if (PlaylistVideo.OffersToggle(pl))
             {
                 string uri = pl.Uri.Text;
                 bool on = PlaylistVideo.ToggledOn(uri);
@@ -950,7 +950,6 @@ public readonly partial struct Playlist
             string uri = pl.Uri.Text;
             if (string.Equals(payload.SourcePlaylistUri, uri, StringComparison.Ordinal) || string.Equals(payload.Uri, uri, StringComparison.Ordinal))
                 return false;
-            if (_local) return false;
             int slot = pl.Slot;
             string[] episodes = payload.EpisodeUris();
             Task<Track[]> resolving;
@@ -1343,18 +1342,36 @@ public readonly partial struct Playlist
         Entities.Publish();
     }
 
-    /// <summary>Import one file into the Local Files membership: a COMPLETE row at construction (0.2.9 <c>ForLocalFile</c>:
-    /// the file name as its title, availability stated, no album, no artists), appended to the local list.</summary>
+    /// <summary>Import one file, reading its tags here (<see cref="LocalTags.TryRead(string, out Spotify.Audio.Format, out LocalTagSet, out string)"/>).
+    /// For a caller that is not the UI thread (the headless <c>--file</c> host); the drop reads the tags off the UI thread first.</summary>
     public static Track ImportLocalFile(string path)
+    {
+        LocalTags.TryRead(path, out _, out LocalTagSet tags, out _);
+        return ImportLocalFile(path, in tags);
+    }
+
+    /// <summary>Import one file into the Local Files membership: a COMPLETE row at construction (0.2.9 <c>ForLocalFile</c>, #240 P1a):
+    /// its title tag (else the file name), its artists as the credit line, its album, its length, availability stated; appended to
+    /// the local list. The artist and album are names, not rows (<see cref="LocalNamesOf"/>).</summary>
+    public static Track ImportLocalFile(string path, in LocalTagSet tags)
     {
         var scope = Entities.Current;
         string uri = LocalFileUri(path);
+        string artists = LocalArtistLine(in tags);
         var staging = Staging.Rent();
         staging.Epoch = scope.Epoch;
         ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local,
-            (uint)(TrackFields.Identity | TrackFields.Availability));
-        row.Title = staging.AddText(Encoding.UTF8.GetBytes(LocalTitleOf(path)));
+            (uint)(TrackFields.Identity | TrackFields.Availability) | LocalVideoFields(in tags));
+        string title = string.IsNullOrWhiteSpace(tags.Title) ? LocalTitleOf(path) : tags.Title;
+        row.Title = staging.AddText(Encoding.UTF8.GetBytes(title));
+        if (artists.Length > 0) row.ArtistLine = staging.AddText(Encoding.UTF8.GetBytes(artists));
+        row.DurationMs = Math.Max(0, tags.DurationMs);
         row.Flags = (uint)TrackFlags.Local;
+        StateLocalVideo(ref row, in tags);
+        // A video's cover is a still of it (LocalArt): the one a session already has, else it is asked for here and the row is re-stated
+        // with it when it lands (StageLocalImages).
+        if (tags.Kind == LocalKind.Video && LocalArt.FileCoverUri(path) is { } still) row.Image = staging.AddText(Encoding.UTF8.GetBytes(still));
+        NoteLocalNames(uri, artists, tags.Album ?? "");
         Entities.Commit(staging);
         Staging.Return(staging);
         if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) return default;
@@ -1370,20 +1387,102 @@ public readonly partial struct Playlist
         return new Track(slot);
     }
 
-    /// <summary><c>Shell.OnFilesDropped</c> (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
-    /// playable is an Error toast; no local playback wired is Informational; an .mp4 attaches to its OWN row first.</summary>
+    /// <summary>The track groups a local file's row states beyond its identity: a video file's row also speaks for the Video group
+    /// (<see cref="StateLocalVideo"/>). Every place that stages a local file's row asks for these with it.</summary>
+    public static uint LocalVideoFields(in LocalTagSet tags) => tags.Kind == LocalKind.Video ? (uint)TrackFields.Video : 0u;
+
+    /// <summary>A local VIDEO file's row (#240 local video): <see cref="TrackFlags.LocalVideoFile"/> (it plays on the video host with its
+    /// picture, its cover is a still of it, it wears the film glyph) and the picture's size (the surface opens at the video's own aspect
+    /// before its first frame: <c>Video.NaturalSeed</c>'s catalogue size). Nothing for an audio file. The row must be staged with
+    /// <see cref="LocalVideoFields"/>.</summary>
+    public static void StateLocalVideo(ref StagedTrack row, in LocalTagSet tags)
+    {
+        if (tags.Kind != LocalKind.Video) return;
+        row.Flags |= (uint)TrackFlags.LocalVideoFile;
+        row.VideoW = (ushort)Math.Clamp(tags.VideoWidth, 0, ushort.MaxValue);
+        row.VideoH = (ushort)Math.Clamp(tags.VideoHeight, 0, ushort.MaxValue);
+    }
+
+    /// <summary>Dropped files' covers landed (<see cref="LocalArt.FileCoverUri"/>): re-state each file's row with its cover, so every surface
+    /// that draws a track's cover (the rows, the player bar, Now playing, the OS media card) shows it through the row's own Image column.
+    /// Only the cover changes: the title, the credit and the flags are the row's own. UI thread.</summary>
+    public static void StageLocalImages(IReadOnlyList<(string Path, string Uri)> covers)
+    {
+        var scope = Entities.Current;
+        var staging = Staging.Rent();
+        staging.Epoch = scope.Epoch;
+        int n = 0;
+        foreach (var (path, cover) in covers)
+        {
+            string uri = LocalFileUri(path);
+            if (!scope.Tracks.TryGetSlot(uri.AsSpan(), out int slot)) { LocalLibrary.StageStill(path); continue; }   // an indexed file's row (~id)
+            var t = new Track(slot);
+            if (!t.IsValid || !t.ImageId.IsEmpty) continue;
+            ref var row = ref staging.Tracks.RowFor(new StagedId(staging.AddText(Encoding.UTF8.GetBytes(uri))), Authority.Local, (uint)TrackFields.Identity);
+            row.Image = staging.AddText(Encoding.UTF8.GetBytes(cover));
+            row.DurationMs = t.DurationMs;
+            row.Flags = t.FlagBits & (uint)TrackFlags.IdentityMask;
+            n++;
+        }
+        if (n > 0) Entities.Commit(staging);
+        Staging.Return(staging);
+        if (n > 0) Entities.Publish();
+        LocalLink.RefreshVideoPictures();   // a linked video's still landed: its Spotify song's video picture (#240 version cards)
+    }
+
+    /// <summary>"Remove from Local Files" on a dropped file's row: its membership leaves the list (the file stays on disk). Returns where it was (for
+    /// <see cref="RestoreLocalFile"/>), or -1 when it was not listed. UI thread.</summary>
+    public static int RemoveLocalFile(int trackSlot)
+    {
+        var local = LocalFiles;
+        if (!local.IsValid) return -1;
+        var e = Entities.Current.Edges.PlaylistTracks;
+        int at = e.Targets(local.Slot).IndexOf(trackSlot);
+        if (at < 0) return -1;
+        s_removedEdge = e.Payload(local.Slot)[at];
+        e.RemoveAt(local.Slot, at);
+        local.Refold();
+        Entities.Publish();
+        return at;
+    }
+
+    /// <summary>Undo of <see cref="RemoveLocalFile"/>: the row goes back where it was, with its added date. UI thread.</summary>
+    public static void RestoreLocalFile(int trackSlot, int at)
+    {
+        var local = LocalFiles;
+        if (!local.IsValid || !new Track(trackSlot).IsValid) return;
+        var e = Entities.Current.Edges.PlaylistTracks;
+        if (e.Targets(local.Slot).IndexOf(trackSlot) >= 0) return;
+        e.Insert(local.Slot, trackSlot, s_removedEdge, Math.Min(at, e.Targets(local.Slot).Length));
+        local.Refold();
+        Entities.Publish();
+    }
+
+    static PlaylistTrackEdge s_removedEdge;
+
+    /// <summary>The file picker's play (0.2.9 <c>LocalFileActions.PlayDropped</c>): audio wins over video; nothing
+    /// playable is an Error toast; no local playback wired is Informational; a video file plays as a video.</summary>
     static void PlayFiles(IReadOnlyList<string> paths)
     {
         var action = ClassifyDrop(paths, out string path);
         if (action == LocalDropAction.None) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
         if (Playback.Audio.LocalPath is null) { Notify.Say(Loc.Get(Strings.LocalFile.NotReady), InfoBarSeverity.Informational); return; }
-        var track = ImportLocalFile(path);
-        if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
-        if (action == LocalDropAction.PlayVideo && Video.Overrides.Attach(track.Uri.Text, path, path, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) is null)
+        // The tags are read off the UI thread (one head read, maybe a tail read: a slow drive must not stall a frame), then the row
+        // is staged and played back on it.
+        _ = Task.Run(() =>
         {
-            Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error);
-            return;
-        }
+            bool read = LocalTags.TryRead(path, out Spotify.Audio.Format format, out LocalTagSet tags, out string why);
+            Spotify.Post(() => PlayImported(path, format, tags, read, why));
+        });
+    }
+
+    /// <summary>UI thread: the picked file's row (a library entry, "Added files": LocalLibrary.Added.cs), then played (a video file as a
+    /// video: its row says so).</summary>
+    static void PlayImported(string path, Spotify.Audio.Format format, LocalTagSet tags, bool read, string why)
+    {
+        var track = LocalLibrary.AddFile(path, format, in tags, read, why);
+        if (!track.IsValid) { Notify.Say(Loc.Get(Strings.LocalFile.Rejected), InfoBarSeverity.Error); return; }
+        // A video file is its own row's video (TrackFlags.LocalVideoFile, from its tags): it plays on the video host with no attachment.
         ReadOnlySpan<EntityRef> rows = [new EntityRef(EntityKind.Track, track.Slot)];
         Playback.PlayRows(rows, 0, LocalFiles.Id);
     }
@@ -1393,7 +1492,7 @@ public readonly partial struct Playlist
     static void PickAndPlay()
     {
         Pickers.Pick(
-            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
+            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.LinkedVideoUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
             done: picked => { if (picked is { Length: > 0 }) PlayFiles([picked]); },
             failed: ex => Log.Warn("localfile", "file picker failed", ex));
     }

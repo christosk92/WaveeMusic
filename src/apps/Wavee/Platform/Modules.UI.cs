@@ -35,7 +35,7 @@ public static partial class Modules
         if (Interlocked.Exchange(ref s_uiInstalled, 1) != 0) return;
         Shell.SetPage(Shell.RouteKind.Module, static (in Shell.Route route) => PageFor(in route));
         Playback.Audio.ModuleOpen = OpenAudio;
-        Playback.Audio.LocalPath = Playlist.LocalPathOf;
+        Playback.Audio.LocalPath = LocalLibrary.PathOf;   // #240: an indexed file by its stable id (the path map), a dropped one by its path form
         PlayLinkRouter.Modules = LinkModulesNow;
         PlayLinkRouter.Match = MatchLinkAsync;
         InstallVideoTier();

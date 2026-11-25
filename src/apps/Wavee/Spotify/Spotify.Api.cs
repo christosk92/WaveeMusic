@@ -588,7 +588,12 @@ public static partial class Spotify
             if ((headers & HeaderSet.ConnectionId) != 0 && ConnectionId() is { Length: > 0 } connectionId)
                 h.TryAddWithoutValidation("X-Spotify-Connection-Id", connectionId);
             if ((headers & HeaderSet.NoStore) != 0) h.TryAddWithoutValidation("Cache-Control", "no-store");
-            if ((headers & HeaderSet.ApplyLenses) != 0) h.TryAddWithoutValidation("spotify-apply-lenses", "auto");
+            if ((headers & HeaderSet.MixLens) != 0)
+            {
+                h.TryAddWithoutValidation("spotify-apply-lenses", "mix,auto");
+                h.TryAddWithoutValidation("spotify-list-player-enabled", "true");
+            }
+            else if ((headers & HeaderSet.ApplyLenses) != 0) h.TryAddWithoutValidation("spotify-apply-lenses", "auto");
             if ((headers & HeaderSet.AppliedLenses) != 0) h.TryAddWithoutValidation("spotify-applied-lenses", "auto: YXV0bw==");
             if ((headers & HeaderSet.AcceptListItems) != 0)
                 h.TryAddWithoutValidation("x-accept-list-items", "audio-track, audio-episode, video-episode, audiobook");

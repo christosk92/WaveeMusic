@@ -152,13 +152,13 @@ internal static class ClassicHomeDaylistClock
     }
 
     /// <summary>The block's height in <paramref name="form"/> (the card's <c>Extent</c> counts it): the ring beside its lines (the first line, the caption
-    /// under it in the full block), the timeline's bars and, in the full block, their labels; the plate adds its padding. Every face but Late (whose link
-    /// under the first line is a small button) draws exactly this.</summary>
+    /// under it in the full block, in its slot of <see cref="SecondLineH"/>), the timeline's bars and, in the full block, their labels; the plate adds its
+    /// padding. Every face, Late's link included, draws exactly this.</summary>
     internal static float Extent(ClassicClockForm form)
     {
         float body = Ui.Body("").LineHeight, caption = Ui.Caption("").LineHeight, ring = ClassicHomeRules.RingSize;
         float bars = BarsTop + ProgressBar.DefaultStyle.Height;
-        float full = MathF.Max(ring, body + caption) + bars + LabelsTop + caption;
+        float full = MathF.Max(ring, body + SecondLineH) + bars + LabelsTop + caption;
         return form switch
         {
             ClassicClockForm.None => 0f,
@@ -197,12 +197,23 @@ internal static class ClassicHomeDaylistClock
         ],
     };
 
-    /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption.</summary>
+    /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption, in one slot height.</summary>
     static Element[] Lines(SpanTextEl line, string caption, Element? action)
     {
-        if (action is not null) return [line, action.Value];
-        return caption.Length > 0 ? [line, CaptionLine(caption)] : [line];
+        if (action is not null) return [line, SecondLine(action.Value)];
+        return caption.Length > 0 ? [line, SecondLine(CaptionLine(caption))] : [line];
     }
+
+    /// <summary>The second line's height, the same for every face and the skeleton: the Late face's Small link (its padding around the caption rung),
+    /// the taller of the two seconds. A caption line was 5 short of it, so the block grew when the daylist ran late and when the skeleton handed over
+    /// to a late card (the card's <c>Extent</c> counts this too).</summary>
+    internal static float SecondLineH => Ui.Caption("").LineHeight + ControlMetrics.For(ControlSize.Small).Padding.Vertical;
+
+    /// <summary><paramref name="content"/> (the caption or the link) in the second line's slot, at least <see cref="SecondLineH"/> high.</summary>
+    static BoxEl SecondLine(Element content) => new()
+    {
+        Direction = 1, MinWidth = 0f, MinHeight = SecondLineH, AlignItems = FlexAlign.Stretch, Children = [content],
+    };
 
     /// <summary>The second line: "{weekday} {next daypart} arrives at HH:mm" at the caption rung (12/16), secondary,
     /// one line with an ellipsis.</summary>

@@ -8,7 +8,7 @@
 // reads, so it stays the board's. A colour that is not a swatch (the option is a colour, a later picker may hand one in) takes the
 // engine's own "one step darker" (`AccentRamp.Derive(c).Dark1`) as its step, floored the same way.
 //
-// `style.useWindowsAccent` replaces the swatch with the OS ramp the composition is handed (`IStyleLayer.Definition(values, osAccent)`).
+// `style.useWindowsAccent` replaces the swatch with the OS ramp the composition is handed (`IStyleLayer.Definition(values, inputs)`).
 //
 // THE RAMP. The engine resolves its accent tokens from the definition's ramp theme-aware: the FILL is `Light2` in dark and `Dark1` in
 // light, the TEXT `Light3` in dark and `Dark2` in light (`Tok.AccentFillShade`, `Tok.AccentTextPrimary`). The boards paint the swatch

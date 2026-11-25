@@ -37,7 +37,8 @@ internal static partial class ZuneSetup
         {
             SetupText.Body(Loc.Get(Strings.Setup.Theme.Body)),
             props.ThemePicker(),
-            SetupText.Group(ZuneSettings.AppModeRow(k), ZuneSettings.LanguageRow(k)) with { Key = "zsetup:prefs" },
+            SetupText.Group(ZuneSettings.AppModeRow(k), ZuneSettings.ColoursRow(k, "appearance.colours.light"),
+                ZuneSettings.ColoursRow(k, "appearance.colours.dark"), ZuneSettings.LanguageRow(k)) with { Key = "zsetup:prefs" },
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
         return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));

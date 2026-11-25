@@ -22,6 +22,9 @@ internal static class WinUiTrackDrawerLayout
     /// <summary>The air under the "Versions and formats" eyebrow.</summary>
     public const float HeadBottom = 2f;
 
+    /// <summary>The Spotify section's link glyph (a file in the music folders, "Your files and Spotify").</summary>
+    public const float LinkGlyph = 14f;
+
     /// <summary>The gap inside a pending (reserved video) row's text column; the gap between a version's title and its meta line.</summary>
     public const float PendingGap = 6f, TextGap = 2f;
 
@@ -30,6 +33,8 @@ internal static class WinUiTrackDrawerLayout
 
     /// <summary>The music-video thumbnail's play badge (a 22 disc over a dark scrim) and its inks.</summary>
     public const float PlayBadge = 22f;
+    /// <summary>A version card's "⋯" (#240 version cards): its box and glyph, the row "⋯"'s.</summary>
+    public const float MoreBox = 28f, MoreGlyph = 14f;
 
     /// <summary>The scrim over a video thumbnail.</summary>
     public static readonly ColorF VideoScrim = new(0f, 0f, 0f, 0.28f);

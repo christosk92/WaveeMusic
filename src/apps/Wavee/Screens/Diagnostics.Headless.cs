@@ -16,9 +16,10 @@
 // THE GRAMMAR (one line = one command; `#` at the start or after whitespace starts a comment; a line may also be a JSON
 // object `{"cmd":"seek","args":["1:30"],"id":7}` — the id comes back on the reply):
 //   play <spotify:track|episode|album|playlist:id> [from <pos>] [quality normal|high|veryhigh|lossless]
+//   play <C:/abs/path.flac|wavee:local:file:…> [from <pos>]   a local file as a one-row context (no login needed)
 //   pause · resume · toggle · stop · next · prev · prepare · status · login
 //   seek <pos>        pos = ms · m:ss · m:ss.fff · h:mm:ss · 90s · +5s · -10s · +1500ms · end-10s
-//   volume <0..1> · shuffle on|off · repeat off|context|track · quality <rung> · queue <spotify:track|episode:id>
+//   volume <0..1> · shuffle on|off · repeat off|context|track · quality <rung> · queue <spotify:track|episode:id | local file>
 //   set crossfade <ms> · set normalization on|off · set cache on|off · set metered-cap <rung>
 //                     (read at the audio boot or the next open: put `set` lines before the first volume/play)
 //   stats [mark|reset] · wait[?] <cond> [timeout <ms>] · expect[?] <cond> · sleep <ms> · connect on|off
@@ -185,7 +186,8 @@ public static partial class Diagnostics
                     {
                         if (argc < 1) { error = "play wants a spotify uri"; return false; }
                         string uri = line[parts[1]].ToString();
-                        if (!IsSpotifyUri(uri, containers: true)) { error = "play wants spotify:track|episode|album|playlist:<22-char id>"; return false; }
+                        if (!IsSpotifyUri(uri, containers: true) && !IsLocalFileArg(uri))
+                        { error = "play wants spotify:track|episode|album|playlist:<22-char id>, or a local file (absolute path or wavee:local:file:)"; return false; }
                         int from = 0, rung = -1;
                         for (int i = 2; i < n; i += 2)
                         {
@@ -210,7 +212,8 @@ public static partial class Diagnostics
                 case Verb.Queue:
                     {
                         string uri = argc == 1 ? line[parts[1]].ToString() : "";
-                        if (!IsSpotifyUri(uri, containers: false)) { error = "queue wants spotify:track|episode:<22-char id>"; return false; }
+                        if (!IsSpotifyUri(uri, containers: false) && !IsLocalFileArg(uri))
+                        { error = "queue wants spotify:track|episode:<22-char id>, or a local file (absolute path or wavee:local:file:)"; return false; }
                         cmd = new Command(Verb.Queue, text, Arg0: uri, Id: id);
                         return true;
                     }
@@ -359,6 +362,8 @@ public static partial class Diagnostics
         /// turns it into an EntityId on the loop thread, where interning is legal.</summary>
         static bool IsSpotifyUri(string uri, bool containers)
         {
+            // A playlist's local file (#240): spotify:local:<artist>:<album>:<title>:<seconds>, played from the music folders.
+            if (EntityUri.KindOf(uri.AsSpan()) == EntityKind.Track && LocalTrackUri.Is(uri)) return true;
             if (!uri.StartsWith("spotify:", StringComparison.Ordinal)) return false;
             int last = uri.LastIndexOf(':');
             ReadOnlySpan<char> id = uri.AsSpan(last + 1);
@@ -368,6 +373,12 @@ public static partial class Diagnostics
             ReadOnlySpan<char> kind = head[(head.LastIndexOf(':') + 1)..];
             return kind is "track" or "episode" || (containers && kind is "album" or "playlist");
         }
+
+        /// <summary>A local file for `play`/`queue`: a fully qualified path, or its <c>wavee:local:file:</c> uri. Pure (a string
+        /// test, no disk): the SHELL imports it as a Local Files row on the loop thread.</summary>
+        public static bool IsLocalFileArg(string arg)
+            => arg.StartsWith(Playlist.LocalFilePrefix, StringComparison.Ordinal) && arg.Length > Playlist.LocalFilePrefix.Length
+               || System.IO.Path.IsPathFullyQualified(arg);
 
         /// <summary>`ms`, `m:ss`, `m:ss.fff`, `h:mm:ss`, `90s`, `+5s`, `-10s`, `+1500ms`. Relative forms set the flag; the
         /// SHELL adds them to the snapshot's position at post time. The `end-10s` form is refused here — see the overload.</summary>

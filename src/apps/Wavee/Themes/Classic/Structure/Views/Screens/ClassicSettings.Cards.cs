@@ -35,7 +35,7 @@ internal static partial class ClassicSettings
             case "playback.episodeSpeed": card = CardRow(row, Embed.Comp(static () => new EpisodeSpeedSlider())); return true;
             case "playback.video.quality": card = CardRow(row, VideoQualityCombo()); return true;
             case "playback.video.meteredQuality": card = CardRow(row, MeteredVideoCombo()); return true;
-            case "playback.videoOverrides": card = VideoOverridesRow(row); return true;
+            case "playback.linkedVideos": card = LinkedVideosRow(row); return true;
             case "playback.runtime": card = RuntimeCard(row); return true;
             // Lyrics & Now playing
             case "lyrics.blur": card = CardRow(row, LyricsBlurControl()); return true;
@@ -77,6 +77,8 @@ internal static partial class ClassicSettings
             "lyrics.stage.heroDim" => Item(row.Label, row.Description, Badged(row, Embed.Comp(static () => new StageDimSlider())),
                 isEnabled: row.Enabled, icon: GlyphOf(row.Dial)),
             "notifications.quiet.from" or "notifications.quiet.to" => QuietHourItem(row),
+            "sound.timecode.level" => TimecodeSliderItem(row, s_timecodeLevelOptions),
+            "sound.timecode.offset" => TimecodeSliderItem(row, s_timecodeOffsetOptions),
             _ => null,
         };
         return item is not null;

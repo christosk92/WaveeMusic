@@ -75,6 +75,13 @@ public sealed class ModuleTestHost : IModuleHost
             context ?? new ModuleContext("test", ModuleProtocol.Version, DataDir, "en-US",
                 ResolvePreferences.Default, 0), ct).ConfigureAwait(false);
 
+    /// <summary>Delivers a <c>playback/timeline</c> notification to <see cref="WaveeModule.OnTimelineAsync"/>, as the app's
+    /// observer fan-out does, for running a timeline module by hand.</summary>
+    /// <param name="state">The state to deliver.</param>
+    /// <param name="ct">Cancels the handler.</param>
+    public async Task PushTimelineAsync(TimelineState state, CancellationToken ct = default)
+        => await Module.OnTimelineAsync(state, ct).ConfigureAwait(false);
+
     /// <summary>Calls <see cref="WaveeModule.MatchAsync"/> directly.</summary>
     /// <param name="input">The pasted input.</param>
     /// <param name="ct">Cancels the match.</param>

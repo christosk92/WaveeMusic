@@ -130,13 +130,27 @@ public enum TrackFlags : uint
     /// <summary>A CONFIRMED unavailable. Only meaningful once <see cref="TrackFields.Availability"/> is known — an
     /// unruled row must read as playable, not as blocked (ch 04 DATA GAPS).</summary>
     Unavailable = 1 << 8,
+    /// <summary>WHY it is unavailable, when the catalogue said: a country gate rules the session's market out and no
+    /// alternative plays here (TRACK_V4: a restriction, no file, no alternative; Pathfinder: <c>COUNTRY_RESTRICTED</c>).
+    /// Set only beside <see cref="Unavailable"/> on a row that is OUT (its release instant passed): a reason bit makes the
+    /// row <c>Track.Unplayable</c> although it carries a release date. Rows say "Not available in your country".</summary>
+    RegionLocked = 1 << 9,
+    /// <summary>WHY, the paid-catalogue form: a catalogue gate names only Premium (or Pathfinder said a payment is
+    /// required). Same rules as <see cref="RegionLocked"/>. Rows say "Premium only".</summary>
+    PremiumOnly = 1 << 10,
+    /// <summary>WHY, the unnamed form: the catalogue restricted it and spelled no gate the client can state.</summary>
+    Withdrawn = 1 << 11,
 
     // Video group
     /// <summary>The catalogue says there is a music video (extension kind 99).</summary>
     HasVideo = 1 << 16,
     /// <summary>The USER attached a local mp4 (ch 01 GAP 7, ch 04's "user-attached local video override", ch 05 D11).
     /// Its own bit, so <c>Track.HasVideo</c> stays ONE ordinal probe over the OR of both planes.</summary>
-    VideoOverride = 1 << 17,
+    LinkedVideo = 1 << 17,
+    /// <summary>The row IS a local video file (an MP4/M4V with a picture track, a Matroska/WebM file): its own file is the video, so it
+    /// plays on the video host with its picture (#240 local video, `Playback.IsLocalVideoRow`). Written with the row at
+    /// <see cref="Authority.Local"/> (<c>Playlist.LocalRowVideo</c>) and stated in the Video group, with the picture's size.</summary>
+    LocalVideoFile = 1 << 18,
 
     // Files group (FLAC plan §5.2). The ladder itself is `Edges.TrackFormats`; these two are the cheap read every
     // surface that only wants a BADGE takes — one load and one mask, no edge walk, for a versions row or a list lane.
@@ -146,8 +160,10 @@ public enum TrackFlags : uint
     Lossless24 = 1 << 25,
 
     IdentityMask = Explicit | Local | Podcast,
-    AvailabilityMask = Unavailable,
-    VideoMask = HasVideo | VideoOverride,
+    /// <summary>The three reason bits: any one of them is a terminal verdict (<c>Track.Unplayable</c>).</summary>
+    WithheldMask = RegionLocked | PremiumOnly | Withdrawn,
+    AvailabilityMask = Unavailable | WithheldMask,
+    VideoMask = HasVideo | LinkedVideo | LocalVideoFile,
     FilesMask = Lossless | Lossless24,
 }
 
@@ -346,8 +362,10 @@ public readonly partial struct Track(int slot) : IEquatable<Track>
     public bool IsPlayable => (T.Flags[Slot] & (uint)TrackFlags.Unavailable) == 0;
     /// <summary>The catalogue's association OR the user's own mp4, in one probe. The THIRD plane — a module playable's
     /// form probe — is owner L's <c>Platform/Modules.cs</c> dictionary and folds in at the same call site when
-    /// <c>VideoOverrideUx.HasVideo</c> is ported (ch 01 GAP 8).</summary>
+    /// <c>LinkedVideoUx.HasVideo</c> is ported (ch 01 GAP 8).</summary>
     public bool HasVideo => (T.Flags[Slot] & (uint)TrackFlags.VideoMask) != 0;
+    /// <summary>The row is a local video file (<see cref="TrackFlags.LocalVideoFile"/>): its cover is a frame of it and it plays as a video.</summary>
+    public bool IsLocalVideo => (T.Flags[Slot] & (uint)TrackFlags.LocalVideoFile) != 0;
     /// <summary>The catalogue offered this account a FLAC of this track (16- or 24-bit). Only meaningful once
     /// <see cref="TrackFields.Files"/> is known — an unasked row reads as false, which is the honest default: a badge
     /// nobody has earned is not painted (FLAC plan §5.2, "one load and one mask for any surface that wants a badge,
@@ -521,18 +539,18 @@ public static partial class Entities
             // answer that does not carry it, and not a group anyone renders.
             if (!row.VideoGid.IsEmpty) t.SetText(ref t.VideoGid, slot, s.Intern(row.VideoGid));
             // THE USER'S OWN ATTACHED MP4 (G-220), folded in OUTSIDE the Video arm below and deliberately so. The
-            // roster (`Video.Overrides`) is the only thing that ever ORIGINATES `VideoOverride`, it speaks at
+            // linked-video list (`Video.Overrides`) is the only thing that ever ORIGINATES `LinkedVideo`, it speaks at
             // `Authority.Local` and no provider answer speaks for it — while the arm below runs only for a row that
             // STAGED the Video group and whose authority `Accepts` let through. A row that lands AFTER the attach (a
-            // page mounted later, or a restart, where the device-wide roster loads long before any track slot exists)
+            // page mounted later, or a restart, where the device-wide linked-video list loads long before any track slot exists)
             // carries no Video group at all, and an arm that never runs can never light the bit. Set-only: clearing
-            // is the mirror's own job on a detach (`Shell/Video.Overrides.Mirror.cs`), and the arm below preserves
+            // is the mirror's own job on a detach (`Shell/Video.LinkedVideos.Mirror.cs`), and the arm below preserves
             // this bit for exactly the same reason. ONE probe — of an index that is EMPTY, and returns before it
             // hashes anything, in every session where the user has curated nothing — and it answers for both columns
             // the gap names: the bit every surface reads, and the path the row is supposed to carry.
-            if (Video.OverrideMirror.TryPath(t.Id[slot], out string attachedVideo))
+            if (Video.LinkedVideoMirror.TryPath(t.Id[slot], out string attachedVideo))
             {
-                t.Flags[slot] |= (uint)TrackFlags.VideoOverride;
+                t.Flags[slot] |= (uint)TrackFlags.LinkedVideo;
                 t.SetText(ref t.LocalVideo, slot, Entities.Strings.Intern(attachedVideo));
             }
 
@@ -666,11 +684,13 @@ public static partial class Entities
                 // The user's own mp4 is written at Local authority by the curation store, so a catalogue answer that
                 // carries no override must not clear one (ch 01 GAP 7): keep the override bit unless this row states it.
                 uint videoBits = row.Flags & (uint)TrackFlags.VideoMask;
-                if (row.LocalVideo.IsEmpty) videoBits |= t.Flags[slot] & (uint)TrackFlags.VideoOverride;
+                if (row.LocalVideo.IsEmpty) videoBits |= t.Flags[slot] & (uint)TrackFlags.LinkedVideo;
                 else t.SetText(ref t.LocalVideo, slot, s.Intern(row.LocalVideo));
                 t.Flags[slot] = (t.Flags[slot] & ~(uint)TrackFlags.VideoMask) | videoBits;
                 t.Applied(slot, (uint)TrackFields.Video, auth, ref t.ExtrasAuthority);
             }
+            // A linked video version's picture outlives the catalogue's answer above (#240 version cards: Shell/Video.LinkedVideos.cs).
+            if (Video.LinkedVideoMirror.TryFrame(t.Id[slot], out string linkedFrame)) t.SetText(ref t.VideoImage, slot, Entities.Strings.Intern(linkedFrame));
             if ((extras & (uint)TrackFields.Tags) != 0
                 && t.Accepts(slot, (uint)TrackFields.Tags, auth, in t.ExtrasAuthority))
             {
@@ -717,7 +737,7 @@ public static partial class Entities
 /// <see cref="TrackFields.Artists"/> bit, see below — and the six cold groups whose facts are answered values
 /// (<see cref="TrackFields.PlayCount"/>, <see cref="TrackFields.Year"/>,
 /// <see cref="TrackFields.Availability"/>, <see cref="TrackFields.Isrc"/>, <see cref="TrackFields.Canonical"/>,
-/// <see cref="TrackFields.Video"/> — the counterpart's uri, the VERDICT flag, the still and the natural size (only the user's own mp4 is left out, since the curation roster re-applies it) — and
+/// <see cref="TrackFields.Video"/> — the counterpart's uri, the VERDICT flag, the still and the natural size (only the user's own mp4 is left out, since the curation linked-video list re-applies it) — and
 /// <see cref="TrackFields.Audio"/>).
 ///
 /// <para><b>Deliberately NOT persisted:</b> <see cref="TrackTable.ArtistLine"/> — it reads as the credit line

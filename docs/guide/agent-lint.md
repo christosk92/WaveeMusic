@@ -282,7 +282,8 @@ parent's. Its **hit rect** is what the engine's hit test takes: the box grown by
 touch floor, 40 at a Compact window: `TouchTargetPolicy`), cut by every clipping ancestor (a scroller only across its axis
 while the target is not wholly in its view), by the boxes of the other press targets beside it in the same scrolled plane
 (their real hits win), by press targets that paint nothing (an auto-hidden bar: the snapshot's `hitBlockers`) and by a scroll
-bar's lane (the slop stops where a lane starts, read at capture along the target's middle line: the node's `lane`); the
+bar's lane, in its slop or over the box itself (the hit rect stops where a lane starts, read at capture along the target's
+middle line from the box's middle out: the node's `lane`, negative over the box, `null` on a side with none); the
 message names what cut it ("24 x 24 (hit 36 x 40 with its slop; cut by beside ...)"). A target its clipping ancestors hide
 whole is not on screen. Exempt: Slider, ScrollBar, ProgressBar, Pager (a pips pager's dots are one track), Hyperlink, and drag
 bars: thin across, at least 4 x the floor long, AND handling a drag, a pointer press or a gesture itself or through the

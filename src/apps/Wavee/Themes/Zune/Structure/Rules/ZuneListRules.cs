@@ -243,8 +243,15 @@ public static class ZuneListRules
     public static readonly Edges4 UnavailablePadding = new(12f, 0f, 8f, 0f);
 
     /// <summary>The band the bar takes in the chrome while shown at a window tier: its height and the air under it.</summary>
-    public static float UnavailableExtent(WidthTier window)
-        => (window == WidthTier.Compact ? UnavailableCompactHeight : UnavailableHeight) + UnavailableBelow;
+    public static float UnavailableExtent(WidthTier window, bool secondary = false)
+        => (window != WidthTier.Compact ? UnavailableHeight : secondary ? UnavailableTwoLineHeight : UnavailableCompactHeight) + UnavailableBelow;
+
+    /// <summary>The Compact bar that carries a second verb (review, #240 S6): the sentence on its line, the 40 verbs on theirs (6 + 18 + 12 + 40 + 6), and the
+    /// sentence line's flex basis (wider than any Compact bar, so the verbs always wrap under it).</summary>
+    public const float UnavailableTwoLineHeight = 82f, UnavailableLineBasis = 640f;
+
+    /// <summary>The two-line bar's padding.</summary>
+    public static readonly Edges4 UnavailableTwoLinePadding = new(12f, 6f, 8f, 6f);
 
     /// <summary>The bar says why (the sentence with its reasons) from Standard; Compact and Small say the short one.</summary>
     public static bool UnavailableExplains(WidthTier window) => window >= WidthTier.Standard;
@@ -345,6 +352,10 @@ public static class ZuneListRules
 
     /// <summary>The versions head's air below, the version title's gap to its meta and the pending bars' gap.</summary>
     public const float DrawerHeadBottom = 6f, DrawerTextGap = 2f, DrawerPendingGap = 6f;
+    /// <summary>A version card's "⋯" (#240 version cards): its box and glyph.</summary>
+    public const float DrawerMoreBox = 28f, DrawerMoreGlyph = 14f;
+    /// <summary>The drawer's Spotify section: the line's link glyph and the verb's height (a file in the music folders).</summary>
+    public const float DrawerLinkGlyph = 14f, DrawerVerbH = 32f;
 
     /// <summary>The pending row's bars.</summary>
     public const float PendingTitleBarW = 132f, PendingTitleBarH = 11f, PendingMetaBarW = 84f, PendingMetaBarH = 9f;

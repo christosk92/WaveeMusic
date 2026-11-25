@@ -290,6 +290,14 @@ public static partial class Playback
             /// <summary>It takes shuffle and repeat as one <c>set_options</c> (capability 25,
             /// <see cref="Spotify.Decode.ClusterDevice.SupportsSetOptions"/>).</summary>
             public bool SupportsSetOptions;
+            /// <summary>What the device says it plays (<c>player_state.playback_quality</c>) — set on the ACTIVE row only, the one
+            /// the cluster's player state belongs to; not <c>Present</c> on every other row.</summary>
+            public Spotify.Decode.PlaybackQuality Quality;
+            /// <summary>Where the device itself plays (<c>audio_output_device_info</c>): the output's name ("AirPods Max"), null when
+            /// it stated none, and its type (1 built-in speaker, 3 bluetooth, …).</summary>
+            public string? OutputName;
+            public byte OutputType;
+            internal ulong OutputHash;
         }
 
         static Row[] s_rows = new Row[8];
@@ -350,8 +358,19 @@ public static partial class Playback
                 }
                 else if (string.IsNullOrEmpty(row.Name)) row.Name = Text(buffer, d.Name);
                 bool isActive = hash != 0 && hash == active;
+                // The cluster's player state is the active device's: its quality goes on that row alone.
+                Spotify.Decode.PlaybackQuality quality = isActive ? delta.Quality : default;
+                ulong output = DeviceHash(buffer.Utf8(d.OutputName));   // a heartbeat with the same output allocates nothing
+                if (row.OutputHash != output)
+                {
+                    row.OutputHash = output;
+                    row.OutputName = d.OutputName.IsEmpty ? null : Text(buffer, d.OutputName);
+                    changed = true;
+                }
                 if (row.Kind != d.Kind || row.Volume != d.Volume || row.IsActive != isActive || row.VolumeFixed != d.VolumeFixed
-                    || row.SupportsSetOptions != d.SupportsSetOptions) changed = true;
+                    || row.SupportsSetOptions != d.SupportsSetOptions || row.Quality != quality || row.OutputType != d.OutputType) changed = true;
+                row.Quality = quality;
+                row.OutputType = d.OutputType;
                 row.Kind = d.Kind;
                 row.Volume = d.Volume;
                 row.IsActive = isActive;
@@ -371,11 +390,27 @@ public static partial class Playback
                 s_rows[i] = new Row
                 {
                     Hash = DeviceHash(devices[i].Id), Id = devices[i].Id, Name = devices[i].Name, Kind = devices[i].Kind, Volume = devices[i].Volume,
-                    VolumeFixed = devices[i].VolumeFixed,
+                    VolumeFixed = devices[i].VolumeFixed, Quality = devices[i].Quality, OutputName = devices[i].OutputName,
+                    OutputType = devices[i].OutputType,
                 };
             for (int i = devices.Length; i < s_count; i++) s_rows[i] = default;
             s_count = devices.Length;
             Changed.Value = ++s_version;
+        }
+
+        /// <summary>`--fake`: the active device states another <c>playback_quality</c> (the inspector's `transport do=remotequality`), as a
+        /// cluster push re-stating it would. False when no device is active.</summary>
+        public static bool RestateActiveQualityForInspect(Spotify.Decode.PlaybackQuality quality)
+        {
+            for (int i = 0; i < s_count; i++)
+            {
+                if (!s_rows[i].IsActive) continue;
+                if (s_rows[i].Quality == quality) return true;
+                s_rows[i].Quality = quality;
+                Changed.Value = ++s_version;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>`--fake`: the cluster's active flag moves to <paramref name="hash"/>.</summary>
@@ -582,6 +617,7 @@ public static partial class Playback
                 FollowQueue(now);
                 ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
+                Mix.Follow(in s_state);                    // #48: the playing pair's mix timing → the pump (Playback.Mix.cs)
                 s_forward.Clear();                         // every staged forward was folded in this drain (G-248)
                 Publish();
             }
@@ -870,7 +906,7 @@ public static partial class Playback
         // used to write the setting, bump SettingsEpoch (re-rendering every settings subscriber) per frame.
         if (s_fx.PersistVolume && Platform.Settings.Get(Platform.Keys.RememberVolume))
             Platform.Settings.Set(Platform.Keys.SavedVolume, s_fx.VolumeValue);
-        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId);
+        if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId, s_fx.NextKind);
         if (s_fx.Prefetch2) PumpPrefetch(s_fx.Prefetch2Row, s_fx.Prefetch2Id);   // the farther row first: the nearer one's caches stay newest
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
         if (s_fx.Fetch) EnsureRow(s_fx.FetchId);
@@ -1387,7 +1423,7 @@ public static partial class Playback
                     // A self-contained music video carries its OWN manifest id (TrackV4 field 38) and may have no association
                     // flag; "no video" is a verdict only once both answers are in: the Video group (kinds 99/182) AND this
                     // session's TrackV4 (Artists is the bit only a live answer sets — the gid is not persisted).
-                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty;
+                    hasVideo = t.HasVideo || !t.VideoGidId.IsEmpty || Video.LocalVideos.IsLinked(id);   // a linked local video file too
                     known = hasVideo || (t.Knows(TrackFields.Video) && t.Knows(TrackFields.Artists))
                         || t.IsLocal || id.Provider != EntityProvider.Spotify;
                     manifest = hasVideo ? t.ManifestGidId : StringId.Empty;

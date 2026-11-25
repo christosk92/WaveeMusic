@@ -184,13 +184,28 @@ public static partial class Deck
         /// <summary>The stage's and the Canvas cell's height changes: Reflow, so the hero's blocks under the stage re-solve every frame.</summary>
         internal static LayoutTransition HeightMotion => MotionRecipes.CardResizeHeight;
 
+        /// <summary>The cover cell with the house no-art mark over it while the playing track has NO cover (a local file with none, or before
+        /// <c>LocalArt</c> found it): the theme's cover keeps its own placeholder underneath and the slot its size, so a cover that lands fades in
+        /// over the mark's place and nothing moves. The mark's visibility is a bound read of the face's art, never a re-render.</summary>
+        static BoxEl NoArtOver(BoxEl cover, float side)
+        {
+            if (Controls.NoArtMark(side, side) is not { } mark) return cover;
+            return new BoxEl
+            {
+                Width = side, Shrink = 0f, ZStack = true,
+                Children = [cover, mark with { Visible = Prop.Of(s_noArt) }],
+            };
+        }
+
+        static readonly Func<bool> s_noArt = static () => Rail.NowArtUrl() is null;
+
         Element Cell(int id, float side, float deckSide, bool open)
         {
             var style = Rail.PlayerCatalog.ById(id);
             bool center = id == _center;
             Element art = id switch
             {
-                Rail.PlayerCatalog.Cover => new BoxEl { Width = side, Shrink = 0f, Direction = 1, Children = [_props.Cover()] },
+                Rail.PlayerCatalog.Cover => NoArtOver(new BoxEl { Width = side, Shrink = 0f, Direction = 1, Children = [_props.Cover()] }, side),
                 // The square cover with the canvas cropped over it; nothing while the canvas fills the panel behind the stage.
                 Rail.PlayerCatalog.Canvas => new BoxEl
                 {
@@ -199,11 +214,10 @@ public static partial class Deck
                     [
                         // Under a presented canvas the cover is not drawn at all: the hole erases whole device pixels, and a cover laid out at a
                         // fractional pixel would leave its anti-aliased edge as a light line beside the video.
-                        new BoxEl
+                        NoArtOver(new BoxEl
                         {
                             Width = side, Shrink = 0f, Direction = 1, AlignSelf = FlexAlign.Start, Children = [_props.Cover()],
-                            Visible = center && _bleed ? false : center ? s_coverUncovered : true,
-                        },
+                        }, side) with { AlignSelf = FlexAlign.Start, Visible = center && _bleed ? false : center ? s_coverUncovered : true },
                         CanvasVideo.Layer(CanvasVideo.Surface.Deck, _props.Corners, default, on: center && !_bleed),
                     ],
                 },

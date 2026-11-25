@@ -857,6 +857,9 @@ public sealed partial class Edges
     /// <see cref="BeatGrid"/>), Count = Total = beat count. Parent = track slot; payload-only. An EMPTY Complete run means
     /// "the service has no grid for this track" and Pulse falls back to the tempo grid.</summary>
     public readonly EdgeTable<uint> TrackBeats = new();
+    /// <summary>#48 Mix: extension kind 28's chosen start and end cue (<see cref="Wavee.TrackCues"/>), at most one per
+    /// track. Parent = track slot; payload-only. An EMPTY Complete run = "no cue points for this track".</summary>
+    public readonly EdgeTable<TrackCues> TrackCues = new();
     /// <summary>Extension kind 151: "playlists featuring this album", at most twelve (0.2.9's Take(12)). Parent = album
     /// slot, targets = playlist slots.</summary>
     public readonly EdgeTable<NoEdge> AlbumRecommendations = new();
@@ -1037,7 +1040,7 @@ public sealed partial class Staging
 /// <summary>Which trait relation a <see cref="StagedTraitRun"/> rewrites — the five names, and the tables they land
 /// in are fixed by it (parent and child), exactly as <see cref="Relation"/> fixes them for the generic runs.
 /// <c>TrackBeats</c> is APPENDED: the staged byte values of the first four do not move.</summary>
-public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations, TrackBeats }
+public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations, TrackBeats, TrackCues, TrackBeatsId }
 
 /// <summary>One staged trait member: a credit row, a version, a recommended playlist. A union read by the run's
 /// relation: credits read the three texts and <see cref="Target"/> (the artist); versions read <see cref="Target"/> and
@@ -1186,6 +1189,24 @@ public static partial class Entities
                         var beats = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(s.Utf8(run.Bytes));
                         if (beats.Length > s_waveTargets.Length) beats = beats[..s_waveTargets.Length];
                         edges.TrackBeats.Replace(parent, s_waveTargets.AsSpan(0, beats.Length), beats, EdgeState.Complete, beats.Length);
+                        break;
+                    }
+                case TraitRelation.TrackCues:
+                    {
+                        // #48: kind 28 (Spotify.Decode.Mix.cs). One payload or none; an empty run is the answer "none".
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var cues = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, TrackCues>(s.Utf8(run.Bytes));
+                        if (cues.Length > 1) cues = cues[..1];
+                        edges.TrackCues.Replace(parent, s_waveTargets.AsSpan(0, cues.Length), cues, EdgeState.Complete, cues.Length);
+                        break;
+                    }
+                case TraitRelation.TrackBeatsId:
+                    {
+                        // #48: kind 217's analysis id (32 hex), the grid a recipe pins (MixData.BeatsId).
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        var id = s.Utf8(run.Bytes);
+                        if (parent != Table.None && !id.IsEmpty) MixData.SetBeatsId(parent, System.Text.Encoding.ASCII.GetString(id));
                         break;
                     }
                 case TraitRelation.AlbumRecommendations:

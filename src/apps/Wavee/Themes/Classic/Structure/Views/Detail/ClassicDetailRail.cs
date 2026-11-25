@@ -178,9 +178,16 @@ internal static partial class ClassicDetailFrame
         // Meta: playlist / Liked. While a find or a filter narrows the list it reads "3 of 48 songs · 11 min (filtered)"
         // (tuned Classic D4, D-10) — its own component, so a keystroke re-renders one line.
         if (rows.Meta)
-            kids.Add(ClassicDetailKit.LateRow("rail:meta", shown is null
-                ? MetaRow(id, cover, maxLines: 2)
-                : Embed.Comp(new RailMetaProps(id, cover), () => new RailMetaLine(shown))));
+            kids.Add(ClassicDetailKit.LateRow("rail:meta", new BoxEl
+            {
+                Direction = 1, MinWidth = 0f,
+                Children =
+                [
+                    shown is null ? MetaRow(id, cover, maxLines: 2) : Embed.Comp(new RailMetaProps(id, cover), () => new RailMetaLine(shown)),
+                    // The page's status while it has one (Local Files' first scan, #240 S4), inside the meta's row (a gap cannot ease).
+                    .. slots.Status is { } status ? new[] { StatusRow("rail:status", status(cover, false)) } : [],
+                ],
+            }));
 
         if (id.DaylistExpiresAtMs > 0 && slots.Pulse is { } pulse) kids.Add(ClassicDetailKit.LateRow("rail:daylist", pulse()));
         if (id.ChartNewEntries > 0) kids.Add(ClassicDetailKit.LateRow("rail:chart", ChartCaption(id, slots)));

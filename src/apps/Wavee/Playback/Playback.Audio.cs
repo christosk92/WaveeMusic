@@ -92,8 +92,8 @@ public static partial class Playback
         /// interpolates from `PosMs + (now − PosQpc)` and only needs the truth once a second.</summary>
         const int PositionSampleMs = 1_000;
 
-        /// <summary>A 0 ms hand-off commits inside the last 1.5 s — several ticks before the boundary, so a missed
-        /// tick still leaves room.</summary>
+        /// <summary>A hand-off is committed (scheduled at its frame) this long before it starts — inside the last 1.5 s for a
+        /// 0 ms join, 1.5 s before the fade's start for a crossfade — several ticks early, so a missed tick still leaves room.</summary>
         const int GaplessCommitLeadMs = 1_500;
 
         /// <summary>`Ended` is HELD for up to ~4 s while a prepare is still filling. A degraded join beats a hard
@@ -104,9 +104,11 @@ public static partial class Playback
         /// persisted value beyond it once, because older builds offered 30 s).</summary>
         public const int MaxCrossfadeMs = 12_000;
 
-        /// <summary>How long before the end the arm snapshot is taken. `max(fade, 2 s)`: a 0 ms join still needs the
-        /// diagnostic line, and the line is what tells a log reader WHY a boundary was a hard cut.</summary>
-        public static int ArmLeadMs(int fadeMs) => Math.Max(fadeMs, 2_000);
+        /// <summary>How long before the end the arm snapshot is taken: at or before the commit window opens
+        /// (<see cref="HandOffAt"/>), so the line is written while nothing is in flight yet. 2 s for a 0 ms join, which
+        /// still needs the line; the fade plus the commit lead for a crossfade. The line is what tells a log reader WHY a
+        /// boundary was a hard cut.</summary>
+        public static int ArmLeadMs(int fadeMs) => fadeMs > 0 ? fadeMs + GaplessCommitLeadMs : 2_000;
 
         /// <summary>The window in which an unprepared endgame is worth nudging the reducer about — once per track. A
         /// track SHORTER than the margin is its own window: a 6 s interlude must ask on its first tick or never.</summary>
@@ -134,7 +136,8 @@ public static partial class Playback
             bool handOffInFlight)
         {
             if (handOffInFlight || !prepared || !overlapAllowed || durationMs <= 0) return HandOff.None;
-            if (fadeMs > 0) return positionMs >= durationMs - fadeMs ? HandOff.Crossfade : HandOff.None;
+            // The crossfade ENDS on A's last frame, so it starts `fadeMs` before it; it is committed one lead earlier still.
+            if (fadeMs > 0) return positionMs >= durationMs - fadeMs - GaplessCommitLeadMs ? HandOff.Crossfade : HandOff.None;
             return positionMs >= durationMs - GaplessCommitLeadMs ? HandOff.Gapless : HandOff.None;
         }
 
@@ -409,6 +412,26 @@ public static partial class Playback
             return new WasapiAudioDevice(format);
         }
 
+        /// <summary>#154: a second output for generated PCM (the LTC output) on <paramref name="endpointId"/>, filled by
+        /// <paramref name="generator"/>. Under the silent endpoint (`--inspect`, `--silent`) it is the paced silent endpoint on the same
+        /// clock as the music's, so the generator and its reader run headless. Not started.</summary>
+        internal static AuxAudioOutput OpenAux(string endpointId, IAuxAudioGenerator generator)
+            => s_forceSilent
+                ? new AuxAudioOutput(static () => NewSilentEndpoint(SilentFormat), generator)
+                : WasapiPcm.CreateAuxOutput(endpointId, generator);
+
+        /// <summary>The render endpoint the music plays on, or null when it plays on none (`--fake`'s silent voice, the silent endpoint):
+        /// the chosen output, else the Windows default as the roster names it. Any thread; no device call.</summary>
+        internal static string? MusicEndpointId()
+        {
+            if (s_forceSilent || Platform.Args.Fake) return null;
+            string chosen = Platform.Settings.Get(Platform.Keys.OutputDeviceId);
+            if (chosen.Length > 0) return chosen;
+            foreach (LocalAudioDevice d in Devices.Peek())
+                if (d.IsDefault) return d.Id;
+            return null;
+        }
+
         /// <summary>A default-device change concerns the session unless it plays on the chosen output.</summary>
         static bool FollowsDefault() => !s_onTarget;
 
@@ -555,7 +578,11 @@ public static partial class Playback
         static readonly GlitchLedger s_ledger = new();
         static PlaybackState s_lastState = PlaybackState.Idle;
         static long s_lastPositionPostMs, s_lastWorkLogMs;
-        static long s_nextVoiceId;
+        // The app's hand-off voice ids. Seeded past the engine's primary voice id (PcmAudioSession's PrimaryVoiceId = 1): from 0 the
+        // first hand-off of a process got id 1 too, so a command addressed to the incoming voice by id reached the primary instead
+        // (the mixer answers the first voice with that id). Measured with #48's --mix-bench: the incoming voice's automation armed
+        // the outgoing voice. Engine-issued ids start at 2^32 and VoiceScheduler's at 1_000_000, both far above this range.
+        static long s_nextVoiceId = 100;
         static int s_endedHold;
         // The endgame's per-track state (EndgamePlan, G-112): `s_armLogged` gates the once-per-track `[gapless] arm`
         // diagnostic; `s_lastEndgameAskMs`/`s_endgameAskCount` drive the re-asking nudge (a sentinel of -1 means "never
@@ -573,6 +600,9 @@ public static partial class Playback
         static long s_prepDurMs;
         static bool s_prepOverlap;
         static int s_prepInFlight;
+        // The kind the prepared (then the joining) voice plays as: written to `s_activeKind` when the splice commits, so the
+        // NEXT boundary is decided on the kind that is playing, not the one the last load started (#240 §3.13 item 4).
+        static PlayableKind s_prepKind, s_joinKind;
 
         // the pending hand-off (B armed into the live mixer, not yet audible)
         static bool s_joinPending, s_crossfadeInFlight;
@@ -715,10 +745,10 @@ public static partial class Playback
         const int HeadlessPaceCapacityMs = 2000;
 
         /// <summary>The paced silent endpoint for <paramref name="format"/>: on the wall clock, or on <see cref="SilentPaceQpc"/> where the headless host set it
-        /// (its played count stamped on the wall clock still, the domain the session's projection extrapolates on).</summary>
+        /// (its played count stamped on that clock, which it also reports as the session's timebase, so the projection and the timeline tap extrapolate on it).</summary>
         static PacedSilentEndpoint NewSilentEndpoint(MixFormat format)
             => SilentPaceQpc is { } pace
-                ? new PacedSilentEndpoint(format, HeadlessPaceCapacityMs, pace, System.Diagnostics.Stopwatch.Frequency, wallStamps: true)
+                ? new PacedSilentEndpoint(format, HeadlessPaceCapacityMs, pace, System.Diagnostics.Stopwatch.Frequency, framePaced: true)
                 : new PacedSilentEndpoint(format);
 
         /// <summary>The silent backend: the same `PcmAudioPlayer` and RT feed shape `WasapiPcm.CreateBackend` builds, over
@@ -756,6 +786,7 @@ public static partial class Playback
         public static void Shutdown()
         {
             s_disposed = true;
+            TimecodeOutput.Close();
             StopTicker();
             try { s_ticker?.Dispose(); } catch { }
             s_ticker = null;
@@ -778,6 +809,7 @@ public static partial class Playback
             // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device. A real
             // one boots the backend as the load's own first step, on the chain (G-124).
             SeedOnce();
+            TimecodeOutput.ApplyOnce();                                         // #154: the saved LTC output opens with the first load
             Crash.Trail.Note(Crash.AppTrail.TrackStart, (long)kind, fromMs);   // the crash trail: no ids, no titles
             long asked = System.Diagnostics.Stopwatch.GetTimestamp();
             Interlocked.Exchange(ref s_loadStartedTicks, asked);
@@ -805,7 +837,8 @@ public static partial class Playback
         /// <para>OFF THE PUMP CHAIN (its CDN open blocks, and a seek or a pause must not queue behind it) and under its own
         /// token. The SAME id already prepared or being prepared is a no-op — the reducer re-emits the effect whenever the
         /// next row might have changed (G-112) — and a DIFFERENT id replaces the slot. <paramref name="kind"/> is the next
-        /// playable's: a boundary across kinds is never spliced (<see cref="MediaSwitch.AllowCrossfade"/>).</para></summary>
+        /// playable's (the reducer's <c>Effects.NextKind</c>): a boundary that touches video is never spliced
+        /// (<see cref="MediaSwitch.AllowCrossfade"/>).</para></summary>
         public static void Prepare(EntityRef row, EntityId id, PlayableKind kind = PlayableKind.Audio)
         {
             SeedOnce();
@@ -1133,6 +1166,7 @@ public static partial class Playback
             }
 
             lock (s_gate) { s_opened = opened; s_activeDurMs = opened.DurationMs; }
+            NoteOpenedFormat(opened.Format);              // the PUT states what plays (Spotify.Decode.Quality.cs)
             await OpenSessionAsync(bytes, opened, row, epoch, fromMs, seekGen, chain, token, autoResume: true).ConfigureAwait(false);
         }
 
@@ -1205,12 +1239,19 @@ public static partial class Playback
             if (player.Error.Peek() is { } err) { bytes.Close(); PostFault(LocalOpenFault(MapError(err), bytes), epoch); return; }
 
             var pcm = player.Session as PcmAudioSession;
+            if (pcm is not null && !opened.DurationExact)
+            {
+                opened = WithDecodedLength(in opened, decoder.Gapless.ExactFrames, pcm.VoiceTotalFrames, pcm.Format.SampleRate);
+                LogLocalLength(in opened, prepared: false);
+            }
             lock (s_gate)
             {
                 s_bytes = bytes;
                 s_activeDecoder = decoder;
                 s_session = pcm;
                 s_silent = false;
+                s_opened = opened;
+                NoteOpenedFormat(opened.Format);
                 s_activeStartMs = 0;
                 s_activeDurMs = opened.DurationMs;
                 s_crossfadeInFlight = false;
@@ -1229,6 +1270,7 @@ public static partial class Playback
                 }
             }
             if (pcm is not null) ArmSwitchLine(pcm, pcm.AdoptedOutput ? 0 : 1);
+            PublishTimelineIdentity();
 
             try { player.SetVolume(Applied()); player.SetMuted(Muted.Peek()); player.SetRate(RateFor(s_id)); } catch { }
 
@@ -1306,6 +1348,7 @@ public static partial class Playback
                 s_clockStale = false;
             }
             ArmSwitchLine(session, reopened: -1);   // a silent session has no device to keep or reopen
+            PublishTimelineIdentity();
             Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             bool play;
             lock (s_gate) play = s_playIntent;
@@ -1435,6 +1478,7 @@ public static partial class Playback
                 s_lastState = PlaybackState.Idle;
                 if (session is not null) { summary = RetireXruns(session); summaryTrack = s_id; }
             }
+            PublishTimelineIdentity();
             if (session is not null)
             {
                 LogSessionSummary(in summary, summaryTrack);
@@ -1526,7 +1570,11 @@ public static partial class Playback
             Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
             Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb, opened.Peak),
             Spotify.Audio.Format.Aac => new Modules.AacAudioDecoder(opened.GainDb, opened.Peak),
-            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            Spotify.Audio.Format.OggVorbis96 or Spotify.Audio.Format.OggVorbis160 or Spotify.Audio.Format.OggVorbis320
+                => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            Spotify.Audio.Format.Pcm => new PcmAudioDecoder(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
+            // A format no decoder reads is refused at open, never decoded as another codec's bytes (Unknown used to land on Vorbis).
+            _ => new NoDecoder(opened.Format),
         };
 
         // ── 8a. normalization (D5, D6): modes, album mode, the ONE factor, the live ramp ────────────────────────────────
@@ -1662,37 +1710,29 @@ public static partial class Playback
                 => packet.Length >= 7 && packet[0] == 3 ? FromCommentBlock(packet[7..]) : default;
 
             /// <summary>A Vorbis comment BLOCK (vendor string, count, then length-prefixed <c>KEY=value</c> fields, all little-endian) — the body of a
-            /// Vorbis comment header after its 7-byte prefix, and of a FLAC VORBIS_COMMENT block. The last of a repeated key wins.</summary>
+            /// Vorbis comment header after its 7-byte prefix, and of a FLAC VORBIS_COMMENT block, walked by <see cref="VorbisComments"/>. The last of a
+            /// repeated key wins; a block cut short keeps the fields before the cut.</summary>
             public static ReplayGainTags FromCommentBlock(ReadOnlySpan<byte> block)
             {
-                int pos = 0;
-                if (!ReadLe(block, ref pos, out uint vendor) || vendor > (uint)(block.Length - pos)) return default;
-                pos += (int)vendor;
-                if (!ReadLe(block, ref pos, out uint count)) return default;
-                ReadOnlySpan<byte> trackGain = default, trackPeak = default, albumGain = default, albumPeak = default;
-                for (uint i = 0; i < count; i++)
-                {
-                    if (!ReadLe(block, ref pos, out uint len) || len > (uint)(block.Length - pos)) break;
-                    ReadOnlySpan<byte> field = block.Slice(pos, (int)len);
-                    pos += (int)len;
-                    int eq = field.IndexOf((byte)'=');
-                    if (eq <= 0) continue;
-                    ReadOnlySpan<byte> key = field[..eq], value = field[(eq + 1)..];
-                    if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_GAIN"u8)) trackGain = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_PEAK"u8)) trackPeak = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_GAIN"u8)) albumGain = value;
-                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_PEAK"u8)) albumPeak = value;
-                }
-                return Of(trackGain, trackPeak, albumGain, albumPeak);
+                var gains = new GainFields();
+                VorbisComments.ForEach(block, ref gains);
+                return Of(gains.TrackGain, gains.TrackPeak, gains.AlbumGain, gains.AlbumPeak);
             }
 
-            static bool ReadLe(ReadOnlySpan<byte> b, ref int pos, out uint v)
+            /// <summary>The four ReplayGain values of one comment block, as the walk finds them.</summary>
+            ref struct GainFields : VorbisComments.IVisitor
             {
-                v = 0;
-                if (pos < 0 || pos + 4 > b.Length) return false;
-                v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b[pos..]);
-                pos += 4;
-                return true;
+                public ReadOnlySpan<byte> TrackGain, TrackPeak, AlbumGain, AlbumPeak;
+
+                public void Field(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, long valueAt)
+                {
+                    if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_GAIN"u8)) TrackGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_PEAK"u8)) TrackPeak = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_GAIN"u8)) AlbumGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_PEAK"u8)) AlbumPeak = value;
+                }
+
+                public readonly void LargeField(ReadOnlySpan<byte> key, long valueAt, int valueLength) { }
             }
 
             static ReadOnlySpan<byte> TrimAscii(ReadOnlySpan<byte> s)
@@ -2926,8 +2966,10 @@ public static partial class Playback
             public void Close() => Cancel();
         }
 
-        /// <summary>MP3, over NLayer. The LAME/Xing gapless numbers are read from the tag before the codec takes the
-        /// stream — never a hardcoded constant, because the delay and padding are the encoder's own facts.</summary>
+        /// <summary>MP3, over NLayer (vendored, <c>src/apps/vendor/NLayer</c>). NLayer trims the gapless delay and padding itself
+        /// from the LAME tag (the encoder's own facts, never a constant: delay + 529 at the start, padding − 529 at the end), so its
+        /// output is already the real audio, sample for sample what ffmpeg decodes; this decoder reports that length as exact and
+        /// never trims a second time.</summary>
         public sealed class Mp3AudioDecoder : IAudioDecoder, IGainFolding
         {
             readonly float _gain;
@@ -2966,14 +3008,17 @@ public static partial class Playback
                         Log.Warn("audio", "mp3 open: the stream carries no MPEG audio frames — refusing it");
                         return false;
                     }
-                    Mp3Tag tag = default;
-                    bool hasTag = stream.CanSeek && Mp3Tag.TryProbe(stream, out tag);
                     _file = new NLayer.MpegFile(stream);
                     _srcChannels = Math.Max(1, _file.Channels);
                     int rate = _file.SampleRate > 0 ? _file.SampleRate : target.SampleRate;
                     _resampler = rate != target.SampleRate ? new PolyphaseResampler(rate, target.SampleRate, target.Channels) : null;
                     _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
-                    Gapless = hasTag ? tag.ToGapless(rate, target.SampleRate) : GaplessInfo.None;
+                    // NLayer's Length is what ReadSamples delivers, trimmed already (a counted frame total: the Xing frame count,
+                    // or a header scan of a seekable file); a forward-only stream has none (-1).
+                    long trimmed = _file.Length / (sizeof(float) * (long)_srcChannels);
+                    Gapless = _file.Length >= 0
+                        ? new GaplessInfo(0, 0, rate == target.SampleRate ? trimmed : (long)Math.Round(trimmed * (double)target.SampleRate / rate), TailKnown: true)
+                        : GaplessInfo.None;
                     info = new DecodedInfo(new MediaContentType(Container.Mp3, CodecId.None, CodecId.Mp3),
                         new MixFormat(rate, _srcChannels), _file.Duration, default);
                     return true;
@@ -3026,112 +3071,17 @@ public static partial class Playback
                     long srcFrame = _target.SampleRate == _file.SampleRate
                         ? frame
                         : (long)Math.Round((double)frame * _file.SampleRate / _target.SampleRate);
-                    // NLayer's Position is in BYTES of decoded float samples, not samples (its Length is samples × 4): the
-                    // old `srcFrame × channels` landed a quarter of the way to the target.
+                    // NLayer's Position is in BYTES of decoded float samples, not samples (its Length is samples × 4), counted
+                    // in the trimmed timeline; it lands on exactly that sample (pre-rolling enough frames for the bit reservoir).
                     _file.Position = srcFrame * _srcChannels * sizeof(float);
                     _hold = 0;
                     _resampler?.Reset();
-                    // NLayer lands on an MPEG frame boundary (up to ~1 152 samples off): report where it actually is, so
-                    // the clock rebases on the audio that plays rather than on the ask.
                     long landedSrc = _file.Position / (sizeof(float) * (long)_srcChannels);
                     return _target.SampleRate == _file.SampleRate
                         ? landedSrc
                         : (long)Math.Round((double)landedSrc * _target.SampleRate / _file.SampleRate);
                 }
                 catch { return -1; }
-            }
-        }
-
-        /// <summary>The LAME/Xing gapless block. Header bytes only, no audio decode, seekable streams only, and the
-        /// position is restored — a probe failure is never a playback failure.</summary>
-        public readonly record struct Mp3Tag(int DelaySamples, int PaddingSamples, long TotalSamples)
-        {
-            /// <summary>The MDCT/filterbank delay a conforming decoder adds ON TOP of the encoder delay. The gapless
-            /// convention is "skip delay + 529, trim padding − 529".</summary>
-            public const int DecoderDelaySamples = 529;
-
-            public GaplessInfo ToGapless(int srcRate, int mixRate)
-            {
-                int leadSrc = DelaySamples + DecoderDelaySamples;
-                int padSrc = Math.Max(0, PaddingSamples - DecoderDelaySamples);
-                long exact = TotalSamples;
-                return new GaplessInfo(
-                    (int)ToMix(leadSrc, srcRate, mixRate),
-                    (int)ToMix(padSrc, srcRate, mixRate),
-                    exact > 0 ? ToMix(exact, srcRate, mixRate) : -1,
-                    TailKnown: exact > 0);
-            }
-
-            static long ToMix(long n, int srcRate, int mixRate)
-                => srcRate <= 0 || srcRate == mixRate ? n : (long)Math.Round(n * (double)mixRate / srcRate);
-
-            public static bool TryProbe(Stream stream, out Mp3Tag tag)
-            {
-                tag = default;
-                if (!stream.CanSeek) return false;
-                long restore = stream.Position;
-                try
-                {
-                    stream.Position = 0;
-                    Span<byte> head = stackalloc byte[10];
-                    if (stream.Read(head) < 10) return false;
-                    long frameStart = 0;
-                    if (head[0] == (byte)'I' && head[1] == (byte)'D' && head[2] == (byte)'3')
-                    {
-                        int size = ((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14)
-                                 | ((head[8] & 0x7F) << 7) | (head[9] & 0x7F);
-                        frameStart = 10 + size + ((head[5] & 0x10) != 0 ? 10 : 0);   // the footer flag adds 10
-                    }
-                    stream.Position = frameStart;
-                    Span<byte> buf = stackalloc byte[512];
-                    int n = stream.Read(buf);
-                    if (n < 160) return false;
-                    buf = buf[..n];
-
-                    int sync = -1;
-                    for (int i = 0; i + 1 < Math.Min(buf.Length, 192); i++)
-                    {
-                        if (buf[i] == 0xFF && (buf[i + 1] & 0xE0) == 0xE0) { sync = i; break; }
-                    }
-                    if (sync < 0) return false;
-                    ReadOnlySpan<byte> h = buf[sync..];
-                    if (h.Length < 160) return false;
-
-                    int versionBits = (h[1] >> 3) & 0x3;
-                    int layerBits = (h[1] >> 1) & 0x3;
-                    if (layerBits != 1 || versionBits == 1) return false;          // Layer III, and a real MPEG version
-                    bool mpeg1 = versionBits == 3;
-                    bool mono = ((h[3] >> 6) & 0x3) == 3;
-                    int samplesPerFrame = mpeg1 ? 1152 : 576;
-                    int xing = 4 + (mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17));   // past the side info
-                    if (h.Length < xing + 8) return false;
-                    if (!h.Slice(xing, 4).SequenceEqual("Xing"u8) && !h.Slice(xing, 4).SequenceEqual("Info"u8)) return false;
-
-                    int flags = (h[xing + 4] << 24) | (h[xing + 5] << 16) | (h[xing + 6] << 8) | h[xing + 7];
-                    int cursor = xing + 8;
-                    long frames = 0;
-                    if ((flags & 0x1) != 0)
-                    {
-                        if (h.Length < cursor + 4) return false;
-                        frames = ((long)h[cursor] << 24) | ((long)h[cursor + 1] << 16) | ((long)h[cursor + 2] << 8) | h[cursor + 3];
-                        cursor += 4;
-                    }
-                    if ((flags & 0x2) != 0) cursor += 4;
-                    if ((flags & 0x4) != 0) cursor += 100;
-                    if ((flags & 0x8) != 0) cursor += 4;
-
-                    // The LAME extension: a 9-byte encoder string, then delay and padding packed 12 + 12 bits at 21.
-                    if (h.Length < cursor + 24) return false;
-                    int delay = (h[cursor + 21] << 4) | (h[cursor + 22] >> 4);
-                    int padding = ((h[cursor + 22] & 0x0F) << 8) | h[cursor + 23];
-                    if (delay <= 0 && padding <= 0) return false;                  // no gapless data was written
-                    if (delay > 4096 || padding > 4608) return false;              // outside any real encoder's range
-                    long total = frames > 0 ? frames * samplesPerFrame - delay - padding : -1;
-                    tag = new Mp3Tag(delay, padding, total);
-                    return true;
-                }
-                catch { return false; }
-                finally { try { stream.Position = restore; } catch { } }
             }
         }
 
@@ -3292,8 +3242,8 @@ public static partial class Playback
                 PcmAudioSession? session;
                 PcmAudioPlayer? backend;
                 PlayableKind activeKind;
-                bool silent;
-                lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; }
+                bool silent, activeExact;
+                lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; activeExact = s_opened.DurationExact; }
                 if (session is null || backend is null || silent || token.IsCancellationRequested) return;   // nothing to hand off from
 
                 // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
@@ -3313,8 +3263,18 @@ public static partial class Playback
                 MediaSource source = MediaSource.FromPull(bytes).WithKind(MediaKind.PcmAudio);
                 // `PrepareContext.For` stamps the mix rate B is resampled FOR, which is what every splice site checks.
                 PrepareContext ctx = PrepareContext.For(session.Format, session.NormalizationMode, session.ReferenceLufsValue);
+                // #48 Mix: a planned B opens at its in-point (engine E3); the achieved start is what the join anchors on.
+                long mixStart = MixStartFramesFor(id, session.Format.SampleRate);
+                if (mixStart > 0) ctx = ctx with { StartSourceFrame = mixStart };
                 item = await backend.PrepareAsync(source, ctx, token).ConfigureAwait(false);
+                long achievedStartMs = item.StartPositionFrames * 1000 / Math.Max(1, session.Format.SampleRate);
+                if (mixStart > 0) Log.Info("audio", $"[mix] prepared at {achievedStartMs} ms (asked {mixStart * 1000 / Math.Max(1, session.Format.SampleRate)} ms)");
                 s_decoderForOpen.Value = null;
+                if (!opened.DurationExact)
+                {
+                    opened = WithDecodedLength(in opened, decoder.Gapless.ExactFrames, item.TotalFrames, session.Format.SampleRate);
+                    LogLocalLength(in opened, prepared: true);
+                }
 
                 lock (s_gate)
                 {
@@ -3325,9 +3285,13 @@ public static partial class Playback
                     s_prepOpened = opened;
                     s_prepId = id;
                     s_prepDurMs = opened.DurationMs;
-                    // A cross-kind boundary (audio → video, or either → a local file) changes HOSTS, so there is
-                    // nothing to splice into: `MediaSwitch` is the one authority on that.
-                    s_prepOverlap = MediaSwitch.AllowCrossfade(activeKind, kind);
+                    s_prepKind = kind;
+                    // A boundary that touches video changes HOSTS, so there is nothing to splice into: `MediaSwitch` is the
+                    // one authority on that. Audio and local files share the host and splice like Spotify → Spotify, unless
+                    // the OUTGOING track's length is an estimate: a fade or a join is scheduled against that length, and a
+                    // short guess would cut the song's tail, so that boundary stays a reload at the real end (§3.13).
+                    s_prepOverlap = MediaSwitch.AllowCrossfade(activeKind, kind) && activeExact;
+                    s_prepStartMs = achievedStartMs;
                     item = null;                                    // adopted: the finally below leaves them alone
                     bytes = null;
                 }
@@ -3344,14 +3308,19 @@ public static partial class Playback
             }
         }
 
-        /// <summary>Arm B into the LIVE mixer at the active track's natural-end frame. A is never faded and never
-        /// truncated and the `IAudioClient` never stops — this is the butt-join, and it is why `GainEnvelope.Constant`
-        /// rather than a zero-length fade (rule 3).</summary>
-        static bool CommitGaplessJoin(PcmAudioSession sess, IPreparedItem item)
+        /// <summary>Arm B into the LIVE mixer at a FRAME decided now, ahead of time, and flip identity when the clock reaches it
+        /// (<see cref="AnnounceGaplessJoin"/>). The `IAudioClient` never stops.
+        /// <para><paramref name="fadeMs"/> 0: the butt-join at the active track's natural-end frame. A is never faded and never
+        /// truncated, which is why `GainEnvelope.Constant` rather than a zero-length fade (rule 3).</para>
+        /// <para><paramref name="fadeMs"/> &gt; 0: the crossfade, scheduled the same way. It ENDS on A's natural-end frame
+        /// (<see cref="GaplessJoinClock.ScheduleFade"/>): A fades out and B fades in over the same frames on one equal-power curve,
+        /// so the tracks overlap by exactly the fade. It used to start on whichever 200 ms tick first found the window open,
+        /// so a 5 s fade overlapped the content for only 4.71-4.96 s, and A's fade ran past A's last sample.</para></summary>
+        static bool CommitHandOff(PcmAudioSession sess, IPreparedItem item, int fadeMs)
         {
             if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
             {
-                Log.Info("audio", "join abandoned reason=rate-mismatch");
+                Log.Info("audio", (fadeMs > 0 ? "crossfade" : "join") + " abandoned reason=rate-mismatch");
                 Interlocked.Increment(ref s_mGaplessAbandoned);
                 DisposePreparedSlot();
                 return false;
@@ -3369,19 +3338,30 @@ public static partial class Playback
             lock (s_gate) activeEnd = exact ? JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate) : s_activeJoinFrame;
             if (exact) remaining = Math.Max(remaining, (activeEnd - clock) * 1000 / Math.Max(1, rate));
             long join = GaplessJoinClock.ScheduleJoin(activeEnd, clock, remaining, rate);
+            int fadeFrames = 0;
+            if (fadeMs > 0) (join, fadeFrames) = GaplessJoinClock.ScheduleFade(join, clock, fadeMs * rate / 1000, item.TotalFrames);
+            // Both envelopes carry absolute mixer frames: before `join` B is pinned at 0 and A at 1, so neither changes until the
+            // clock reaches the frame, however early this runs. Built here, off the render thread (each allocates its table).
+            GainEnvelope incoming = fadeFrames > 0 ? GainEnvelope.Fade(FadeKind.In, join, fadeFrames, CrossCurve.EqualPower) : GainEnvelope.Constant;
+            GainEnvelope? outgoing = fadeFrames > 0 ? GainEnvelope.Fade(FadeKind.Out, join, fadeFrames, CrossCurve.EqualPower) : null;
             float rg = sess.ReplayGainScalarFor(item.Loudness);
             lock (s_gate)
             {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.Constant, join, rg, sess.BuildVoiceChain(), id))
+                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, incoming, join, rg, sess.BuildVoiceChain(), id))
                     return false;
+                if (outgoing is not null) sess.SetVoiceEnvelope(s_activePrimaryId, outgoing);
                 NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the joining voice's decoder folded
                 s_joinExact = exact;
+                s_joinFadeMs = fadeFrames > 0 ? (int)(fadeFrames * 1000L / rate) : 0;
+                s_joinFadeFrames = fadeFrames;
+                s_joinOutgoingVoiceId = s_activePrimaryId;
                 s_joinPending = true;
                 s_joinFrame = join;
                 s_joinVoiceId = id;
                 s_joinVoice = item.AudioVoice;
                 s_joinTotalFrames = item.TotalFrames;
                 s_joinId = s_prepId;
+                s_joinKind = s_prepKind;
                 s_joinDurMs = s_prepDurMs;
                 s_joinBytes = s_prepBytes;
                 s_joinDecoder = s_prepDecoder;
@@ -3394,7 +3374,10 @@ public static partial class Playback
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
             }
-            Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
+            if (fadeFrames > 0)
+                Log.Info("audio", $"crossfade armed start={join} frames={fadeFrames} end={join + fadeFrames} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
+            else
+                Log.Info("audio", $"gapless armed join={join} clock={clock} remainMs={remaining} exact={(exact ? 1 : 0)}");
             return true;
         }
 
@@ -3422,10 +3405,17 @@ public static partial class Playback
             long totalFrames;
             uint outgoing;
             EntityId joined;
+            long joinedAtMs;
+            long fadeStart, fadeFrames;
             lock (s_gate)
             {
-                if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
+                if (s_joinFadeMs > 0) Interlocked.Increment(ref s_mCrossfades);
+                else if (s_joinExact) Interlocked.Increment(ref s_mGaplessExact);
                 else Interlocked.Increment(ref s_mGaplessDegraded);
+                fadeStart = s_joinFrame;
+                fadeFrames = s_joinFadeFrames;
+                s_joinFadeMs = 0;
+                s_joinFadeFrames = 0;
                 voice = s_joinVoice;
                 totalFrames = s_joinTotalFrames;
                 outgoing = s_loadEpoch;
@@ -3436,15 +3426,23 @@ public static partial class Playback
                 s_bytes = s_joinBytes;
                 s_activeDecoder = s_joinDecoder;
                 s_opened = s_joinOpened;
+                NoteOpenedFormat(s_joinOpened.Format);   // the joined row's quality, for the PUT
                 s_joinBytes = null;
                 s_joinDecoder = null;
                 s_activeStartMs = rawPos;
                 s_activePrimaryId = s_joinVoiceId;
                 s_activeDurMs = s_joinDurMs;
                 s_id = s_joinId;
-                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(s_joinDurMs, sess.Format.SampleRate);
+                s_activeKind = s_joinKind;
+                // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
+                joinedAtMs = AnnouncedMixLocked();
+                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
+                // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
+                if (joinedAtMs > 0)
+                    s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
+                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
                 s_anchorClock = s_joinFrame;
-                s_anchorPlayheadMs = 0;
+                s_anchorPlayheadMs = joinedAtMs;
                 s_joinPending = false;
                 s_armLogged = false;
                 s_lastEndgameAskMs = -1;
@@ -3456,71 +3454,12 @@ public static partial class Playback
                 try { sess.SetActiveVoice(s_activePrimaryId, voice, TimeSpan.FromMilliseconds(s_activeDurMs), totalFrames); }
                 catch (Exception ex) { Log.Warn("audio", "set active voice failed", ex); }
             }
+            // D6: the join names the incoming track from its first frame; a crossfade's tap carries the fade as a transition
+            // (the scheduled fade starts on the join frame, so identity and transition start together).
+            PublishTimelineIdentity();
+            if (fadeFrames > 0) Timeline.SetTransition(joined, fadeStart, fadeStart + fadeFrames, Timeline.Master.Incoming);
             PromoteLiveBody();
-            PostHandedOff(outgoing, joined, 0);
-        }
-
-        /// <summary>A real crossfade: B fades IN and A's current primary fades OUT, same start frame, same length,
-        /// one `EqualPower` curve. Both voices run the shared DSP chain and B carries its own ReplayGain scalar.</summary>
-        static bool CommitCrossfade(PcmAudioSession sess, IPreparedItem item, long rawPos, int fadeMs)
-        {
-            if (!GaplessJoinClock.PrimedSlotMatches(item.MixRate, sess.Format.SampleRate))
-            {
-                Log.Info("audio", "crossfade abandoned reason=rate-mismatch");
-                Interlocked.Increment(ref s_mGaplessAbandoned);
-                DisposePreparedSlot();
-                return false;
-            }
-            long id = ++s_nextVoiceId;
-            long start = sess.SampleClock;
-            int fadeFrames = fadeMs * sess.Format.SampleRate / 1000;
-            float rg = sess.ReplayGainScalarFor(item.Loudness);
-            uint outgoing;
-            EntityId joined;
-            lock (s_gate)
-            {
-                if (!sess.TryAddCrossfadeVoice(item.AudioVoice!,
-                        GainEnvelope.Fade(FadeKind.In, start, fadeFrames, CrossCurve.EqualPower),
-                        start, rg, sess.BuildVoiceChain(), id))
-                    return false;
-                sess.SetVoiceEnvelope(s_activePrimaryId,
-                    GainEnvelope.Fade(FadeKind.Out, start, fadeFrames, CrossCurve.EqualPower));
-                NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the incoming voice's decoder folded
-
-                outgoing = s_loadEpoch;
-                joined = s_prepId;
-                s_crossfadeInFlight = true;
-                s_retiringBytes = s_bytes;
-                s_bytes = s_prepBytes;
-                s_activeDecoder = s_prepDecoder;
-                s_opened = s_prepOpened;
-                s_activeStartMs = rawPos;
-                s_activePrimaryId = id;
-                s_activeDurMs = s_prepDurMs;
-                s_id = s_prepId;
-                s_activeJoinFrame = start + GaplessJoinClock.MsToFrames(s_prepDurMs, sess.Format.SampleRate);
-                s_anchorClock = start;
-                s_anchorPlayheadMs = 0;
-                s_prepItem = null;
-                s_prepBytes = null;
-                s_prepDecoder = null;
-                s_prepId = default;
-                s_prepDurMs = 0;
-                s_prepOverlap = false;
-                s_armLogged = false;
-                s_lastEndgameAskMs = -1;
-                s_endgameAskCount = 0;
-                if (item.AudioVoice is { } fadeVoice)
-                {
-                    try { sess.SetActiveVoice(id, fadeVoice, TimeSpan.FromMilliseconds(s_activeDurMs), item.TotalFrames); }
-                    catch (Exception ex) { Log.Warn("audio", "set active voice failed", ex); }
-                }
-            }
-            Interlocked.Increment(ref s_mCrossfades);
-            Log.Info("audio", $"crossfade committed start={start} frames={fadeFrames}");
-            PromoteLiveBody();
-            PostHandedOff(outgoing, joined, 0);
-            return true;
+            PostHandedOff(outgoing, joined, (int)joinedAtMs);
         }
 
         /// <summary>The joined voice's body is the PLAYING body now: it is what `Stream.Stats` describes, and its ring grows
@@ -3539,13 +3478,18 @@ public static partial class Playback
         /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
-            long voiceId;
+            bool mixCancelled = false;
+            long voiceId, outgoingFaded;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
+                mixCancelled = CancelMixLocked(sess);      // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
                 voiceId = s_joinVoiceId;
+                outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
+                s_joinFadeMs = 0;
+                s_joinFadeFrames = 0;
                 bytes = s_joinBytes;
                 s_joinBytes = null;
                 s_joinDecoder = null;
@@ -3553,8 +3497,12 @@ public static partial class Playback
                 s_joinId = default;
             }
             Interlocked.Increment(ref s_mGaplessAbandoned);
+            if (mixCancelled) Timeline.ClearTransition();   // #48: the tap's transition ends with the cancelled join
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
+            // A scheduled crossfade also set A's fade-out: A keeps playing at full level (before the fade's start frame it was
+            // still at 1; past it, the step back is from at most one tick into an equal-power fade, under 1 %).
+            if (outgoingFaded != 0) { try { sess?.SetVoiceEnvelope(outgoingFaded, GainEnvelope.Constant); } catch { } }
             if (bytes is not null) { try { bytes.Close(); } catch { } }
             return true;
         }
@@ -3573,6 +3521,7 @@ public static partial class Playback
                 s_prepId = default;
                 s_prepDurMs = 0;
                 s_prepOverlap = false;
+                s_prepStartMs = 0;
             }
             if (item is not null) _ = item.DisposeAsync();
             if (bytes is not null) { try { bytes.Close(); } catch { } }
@@ -3852,6 +3801,7 @@ public static partial class Playback
                 joinLost = s_joinLostBySeek;
                 s_joinLostBySeek = false;
             }
+            PublishTimelineIdentity();
             if (t0 != 0) RecordSeek(requestedMs, t0, before);
             uint stamp = epoch == 0 ? s_loadEpoch : epoch;
             if (joinLost) Post(Input.PrepareLost(stamp));
@@ -3933,6 +3883,7 @@ public static partial class Playback
                 return false;
             }
             LogSessionSummary(in summary, summaryTrack);
+            PublishTimelineIdentity();
             try { fresh.SetMuted(Muted.Peek()); } catch { }
             try { await old.DisposeAsync().ConfigureAwait(false); } catch { }
             if (play) { try { await fresh.PlayAsync().ConfigureAwait(false); } catch { } }
@@ -3959,6 +3910,26 @@ public static partial class Playback
         {
             try { Volatile.Read(ref s_player)?.SetRate(rate); }
             catch (Exception ex) { Log.Warn("audio", "speed change failed", ex); }
+        }
+
+        /// <summary>Publish the live identity into the timeline tap (#154 G2a): the session, the playing id, where it started on the
+        /// session clock and its length, read together under <c>s_gate</c> and published outside it (a <c>Changed</c> handler never
+        /// runs under the pump's lock). Episodes read the source domain, as <see cref="ActivePositionMs"/> does.</summary>
+        static void PublishTimelineIdentity()
+        {
+            PcmAudioSession? sess;
+            EntityId id;
+            long startMs, durMs;
+            bool sourceDomain;
+            lock (s_gate)
+            {
+                sess = s_clockStale ? null : s_session;
+                id = s_id;
+                startMs = s_activeStartMs;
+                durMs = s_activeDurMs;
+                sourceDomain = s_id.Kind == EntityKind.Episode && !s_silent;
+            }
+            Timeline.PublishIdentity(sess, id, startMs, durMs, sourceDomain);
         }
 
         static long ActivePositionMs()
@@ -3992,6 +3963,7 @@ public static partial class Playback
         static void TickCore()
         {
             if (s_disposed) { StopTicker(); return; }
+            Timeline.Poll();
             MediaPlayer? p = Volatile.Read(ref s_player);
             PcmAudioSession? sess;
             uint epoch, gen;
@@ -4027,15 +3999,22 @@ public static partial class Playback
             long activePos = pos;
             bool prepared = s_prepItem is { IsReady: true };
             bool handOffInFlight = s_crossfadeInFlight || s_joinPending;
-            EndgamePlan plan = EndgamePlan.Decide(activePos, s_activeDurMs, fadeMs, prepared, s_prepOverlap,
+            // #48 Mix: while a mix is armed the endgame runs against the mix-out with no fade (Playback.Audio.Mix.cs).
+            long endgameBoundaryMs = s_activeDurMs;
+            int endgameFadeMs = fadeMs;
+            MixEndgame(ref endgameBoundaryMs, ref endgameFadeMs);
+            EndgamePlan plan = EndgamePlan.Decide(activePos, endgameBoundaryMs, endgameFadeMs, prepared, s_prepOverlap,
                 handOffInFlight, s_armLogged, s_lastEndgameAskMs, FrameNowMs());
 
             if (state == PlaybackState.Playing && plan.LogArm)
             {
                 s_armLogged = true;
+                // 0 a hand-off is set up · 2 the prepare is still building · 3 no overlap across this boundary (video)
+                // · 4 nothing prepared or building · 5 no overlap: the outgoing local file's length is an estimate (an MP3
+                // without a Xing/LAME block, raw ADTS), so the boundary reloads at the real end (#240 §3.13).
                 int reason = s_prepItem is null && Volatile.Read(ref s_prepInFlight) == 0 ? 4
                            : s_prepItem is null ? 2
-                           : !s_prepOverlap ? 3 : 0;
+                           : !s_prepOverlap ? (s_opened.DurationExact ? 3 : 5) : 0;
                 Log.Info("audio", $"[gapless] arm remainMs={plan.RemainMs} fadeMs={fadeMs} "
                     + $"primed={prepared} overlap={s_prepOverlap} reason={reason} clock={sess.SampleClock}");
             }
@@ -4051,7 +4030,7 @@ public static partial class Playback
             // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3). The boundary is the voice's EXACT end once it
             // is known (G-113), not the catalogue duration — a track 1.6 s shorter than its `duration_ms` never commits
             // against the catalogue figure.
-            if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item)
+            if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item && !TickMix(sess, item))
             {
                 long boundaryMs = s_activeDurMs;
                 long exactFrames = ActiveExactFrames(sess);
@@ -4060,18 +4039,17 @@ public static partial class Playback
                             s_crossfadeInFlight || s_joinPending))
                 {
                     case HandOff.Crossfade:
-                        if (CommitCrossfade(sess, item, rawPos, fadeMs)) pos = ActivePositionMs();
-                        break;
                     case HandOff.Gapless:
-                        // Never into a session a device reload may replace, and never off a stale clock: with a stale
-                        // playhead `dur − pos` reads as "the whole track remains" and the join is scheduled off a
-                        // clock that is not this track's.
-                        if (GaplessJoinClock.CanCommit(s_clockStale, softReloading: false)) CommitGaplessJoin(sess, item);
+                        // Both are SCHEDULED at a frame (CommitHandOff). Never into a session a device reload may replace, and
+                        // never off a stale clock: with a stale playhead `dur − pos` reads as "the whole track remains" and the
+                        // hand-off is scheduled off a clock that is not this track's.
+                        if (GaplessJoinClock.CanCommit(s_clockStale, softReloading: false)) CommitHandOff(sess, item, fadeMs);
                         break;
                 }
             }
 
             // (d) the join going live, and the hand-off closing.
+            TickMixSounding(sess);
             if (s_joinPending)
             {
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");
@@ -4491,10 +4469,13 @@ public static partial class Playback
         /// decoder factory switches on; <see cref="Label"/> is what the stage badge and the deck faces print
         /// (ch 21 §10 item 77, ch 23 W18/W19). <see cref="Peak"/> is the linear true peak the normalization gain is capped
         /// by (<see cref="NormalizationFactor"/>), 0 when unknown. <see cref="AlbumGainDb"/>/<see cref="AlbumPeak"/> are the same
-        /// pair for the album (D5): what album mode picks, 0 when the source carries none.</summary>
+        /// pair for the album (D5): what album mode picks, 0 when the source carries none. <see cref="DurationExact"/> is
+        /// false when <see cref="DurationMs"/> is an estimate a splice must not be scheduled against (a local MP3 without a
+        /// Xing/LAME block, raw ADTS), or — with <see cref="DurationMs"/> 0 — a local file whose length the decoder has not
+        /// read yet (<see cref="WithDecodedLength"/>; #240 §3.13).</summary>
         public readonly record struct Opened(
             Spotify.Audio.Format Format, long DurationMs, float GainDb, string Label, int BitrateKbps, bool IsLive,
-            float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f);
+            float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f, bool DurationExact = true);
 
         /// <summary>Where a module playable's bytes come from (owner T's `Platform/Modules.Host.cs`, Wave 6). A SEAM
         /// rather than a call, so Wave 3 builds and runs with no module host at all: an unattached provider answers
@@ -4529,8 +4510,16 @@ public static partial class Playback
         }
 
         /// <inheritdoc cref="SourceRoute"/>
-        public static SourceRoute RouteOf(EntityProvider provider) => provider switch
+        /// <remarks>A playlist's <c>spotify:local:</c> item (#240 §3.7, D1 a) is a TEXT-form Spotify track: it plays from the file the
+        /// local index matched (<see cref="LocalLibrary.PlaysLocally"/>, one probe under a lock, no id text read on the pump), and an
+        /// unmatched one has no bytes anywhere (extended-metadata answers 404 for it, report 3.3), so it is not sent down the CDN
+        /// ladder. A catalogue track is gid-form and pays one failed form test, per open, never per buffer.</remarks>
+        public static SourceRoute RouteOf(EntityId id) => id.Provider switch
         {
+            // "Your files and Spotify" phase 2: a Spotify song whose default version is one of your files plays that file (LocalLibrary.PlayAs.cs).
+            EntityProvider.Spotify when id.Kind == EntityKind.Track && LocalLibrary.PlayAsOf(id) != 0 => SourceRoute.Local,
+            EntityProvider.Spotify when id.Form == EntityForm.Text && id.Kind == EntityKind.Track
+                => LocalLibrary.PlaysLocally(id) ? SourceRoute.Local : SourceRoute.None,
             EntityProvider.Spotify => SourceRoute.Spotify,
             EntityProvider.WaveePodcast => SourceRoute.Podcast,
             EntityProvider.Local => SourceRoute.Local,
@@ -4548,14 +4537,23 @@ public static partial class Playback
         {
             opened = default;
             fault = Fault.None;
-            switch (RouteOf(id.Provider))
+            switch (RouteOf(id))
             {
                 case SourceRoute.Spotify:
                     return SpotifySource(id, ct, prepared, out opened, out fault);
                 case SourceRoute.Podcast:
                     return PodcastSource(id, ct, prepared, out opened, out fault);
                 case SourceRoute.Local:
-                    return LocalSource(id, out opened, out fault);
+                {
+                    var local = LocalSource(id, out opened, out fault);
+                    // A Spotify song's default file that cannot be opened (gone, an offline share): the song plays from Spotify, no dead end.
+                    if (local is null && id.Provider == EntityProvider.Spotify && id.Form != EntityForm.Text)
+                    {
+                        fault = Fault.None;
+                        return SpotifySource(id, ct, prepared, out opened, out fault);
+                    }
+                    return local;
+                }
                 case SourceRoute.Module:
                     return ModuleSource(id, ct, out opened, out fault);
                 case SourceRoute.Silent:
@@ -4632,7 +4630,7 @@ public static partial class Playback
         };
 
         /// <summary>A file the user dropped or imported. The FORMAT comes from the bytes, never the extension — the
-        /// extension gate is the user-facing rule ("Wavee plays .mp3, .ogg, .flac and .mp4 files"), the content is what the
+        /// extension gate is the user-facing rule ("Wavee plays .mp3, .flac, .ogg, .m4a, .aac, .wav, .aiff and .mp4 files"), the content is what the
         /// decoder is chosen by, and a file whose content names no decoder this build has is REFUSED here
         /// (<see cref="Fault.Unsupported"/>, one log line saying what it is) — never handed to a guessed one. The old
         /// fallback was "anything else is MP3", which sent every .mp4 to NLayer (2026-10-06).</summary>
@@ -4640,11 +4638,22 @@ public static partial class Playback
         {
             opened = default;
             string? path = LocalPath?.Invoke(id);
-            if (path is not { Length: > 0 } || !File.Exists(path)) { fault = Fault.Unavailable; return null; }
+            // #240 §3.16: a song on a network folder whose last probe found it offline is refused at once, before any I/O (an open on a
+            // dead share blocks for the redirector's minute-long timeout, here on the audio pump).
+            if (path is { Length: > 0 } && LocalLibrary.IsUnreachable(path)) { fault = Fault.Unavailable; return null; }
+            if (path is not { Length: > 0 }) { fault = Fault.Unavailable; return null; }
+            if (!File.Exists(path))
+            {
+                // The file went between the scan and the play (§3.7): a rescan greys its row instead of failing it again on the next try.
+                if (LocalLibrary.Index.TryGetByPath(path, out _)) ToUi(static () => LocalLibrary.Rescan());
+                fault = Fault.Unavailable;
+                return null;
+            }
 
             LocalProbe probe;
             Mp4AacTrack? mp4 = null;
             string mp4Why = "";
+            PcmLayout pcm = default;
             try
             {
                 using FileStream file = new(path, FileMode.Open, FileAccess.Read,
@@ -4668,17 +4677,33 @@ public static partial class Playback
                     file.Position = 0;
                     if (!Mp4.TryReadAacTrack(file, out mp4, out mp4Why)) mp4 = null;
                 }
+                if (probe.Format == Spotify.Audio.Format.Pcm)
+                {
+                    pcm = PcmLayoutOf(file);
+                    if (!pcm.Ok) probe = new LocalProbe(LocalKind.Unsupported, default, pcm.Why);
+                }
             }
             catch (Exception ex) { Log.Warn("audio", "local probe failed", ex); fault = Fault.Unavailable; return null; }
 
             Spotify.Audio.Format format;
             IMediaByteSource bytes;
             long durationMs = 0;
+            string label = "";
             switch (probe.Kind)
             {
+                case LocalKind.Decodable when probe.Format == Spotify.Audio.Format.Pcm:
+                    // PCM's length is its layout's, exactly (data / block align frames): a join and a crossfade plan on it.
+                    format = Spotify.Audio.Format.Pcm;
+                    bytes = NtDirectory.IsNetworkPath(path) ? new NetworkByteSource(path) : new FileByteSource(path);
+                    durationMs = pcm.DurationMs;
+                    label = pcm.Label;
+                    Log.Info("audio", $"audio.local pcm {pcm.Label} ch={pcm.Channels} frames={pcm.Frames} durMs={durationMs}");
+                    break;
                 case LocalKind.Decodable:
                     format = probe.Format;
-                    bytes = new FileByteSource(path);
+                    // A network share is read ahead on its own thread (a slow or sleeping NAS buffers instead of stalling the decoder).
+                    bytes = NtDirectory.IsNetworkPath(path) ? new NetworkByteSource(path) : new FileByteSource(path);
+                    durationMs = LocalLengthMs(path);
                     break;
                 case LocalKind.Mp4 when mp4 is not null && Modules.AacAudioDecoder.IsAvailable():
                     format = Spotify.Audio.Format.Aac;
@@ -4696,12 +4721,64 @@ public static partial class Playback
                     return null;
             }
             fault = Fault.None;
-            opened = new Opened(format, durationMs, 0f, LabelFor(format, 0, 0), 0, IsLive: false);
+            // An MP4's length is its sample table's (exact). FLAC, MP3, Ogg and ADTS carry theirs in headers the decoder
+            // reads: 0 and not exact until `WithDecodedLength` fills it in once the decoder has opened.
+            opened = new Opened(format, durationMs, 0f, label.Length > 0 ? label : LabelFor(format, 0, 0), 0, IsLive: false, DurationExact: durationMs > 0);
             return bytes;
         }
 
+        /// <summary>A WAV or AIFF file's PCM layout, walked over the open file (any chunk, wherever it sits).</summary>
+        static PcmLayout PcmLayoutOf(FileStream file)
+            => Pcm.Parse((at, dst) =>
+            {
+                file.Position = at;
+                int got = 0;
+                while (got < dst.Length)
+                {
+                    int n = file.Read(dst[got..]);
+                    if (n <= 0) return false;
+                    got += n;
+                }
+                return true;
+            }, file.Length);
+
+        /// <summary>A local file opened with no length (<see cref="LocalSource"/> reads no audio header), once its decoder has
+        /// read the headers: EXACT when the decoder knows the stream's true end (FLAC STREAMINFO, an MP3's Xing/LAME block, an
+        /// Ogg file's last granule), else the voice's estimated length (<paramref name="voiceFrames"/>: an MP3 without a Xing
+        /// block is a bitrate estimate; raw ADTS has none, 0) marked NOT exact, so no crossfade or join is ever scheduled from
+        /// a guess that could cut the song's tail (#240 §3.13). Anything that already has a length is returned unchanged. PURE.</summary>
+        public static Opened WithDecodedLength(in Opened opened, long exactFrames, long voiceFrames, int mixRate)
+        {
+            if (opened.DurationExact || opened.DurationMs > 0 || mixRate <= 0) return opened;
+            return exactFrames >= 0
+                ? opened with { DurationMs = exactFrames * 1000 / mixRate, DurationExact = true }
+                : opened with { DurationMs = Math.Max(0, voiceFrames) * 1000 / mixRate };
+        }
+
+        /// <summary>One line per local open saying which length the boundary will be decided on, so a log reader knows why a
+        /// local boundary was a hand-off or a reload (an estimate never carries a splice; no length never reaches the endgame).</summary>
+        static void LogLocalLength(in Opened opened, bool prepared)
+            => Log.Info("audio", $"audio.local length durMs={opened.DurationMs} exact={(opened.DurationExact ? 1 : 0)} fmt={opened.Format} "
+                                 + $"prepared={(prepared ? 1 : 0)}"
+                                 + (opened.DurationExact ? "" : opened.DurationMs > 0 ? " — an estimate: no overlap at its end" : " — unknown: no endgame, a reload at its end"));
+
         /// <summary>How much of a local file the probe reads: enough for MPEG audio's two-frame check at any bitrate.</summary>
         const int LocalProbeBytes = 8 * 1024;
+
+        /// <summary>A decodable local file's length from its headers (#240 P1a, <see cref="LocalTags"/>): FLAC's STREAMINFO, Ogg's last
+        /// granule, an MP3's Xing/VBRI frame count. A length that is only a bitrate ESTIMATE (an MP3 without a Xing block, raw ADTS)
+        /// answers 0 instead: the gapless join schedules off this number (<c>GaplessJoinClock.JoinFrameFor</c>), and a short guess
+        /// would start the next song early. The row keeps the estimate as its displayed length.</summary>
+        static long LocalLengthMs(string path)
+        {
+            if (!LocalTags.TryRead(path, out _, out LocalTagSet tags, out string why))
+            {
+                Log.Info("audio", "audio.local length unread: " + why);
+                return 0;
+            }
+            Log.Info("audio", $"audio.local length durMs={tags.DurationMs} estimated={(tags.DurationEstimated ? 1 : 0)} kbps={tags.BitrateKbps}");
+            return tags.DurationEstimated ? 0 : tags.DurationMs;
+        }
 
         static int ReadUpTo(Stream s, byte[] buffer)
         {
@@ -4741,8 +4818,9 @@ public static partial class Playback
                     : "an unknown codec";
                 return new(LocalKind.Unsupported, default, "an Ogg file carrying " + codec);
             }
-            if (head.Length >= 12 && head[..4].SequenceEqual("RIFF"u8) && head[8..12].SequenceEqual("WAVE"u8))
-                return new(LocalKind.Unsupported, default, "a WAV file");
+            // WAV (RIFF, RF64, BW64) and AIFF/AIFC: PCM. Whether this file's encoding is one the decoder reads is the layout walk's
+            // (LocalSource runs it over the whole file: a format chunk may sit past the probe's bytes).
+            if (Pcm.IsWave(head) || Pcm.IsAiff(head)) return Decodable(Spotify.Audio.Format.Pcm);
             if (Modules.Adts.FindSync(audio) == 0 && Modules.Adts.TryParseHeader(audio, out Modules.AdtsHeader adts)
                 && adts.FrameLength + Modules.Adts.MinHeaderBytes <= audio.Length)
                 return Decodable(Spotify.Audio.Format.Aac);
@@ -4895,7 +4973,7 @@ public static partial class Playback
         /// any other finite buffered sink and read empty once its content has drained and nothing further arrives — the
         /// engine's <c>Ended</c> gate (mixer drained AND <c>WritableFrames &gt;= CapacityFrames</c>) then opens on its
         /// own, the same way it does for a real device.</para></summary>
-        public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource
+        public sealed class PacedSilentEndpoint : IAudioEndpoint, IBufferedAudioSink, IAudioClockSource, IAudioTimebase
         {
             /// <summary>The buffer a WASAPI shared-mode client gets by default, and what the feed's sizing assumes.</summary>
             public const int DefaultCapacityMs = 100;
@@ -4903,7 +4981,7 @@ public static partial class Playback
             readonly Lock _gate = new();
             readonly Func<long> _now;
             readonly long _ticksPerSecond;
-            readonly bool _wallStamps;
+            readonly bool _framePaced;
             long _written, _played, _lastTicks;
             bool _started;
 
@@ -4911,12 +4989,13 @@ public static partial class Playback
             /// <param name="capacityMs">The buffer, in milliseconds of audio.</param>
             /// <param name="clock">The monotonic clock in <paramref name="ticksPerSecond"/> units; the
             /// <see cref="System.Diagnostics.Stopwatch"/> by default. Tests pass a manual one.</param>
-            /// <param name="wallStamps">Stamp the played count with the WALL clock at the read rather than the pace clock: a pace clock in another epoch (the
-            /// headless frame clock) must not reach the session's projection, which extrapolates from the stamp on the wall clock.</param>
+            /// <param name="framePaced">The pace clock is not the wall clock (the headless frame clock, which moves only as frames run): the feed polls
+            /// rather than sleeping on a wait computed from the sample rate. The played count is stamped on the pace clock either way, and the endpoint
+            /// reports that clock as the session's <see cref="IAudioTimebase"/>, so the projection and the timeline tap never mix it with the wall clock.</param>
             public PacedSilentEndpoint(MixFormat format, int capacityMs = DefaultCapacityMs, Func<long>? clock = null,
-                long ticksPerSecond = 0, bool wallStamps = false)
+                long ticksPerSecond = 0, bool framePaced = false)
             {
-                _wallStamps = wallStamps && clock is not null;
+                _framePaced = framePaced && clock is not null;
                 Format = format;
                 CapacityFrames = Math.Max(1, (int)((long)Math.Max(1, format.SampleRate) * Math.Max(1, capacityMs) / 1000));
                 if (clock is null) _now = System.Diagnostics.Stopwatch.GetTimestamp;
@@ -4931,6 +5010,8 @@ public static partial class Playback
             public int CapacityFrames { get; }
             public int MixRate => Format.SampleRate;
             public long StreamLatencyFrames => 0;
+            /// <summary>The pace clock in 100 ns: the domain the played count is stamped in, and so the session's "now".</summary>
+            public long NowTicks100ns => (long)(_now() * (1e7 / _ticksPerSecond));
             public long WrittenFrames { get { lock (_gate) return _written; } }
             /// <summary>Frames queued and not yet "played".</summary>
             public int PaddingFrames { get { lock (_gate) { AdvanceLocked(); return (int)(_written - _played); } } }
@@ -4987,9 +5068,7 @@ public static partial class Playback
                 {
                     AdvanceLocked();
                     playedFrames = _played;
-                    qpc = _wallStamps
-                        ? (long)(System.Diagnostics.Stopwatch.GetTimestamp() * (1e7 / System.Diagnostics.Stopwatch.Frequency))
-                        : (long)(_lastTicks * (1e7 / _ticksPerSecond));
+                    qpc = (long)(_lastTicks * (1e7 / _ticksPerSecond));
                     return true;
                 }
             }
@@ -5010,7 +5089,7 @@ public static partial class Playback
                     // sample rate cannot follow: the feed polls instead, so the played count never starves while the feed sleeps on a wall-clock guess.
                     waitMs = !_started
                         ? timeoutMs
-                        : writable >= threshold || _wallStamps
+                        : writable >= threshold || _framePaced
                             ? 1
                             : (int)Math.Ceiling((threshold - writable) * 1000.0 / Math.Max(1, Format.SampleRate));
                 }
@@ -5182,6 +5261,8 @@ public static partial class Playback
                 Spotify.Audio.Format.OggVorbis320 => "OGG 320",
                 Spotify.Audio.Format.Mp3 => "MP3",
                 Spotify.Audio.Format.Aac => "AAC",
+                // A local WAV or AIFF names its container, depth and rate from its layout (PcmLayout.Label: "WAV 24/96"); this is the bare fallback.
+                Spotify.Audio.Format.Pcm => bps > 0 && sampleRate > 0 ? $"PCM {bps}/{(sampleRate / 1000.0):0.#}" : "PCM",
                 _ => "",
             };
         }
@@ -5203,6 +5284,7 @@ public static partial class Playback
                 _ => Spotify.Audio.Format.Unknown,
             };
             lock (s_gate) s_opened = s_opened with { Format = format, Label = label };
+            NoteOpenedFormat(format);
         }
 
         // ── 19. ICY: the radio framing ───────────────────────────────────────────────────────────────────────────────
@@ -5839,8 +5921,8 @@ public static partial class Playback
                 {
                     Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => flac,
                     Spotify.Audio.Format.Mp3 => mp3,
-                    Spotify.Audio.Format.Unknown => 0f,
-                    _ => vorbis,
+                    Spotify.Audio.Format.OggVorbis96 or Spotify.Audio.Format.OggVorbis160 or Spotify.Audio.Format.OggVorbis320 => vorbis,
+                    _ => 0f,                                       // PCM, AAC, Unknown: no decode-speed meter
                 };
                 GlitchLedger.Snapshot glitch = s_ledger.Read();
                 PcmAudioSession? sess = Volatile.Read(ref s_session);
@@ -5924,6 +6006,11 @@ public static partial class Playback
         static int s_mFirstAudioMs = -1, s_mFirstFromHead, s_mLastSeekMs, s_mLastSeekLatencyMs = -1, s_mLastSeekKind, s_mSeeks;
         static int s_mGaplessExact, s_mGaplessDegraded, s_mGaplessAbandoned, s_mCrossfades;
         static bool s_joinExact;                   // the pending join's exactness, decided at commit (s_gate)
+        // The pending hand-off's fade (0 = a butt-join) and the outgoing voice it fades out, so an abandon can give A its
+        // level back (s_gate).
+        static int s_joinFadeMs;
+        static long s_joinFadeFrames;              // the same fade in mix frames, for the timeline tap's transition (s_gate)
+        static long s_joinOutgoingVoiceId;
 
         /// <summary>Decode-thread: one decoded packet/frame of <paramref name="frames"/> source frames took
         /// <paramref name="ticks"/>. Two Interlocked adds, no allocation.</summary>

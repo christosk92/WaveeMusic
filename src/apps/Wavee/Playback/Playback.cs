@@ -1103,6 +1103,10 @@ public static partial class Playback
         public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
+        /// <summary>The wish is on only because a local video file landed on the deck (<see cref="LocalVideoWish"/>): it ends when the deck
+        /// leaves local videos, so the rows after one play as they would have before it. Any change of the wish the deck did not make
+        /// itself (the user's switch, a fault's demotion) makes it the user's again.</summary>
+        public bool VideoByLocal;
         /// <summary>The screen the video is on cannot carry HDCP (<see cref="InputKind.VideoScreen"/>): a row whose video is protected loads
         /// on the audio host whatever <see cref="VideoWanted"/> says. <see cref="VideoWanted"/> is kept, so the row goes back to its video
         /// the moment the screen can show it.</summary>
@@ -1383,13 +1387,18 @@ public static partial class Playback
         /// context post. <c>LongArg</c> packs the cause (low byte) and <see cref="PausedBit"/>; a plain
         /// <see cref="Play"/> is <see cref="ClaimCause.UserPlay"/>, playing.</summary>
         public static Input PlayFrom(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, PlayableKind kind,
-            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false)
-            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L),
+            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false, bool here = false)
+            => new(InputKind.Play, row, id, context, cursor, fromMs,
+                (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L) | (here ? HereBit : 0L),
                 nowMs: nowMs, playKind: kind);
 
         /// <summary>The bit of a Play's <c>LongArg</c> that asks for a paused start.</summary>
         public const long PausedBit = 1L << 8;
         public const long ExplicitPositionBit = 1L << 9;
+        /// <summary>The bit of a Play's <c>LongArg</c> that says the row plays only on THIS device (a file on this PC, #240): the play
+        /// claims playback here even while another device owns it, as the official client plays a local file on the computer that
+        /// has it. Without it such a play went to the owner, which cannot open the file, and nothing played.</summary>
+        public const long HereBit = 1L << 10;
 
         /// <summary>The bit of a SetShuffle's <c>IntArg</c> that says the queue is ALREADY in the asked order (a load that
         /// built it shuffled), so no reorder effect follows.</summary>
@@ -1583,6 +1592,8 @@ public static partial class Playback
         public bool PrepareNext;
         public EntityRef NextRow;
         public EntityId NextId;
+        /// <summary>The kind <see cref="NextRow"/> will play as (Spotify audio or a local file): the pump's splice gate reads it.</summary>
+        public PlayableKind NextKind;
         /// <summary>WARM the next row only — head, mirrors, key; no ring, no decoder. What a load asks for.</summary>
         public bool Prefetch;
         public EntityRef PrefetchRow;
@@ -1824,11 +1835,14 @@ public static partial class Playback
         var cause = (ClaimCause)(byte)(i.LongArg & 0xFF);
         bool paused = (i.LongArg & Input.PausedBit) != 0;
         bool inbound = cause >= ClaimCause.InboundPlay;
+        bool here = !inbound && (i.LongArg & Input.HereBit) != 0;
 
         // Forwarding: while another device owns playback, a local Play is a PLAY COMMAND to that device, not a load
         // here. This is the routing rule, and it reads the ownership verdict — never a raw cluster id. An INBOUND load
-        // that raced a takeover is simply stale: it is nobody's command to forward.
-        if (!s.RoutesLocal)
+        // that raced a takeover is simply stale: it is nobody's command to forward. A file on this PC (HereBit) is the
+        // exception: no other device can open it, so the play claims playback here (the owner stops once the server
+        // adopts the claim, as after a takeover).
+        if (!s.RoutesLocal && !here)
         {
             // Not a bare `play` (a RESUME on the owner): the desktop `play` envelope naming the context and the row, so
             // the phone starts what was clicked here (0.2.9 parity; user report 2026-09-16 "it does not start playing").
@@ -1870,7 +1884,7 @@ public static partial class Playback
         s.StartedPlayingAtMs = activeSince;
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
-        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
+        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? DeckKind(in s, row) : i.PlayKind;
         // A play that ASKED for video (a controller's single-track video play, a "watch" click) is the video mode: the wish
         // sticks for the rows after it, and the shell opens the surface to show it.
         if (kind == PlayableKind.Video && i.PlayKind == PlayableKind.Video) VideoMode(ref s, ref fx, on: true);
@@ -1967,7 +1981,7 @@ public static partial class Playback
         EntityRef row = Queue.RefAt(at);
 
         ReportEnd(ref s, ref fx, why, natural && s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, row, row.Id, cursor, KindOfRow(row, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, row, row.Id, cursor, DeckKind(in s, row), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
@@ -1989,7 +2003,7 @@ public static partial class Playback
     static void ReplayFromStart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
         ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, DeckKind(in s, s.Current), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false, explicitPosition: true);
         fx.Snapshot = true;
@@ -2112,7 +2126,7 @@ public static partial class Playback
             }
             else fromMs = verdict.Ms;
 
-            PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused: false);
+            PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused: false);
             s.StartReason = PlayReason.PlayButton;
             EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused: false);
             if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -2948,7 +2962,7 @@ public static partial class Playback
         }
         else fromMs = verdict.Ms;
 
-        PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused);
+        PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused);
         s.StartReason = PlayReason.PlayButton;
         EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
         if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -3217,6 +3231,7 @@ public static partial class Playback
     static void VideoMode(ref State s, ref Effects fx, bool on)
     {
         if (s.VideoWanted != on) { s.VideoWanted = on; s.VideoRetries = 0; }
+        s.VideoByLocal = false;
         fx.VideoIntent = true;
         fx.VideoIntentOn = on;
         fx.VideoIntentWhy = Fault.None;

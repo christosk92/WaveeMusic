@@ -184,7 +184,7 @@ internal static class ZuneLibraryAlbumPane
     {
         if (model is null) return new BoxEl();
         var kids = new Element[model.Tiles.Count + 1];
-        kids[0] = R.Type.DenseMeta(Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f };
+        kids[0] = R.Type.DenseMeta(model.Heading ?? Strings.Library.AlsoBy(model.ArtistName)) with { Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Label), Shrink = 0f };
         for (int i = 0; i < model.Tiles.Count; i++)
         {
             var card = model.Tiles[i].Card;

@@ -106,6 +106,26 @@ internal interface ITrackCommandKit
     /// is tuned or its strip is open. Appended (contract 1.120); a structure without one draws the labelled command.</summary>
     Element TuneCommand(string label, bool lit, Action onClick) => Labeled(Icons.RefineSparkle, label, lit, onClick, null);
 
+    /// <summary>#48: the list bar's Mix toggle: <paramref name="label"/> ("Mix"), or lit <paramref name="onLabel"/> ("Mix on") while the playlist plays
+    /// mixed on this PC. It takes Tune's slot (a playlist the user can mix has no Tune). The slot holds the WIDER of the two words at rest (an
+    /// invisible, inert copy), so flipping it never moves the bar. Appended (contract: additive); a structure without one draws this.</summary>
+    Element MixCommand(string label, string onLabel, bool on, Action onClick)
+    {
+        string widest = onLabel.Length >= label.Length ? onLabel : label;
+        return new BoxEl
+        {
+            ZStack = true, Shrink = 0f,
+            Children =
+            [
+                new BoxEl { Opacity = 0f, HitTestVisible = false, Focusable = false, Children = [Labeled(Icons.Equalizer, widest, false, static () => { }, null)] },
+                new BoxEl { JustifySelf = FlexAlign.Start, Children = [Labeled(Icons.Equalizer, on ? onLabel : label, on, onClick, null)] },
+            ],
+        };
+    }
+
+    /// <summary>#48: the Mix split's chevron (the Mix menu). Default: the bar's glyph button with the disclosure chevron.</summary>
+    Element MixMenuButton(Action onClick, Action<NodeHandle> onRealized) => IconButton(Icons.ChevronDown, false, onClick, onRealized);
+
     /// <summary>The disclosure chevron after a command that opens a flyout (the Sort button's one chevron, tuned Classic D6).</summary>
     Element Chevron();
 
@@ -219,6 +239,13 @@ internal sealed class TrackUnavailableBarArgs
     /// <summary>The ✕'s name and tooltip ("Close"). Appended (contract 2.10).</summary>
     public string DismissLabel { get; init; } = "";
 
+    /// <summary>A second verb's word, drawn before <see cref="ActionLabel"/> in the action lane ("Review" while the list holds missing local files,
+    /// #240 S6), or "" for none. Appended (#240 P2).</summary>
+    public string SecondaryLabel { get; init; } = "";
+
+    /// <summary>The second verb (opens the missing songs' review), or null: none. Appended (#240 P2).</summary>
+    public Action? Secondary { get; init; }
+
     /// <summary>The bar's horizontal edges in the chrome: the rows' gutter in the hero arm, the row plates' inset in the two-column arm.</summary>
     public required float InsetX { get; init; }
 
@@ -265,6 +292,10 @@ public sealed class TrackChromeTemplates
     /// <summary>The band the bar takes in the chrome while shown, its gap to what follows included, in the tiers the table is drawn in (contract
     /// 1.24): the hero arm's pinned chrome adds it to the rows' clip inset. Null (or no <see cref="UnavailableBar"/>): 0.</summary>
     internal Func<global::Wavee.Theming.TierFacts, float>? UnavailableBarExtent { get; init; }
+
+    /// <summary>The band the bar takes while it carries a second verb (<see cref="TrackUnavailableBarArgs.Secondary"/>: Review), where that differs (a Compact
+    /// bar that takes its verbs on a line of their own). Null: <see cref="UnavailableBarExtent"/>. Appended (#240 P2).</summary>
+    internal Func<global::Wavee.Theming.TierFacts, float>? UnavailableBarExtentWithSecondary { get; init; }
 
     /// <summary>The theme draws NO table chrome (command bar, chips, lens, column header, the hero's toolbar) over an empty list that carries its recommendations lead (an owned, empty
     /// playlist: the lead and its finder are the page), and reads <see cref="Detail.ListCount.EmptyLead"/> for the same fact elsewhere. False (the default) keeps the chrome: Classic's.</summary>

@@ -67,7 +67,13 @@ public static partial class Playback
         public readonly ulong ItemId;
         public readonly QueueProvider Provider;
         public readonly EntityId AlbumId, ArtistId;
-        readonly string? _uidText, _title, _artistName, _albumTitle, _image, _decisionId, _queuedBy;
+        readonly string? _uidText, _title, _artistName, _albumTitle, _image, _decisionId, _queuedBy, _localUri;
+
+        /// <summary>A Wavee local file's name on the wire (#240 E3, E4): <c>spotify:local:&lt;artist&gt;:&lt;album&gt;:&lt;title&gt;:&lt;seconds&gt;</c>
+        /// minted from its tags and indexed length when the window was built (<see cref="Spotify.Egress.LocalTrackUri"/>), so the row keeps
+        /// one name whether it is behind, on or ahead of the deck. "" for every other row (a Spotify id names itself; a
+        /// <c>wavee:local:file:</c> id never leaves).</summary>
+        public string LocalUri => _localUri ?? "";
 
         /// <summary>An autoplay row's <c>decision_id</c> as the answer stated it; "" for every other row.</summary>
         public string DecisionId => _decisionId ?? "";
@@ -86,20 +92,20 @@ public static partial class Playback
 
         public WireRow(EntityId id, ulong itemId, string? uidText, QueueProvider provider, string? title = null,
             string? artistName = null, string? albumTitle = null, string? image = null, EntityId albumId = default,
-            EntityId artistId = default, string? decisionId = null, string? queuedBy = null)
+            EntityId artistId = default, string? decisionId = null, string? queuedBy = null, string? localUri = null)
         {
             Id = id; ItemId = itemId; _uidText = uidText; Provider = provider;
             _title = title; _artistName = artistName; _albumTitle = albumTitle; _image = image;
-            AlbumId = albumId; ArtistId = artistId; _decisionId = decisionId; _queuedBy = queuedBy;
+            AlbumId = albumId; ArtistId = artistId; _decisionId = decisionId; _queuedBy = queuedBy; _localUri = localUri;
         }
 
         /// <summary>This row again with the autoplay answer's <paramref name="decisionId"/>.</summary>
         public WireRow WithDecision(string? decisionId)
-            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, decisionId, _queuedBy);
+            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, decisionId, _queuedBy, _localUri);
 
         /// <summary>This row again with its <paramref name="queuedBy"/>.</summary>
         public WireRow WithQueuedBy(string? queuedBy)
-            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, _decisionId, queuedBy);
+            => new(Id, ItemId, _uidText, Provider, _title, _artistName, _albumTitle, _image, AlbumId, ArtistId, _decisionId, queuedBy, _localUri);
     }
 
     /// <summary>The queue around the deck as the PUT carries it: up to <see cref="MaxPrev"/> already-played rows (the
@@ -180,8 +186,16 @@ public static partial class Playback
     public sealed record WireOrigin(string Feature, string Version, string View, string ExternalReferrer,
         string Referrer, string Device, string CommandId, KeyValuePair<string, string>[] Metadata);
 
+    /// <summary>#48 Mix on the PUT (plan §3.7): the context is a mixed playlist read through its lens (the context url gains
+    /// <c>?spotify-apply-lenses=mix</c> and the context metadata the list's Mix attributes), and the playing pair's fade metadata
+    /// (<see cref="Out"/> on the playing row, <see cref="In"/> on <see cref="Incoming"/>'s row), built once per timing.</summary>
+    public sealed record MixWire(bool Lens, PlaylistMixFlags ListFlags, EntityId Incoming,
+        KeyValuePair<string, string>[] Out, KeyValuePair<string, string>[] In);
+
     public readonly struct WireExtras
     {
+        /// <summary>#48: the Mix half of the PUT; null outside a mixed playlist.</summary>
+        public readonly MixWire? Mix;
         /// <summary>Null while we are not the active device, or have nothing on the deck.</summary>
         public readonly WireWindow? Window;
         /// <summary><c>queue_revision</c>: moves whenever the queue, the deck row or the options did. 0 = not stated.</summary>
@@ -215,10 +229,22 @@ public static partial class Playback
         /// <c>spotify:user:&lt;u&gt;:collection</c> the liked-songs metadata names.</summary>
         public string LikedOwner => _likedOwner ?? "";
 
+        /// <summary>The deck plays Wavee's own Local Files list (#240 E4): how many songs it holds, for the context's
+        /// <c>playlist_number_of_tracks</c> as the official client states it; 0 for any other context.</summary>
+        public readonly int LocalFilesTracks;
+
+        /// <summary><c>player_state.playback_quality</c> for a stream: what the pump opened for the deck row and the rung it asked for
+        /// (<see cref="Spotify.Decode.Outgoing"/>). Not <c>Present</c> when nothing was captured; the encoder then states no level.</summary>
+        public readonly Spotify.Decode.PlaybackQuality Quality;
+
         public WireExtras(WireWindow? window, ulong queueRevision, in WireIds ids, bool privateSession, string? outputDevice,
             string? commandSender, float playbackRate = 1f, WireOrigin? origin = null, byte outputType = 0, bool audiobook = false,
-            string? likedPlaylist = null, string? likedOwner = null)
+            string? likedPlaylist = null, string? likedOwner = null, MixWire? mix = null, int localFilesTracks = 0,
+            Spotify.Decode.PlaybackQuality quality = default)
         {
+            Quality = quality;
+            Mix = mix;
+            LocalFilesTracks = localFilesTracks;
             Window = window; QueueRevision = queueRevision; Ids = ids; PrivateSession = privateSession;
             _outputDevice = outputDevice; _commandSender = commandSender; _playbackRate = playbackRate; Origin = origin; OutputType = outputType;
             Audiobook = audiobook;

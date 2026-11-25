@@ -311,8 +311,32 @@ public static class ZuneFrameRules
 
     // ── the frame bits ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The file-drop cue's plate padding (square, the raised plate, Z-Overlays' toast rhythm).</summary>
-    public static readonly Edges4 FileDropPadding = new(24f, 14f, 24f, 14f);
+    /// <summary>The drop panel's band (#240 §3.15): its key and each zone's (a lint and trace family).</summary>
+    public const string DropBandKey = "shell.drop-panel";
+
+    static readonly string[] s_dropZoneKeys = ["shell.drop-zone.0", "shell.drop-zone.1", "shell.drop-zone.2", "shell.drop-zone.3"];
+
+    public static string DropZoneKey(int index) => s_dropZoneKeys[Math.Clamp(index, 0, s_dropZoneKeys.Length - 1)];
+
+    /// <summary>The band: 24 around its verbs (Z-Overlays' rhythm), 1040 at its widest, kept 16 from the window's edges; zones 24 apart,
+    /// 200 at their narrowest (narrower, the verbs wrap onto a second row: pivot type never shrinks).</summary>
+    public static readonly Edges4 DropBandPadding = new(24f, 24f, 24f, 20f), DropLayerPadding = new(16f, 16f, 16f, 16f);
+    public const float DropBandMaxW = 1040f, DropZoneGap = 24f, DropZoneMinW = 200f;
+
+    /// <summary>A zone's widest: its share of the widest band's row, so a verb that wraps onto a row of its own keeps the width the others
+    /// have (four song verbs at 1040: 230 each) instead of stretching across the band.</summary>
+    public static float DropZoneMaxW(int zones)
+        => (DropBandMaxW - DropBandPadding.Left - DropBandPadding.Right - Math.Max(0, zones - 1) * DropZoneGap) / Math.Max(1, zones);
+
+    /// <summary>A zone: 8 around; the lit bar (3 tall) 12 under the consequence; the consequence two lines at most.</summary>
+    public static readonly Edges4 DropZonePadding = new(8f, 8f, 8f, 8f), DropLitBarMargin = new(0f, 12f, 0f, 0f);
+    public const float DropLitBarH = 3f;
+    public const int DropDetailLines = 2;
+
+    /// <summary>The band's entrance and exit: a fade on the pivot slide's time.</summary>
+    public static readonly LayoutTransition DropBandMotion = new(TransitionChannels.Opacity,
+        TransitionDynamics.Tween(ZuneMotion.PivotSlideMs, Easing.SmoothOut),
+        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true));
 
     /// <summary>The cover scrim's fade (0 under reduced motion) and its weight: Z-Setup sets the plate on a near-black room (the smoke's hue at 85 %; the
     /// stock 30 % smoke left Home reading through it).</summary>

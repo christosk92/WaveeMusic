@@ -221,6 +221,10 @@ public static partial class Spotify
             public ushort Year;
             public byte Precision, AlbumKind, Caps;
             public bool Explicit, Ruled, Unavailable;
+            /// <summary>The <c>playability.reason</c> a ruled-unavailable node named, as its <see cref="TrackFlags"/> reason bit
+            /// (<c>COUNTRY_RESTRICTED</c> → <see cref="TrackFlags.RegionLocked"/>; <c>PREMIUM_REQUIRED</c> /
+            /// <c>PAYMENT_REQUIRED</c> → <see cref="TrackFlags.PremiumOnly"/>); 0 for a reason it did not name.</summary>
+            public uint Withheld;
             /// <summary>Whether <see cref="CloseArtists"/> actually closed a run for THIS node (not merely
             /// attempted — a node with no `artists` field in the JSON pushed nothing, so the call was a no-op and
             /// this stays false). Read by <see cref="Stage"/>'s Album arm to decide <see cref="AlbumFields.Artists"/>:
@@ -334,6 +338,16 @@ public static partial class Spotify
                 for (int d = Fields(ref r); Next(ref r, d);)
                 {
                     if (r.ValueTextEquals("playable"u8)) { r.Read(); n.Ruled = true; n.Unavailable = !Flag(ref r); }
+                    // The official client's own words for a greyed row (2026-11-25 capture of a fetchPlaylist): the reason
+                    // a region-locked track answers is COUNTRY_RESTRICTED. A playable node's PLAYABLE names nothing.
+                    else if (r.ValueTextEquals("reason"u8))
+                    {
+                        r.Read();
+                        n.Withheld = Says(ref r, "COUNTRY_RESTRICTED") ? (uint)TrackFlags.RegionLocked
+                                   : Says(ref r, "PREMIUM_REQUIRED") || Says(ref r, "PAYMENT_REQUIRED") ? (uint)TrackFlags.PremiumOnly
+                                   : 0u;
+                        if (r.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray) r.Skip();
+                    }
                     else SkipValue(ref r);
                 }
             }
@@ -499,7 +513,7 @@ public static partial class Spotify
                         row.DurationMs = n.DurationMs;
                         row.PlayCount = n.PlayCount;
                         if (n.Explicit) row.Flags |= (uint)TrackFlags.Explicit;
-                        if (n.Ruled && n.Unavailable) row.Flags |= (uint)TrackFlags.Unavailable;
+                        if (n.Ruled && n.Unavailable) row.Flags |= (uint)TrackFlags.Unavailable | n.Withheld;
                         return n.Uri;
                     }
                 case EntityKind.Album:

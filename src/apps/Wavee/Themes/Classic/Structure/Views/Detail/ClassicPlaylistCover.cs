@@ -81,7 +81,7 @@ internal static partial class ClassicPlaylist
                 {
                     dropOver.Value = false;
                     if (session.Payload is FileDropData files && files.Count > 0) apply(files.Paths[0]);
-                }),
+                }) { CanAccept = p.TakesDrop },
             Children =
             [
                 CoverArt(p.Art),

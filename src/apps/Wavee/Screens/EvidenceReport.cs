@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here, HomeCap, Drive }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video, Theme, Mini, Here, HomeCap, Drive, Timecode, Connect }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -75,7 +75,7 @@ public static class EvidenceReport
         if (string.IsNullOrEmpty(query)) return false;
         string cmd = "", tag = "", vp = "", move = "", level = "", uris = "", kinds = "";
         string zoom = "", settle = "", reveal = "", alpha = "", keys = "", on = "", ms = "", pause = "", open = "", mode = "", face = "", gallery = "";
-        string file = "", stop = "";
+        string file = "", stop = "", dial = "", value = "";
         string? x = null, y = null, to = null;
         bool dip = false;
         ReadOnlySpan<char> q = query;
@@ -115,6 +115,8 @@ public static class EvidenceReport
                 case "face": face = val; break;
                 case "gallery": gallery = val; break;
                 case "file": file = val; break;
+                case "key": dial = val; break;
+                case "value": value = val; break;
                 case "stop": stop = val; break;
             }
         }
@@ -222,11 +224,25 @@ public static class EvidenceReport
             case "here":
                 verb = new DiagVerb(DiagCommand.Here);   // pull playback to this device (Connect takeover)
                 return true;
+            case "connect":
+            {
+                // `--fake`'s Spotify Connect roster on a live window (Playback.UseFakeConnect, the inspector's `mount connect=`): a real
+                // window can then put playback on a fake remote device through the device picker.
+                string m = mode.ToLowerInvariant();
+                if (m is not ("nearby" or "none")) return false;
+                verb = new DiagVerb(DiagCommand.Connect, Mode: m);
+                return true;
+            }
             case "drive":
                 // the live driver (Diagnostics.Drive.cs): replay a script file, or stop=1 the running one
                 if (Flag(stop) == 1) { verb = new DiagVerb(DiagCommand.Drive, On: 0); return true; }
                 if (file.Length == 0) return false;
                 verb = new DiagVerb(DiagCommand.Drive, Tag: SanitizeTag(tag.Length == 0 ? "drive" : tag), File: file);
+                return true;
+            case "timecode":
+                // #154: set a timecode dial on a live window (`Playback.TimecodeOutput.Set`, the inspector's `timecode do=set`).
+                if (dial.Length == 0) return false;
+                verb = new DiagVerb(DiagCommand.Timecode, Mode: dial, Face: value);
                 return true;
             case "mini":
             {

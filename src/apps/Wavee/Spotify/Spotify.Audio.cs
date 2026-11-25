@@ -93,8 +93,9 @@ public static partial class Spotify
         // ── 1. the values ────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>What the bytes are. The rung is implied by the name for Ogg; MP3 and FLAC are one each because the
-        /// decoder does not care about their bitrate and nothing else asks.</summary>
-        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24, Aac }
+        /// decoder does not care about their bitrate and nothing else asks. <c>Pcm</c> is a local WAV or AIFF file (#240). The values are kept
+        /// in the local index (append only).</summary>
+        public enum Format : byte { Unknown = 0, OggVorbis96, OggVorbis160, OggVorbis320, Mp3, Flac, Flac24, Aac, Pcm }
 
         /// <summary>What the user asked for. The persisted setting is an int (`Platform.Keys.PlaybackQuality`), so the
         /// VALUES are the wire and a rename here is a preference the user loses.</summary>
@@ -491,6 +492,80 @@ public static partial class Spotify
             return true;
         }
 
+        /// <summary>Why the catalogue will not play a track for this session. <see cref="None"/> is "it plays" (as itself or
+        /// through an alternative), and also "nobody can tell": a verdict is only ever drawn from a payload that SAYS so.</summary>
+        public enum Withheld : byte
+        {
+            None = 0,
+            /// <summary>A country gate rules this market out and no alternative plays here: "Not available in your country".</summary>
+            Region,
+            /// <summary>A catalogue gate names only the paid catalogue (and no country gate): "Premium only".</summary>
+            Premium,
+            /// <summary>Restricted, with no gate the client can name (withdrawn, or a reason the wire does not spell).</summary>
+            Gone,
+        }
+
+        /// <summary>THE playability verdict over one TRACK_V4 payload, shared by the row decode (<c>Spotify.Decode.TrackV4</c>)
+        /// and the ladder (<see cref="Choose(Md.Track, Af.AudioFilesExtensionResponse?, Quality, long, string)"/>), so the
+        /// greyed row and the play attempt never disagree. Measured against the official client (2026-11-25 capture of a
+        /// 13-row playlist in one market, four rows greyed): every greyed row's TRACK_V4 carried a restriction, NO <c>file[]</c> and NO
+        /// <c>alternative[]</c>, its Pathfinder <c>playability</c> read <c>COUNTRY_RESTRICTED</c> and its PlaybackTrait (kind 212)
+        /// answered 404; every other row had a file, or an alternative with files (a relink), and a 200. The 10,472-payload
+        /// corpus in <c>lean_metadata.proto</c> holds exactly those classes. So the verdict is FILE-based, and the restriction
+        /// only NAMES it: a track withholds when it has no file this market admits, no admitted alternative with a file, no
+        /// music video of its own (a self-contained video track has no audio file and still plays), and a restriction says
+        /// so. A payload with no files and no restriction has never been seen and is no verdict. PURE.</summary>
+        /// <param name="ownFiles">The payload's own <c>file[]</c> is non-empty.</param>
+        /// <param name="ownAdmitted">Its restrictions admit the market (<see cref="Allowed"/>).</param>
+        /// <param name="alternativePlays">Some <c>alternative[]</c> is admitted and carries a file.</param>
+        /// <param name="ownVideo">The payload names an <c>original_video</c> (a self-contained music-video track).</param>
+        /// <param name="restricted">The payload carries at least one <c>restriction</c>.</param>
+        /// <param name="countryGate">A restriction carries a country list (allowed or forbidden; an EMPTY allowed list on a
+        /// track with no file is the market-filtered form the service sends: "not here").</param>
+        /// <param name="premiumGate">A restriction names catalogues, and only the paid one.</param>
+        public static Withheld WithheldFor(bool ownFiles, bool ownAdmitted, bool alternativePlays, bool ownVideo,
+            bool restricted, bool countryGate, bool premiumGate)
+        {
+            if ((ownFiles && ownAdmitted) || alternativePlays || ownVideo || !restricted) return Withheld.None;
+            return countryGate ? Withheld.Region : premiumGate ? Withheld.Premium : Withheld.Gone;
+        }
+
+        /// <summary>Does a restriction's catalogue list name ONLY the paid catalogue? The enum (<c>SUBSCRIPTION</c>) and
+        /// the string form (<c>"premium"</c>) both count; a free or ad catalogue, or <c>CATALOGUE_ALL</c>, admits free
+        /// accounts. Empty lists name nothing. PURE.</summary>
+        public static bool PaidCatalogueOnly(bool namesPaid, bool namesOther) => namesPaid && !namesOther;
+
+        /// <summary><see cref="WithheldFor"/> over a parsed TRACK_V4 (the ladder's copy of the payload). PURE.</summary>
+        public static Withheld WithheldIn(Md.Track t, string market)
+        {
+            bool alternative = false;
+            foreach (Md.Track alt in t.Alternative)
+                if (NamesFile(alt) && Allowed(alt, market)) { alternative = true; break; }
+            bool countryGate = false, paid = false, other = false;
+            foreach (Md.Restriction r in t.Restriction)
+            {
+                countryGate |= r.HasCountriesAllowed || r.HasCountriesForbidden;
+                foreach (var c in r.Catalogue)
+                {
+                    if (c == Md.Restriction.Types.Catalogue.Subscription) paid = true; else other = true;
+                }
+                foreach (string c in r.CatalogueStr)
+                {
+                    if (string.Equals(c, "premium", StringComparison.OrdinalIgnoreCase)) paid = true; else other = true;
+                }
+            }
+            return WithheldFor(NamesFile(t), Allowed(t, market), alternative, t.OriginalVideo.Count > 0,
+                t.Restriction.Count > 0, countryGate, PaidCatalogueOnly(paid, other));
+        }
+
+        /// <summary>Does a track's <c>file[]</c> name at least one file id (the row decode's test, <c>Spotify.Decode.HasFileId</c>)?</summary>
+        static bool NamesFile(Md.Track t)
+        {
+            foreach (Md.AudioFile f in t.File)
+                if (f.HasFileId && !f.FileId.IsEmpty) return true;
+            return false;
+        }
+
         /// <summary>The whole ladder over the two payloads, pure: TRACK_V4 plus an optional AUDIO_FILES. FLAC wins when
         /// the account returned it AND the setting asked for it; otherwise the Ogg rungs of the track's own file[] — but
         /// only when <see cref="Allowed"/> admits the track in <paramref name="market"/>; otherwise (and when the list is
@@ -499,6 +574,11 @@ public static partial class Spotify
         public static FileChoice Choose(Md.Track track, Af.AudioFilesExtensionResponse? lossless, Quality quality,
             long fallbackDurationMs, string market)
         {
+            // A WITHHELD track fails here, named, before any rung is tried. Its `original_audio` still resolves to an
+            // AUDIO_FILES answer with a FLAC id, and asking the key service for that id is a licence request the account
+            // is refused (observed 2026-11-25: License403 → NoKey → "This track isn't available" after a wasted round trip).
+            if (WithheldIn(track, market) != Withheld.None) return FileChoice.Failed(Fault.Restricted);
+
             if (quality == Quality.Lossless && lossless is not null)
             {
                 (byte[] flacId, Format flacFormat, Md.AudioFile.Types.Format flacWire) = PickFlac(lossless);

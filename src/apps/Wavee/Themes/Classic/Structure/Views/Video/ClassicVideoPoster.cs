@@ -53,7 +53,7 @@ internal static class ClassicVideoPoster
         {
             Key = "join:screen", Direction = 1, AlignItems = FlexAlign.Center, Gap = ClassicVideoRules.ScreenNoticeGap,
             MaxWidth = ClassicVideoRules.ScreenNoticeMaxW, MinWidth = 0f, Shrink = 1f, HitTestVisible = false,
-            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
+            Enter = Design.Reduced ? null : new EnterExit(Opacity: 0f, Active: true),
             Children =
             [
                 new BoxEl
@@ -117,8 +117,9 @@ internal static class ClassicVideoPoster
         {
             Key = remote ? "join:remote" : failed ? "join:failed" : "join:working",
             Direction = 1, AlignItems = FlexAlign.Center, Gap = Spacing.S, HitTestVisible = remote,
-            // Reduced motion is the DEFAULT terminal: a hard cut, read as a VALUE, never a branch at the call site.
-            Enter = Design.Reduced ? default : new EnterExit(Opacity: 0f, Active: true),
+            // Reduced motion is NO terminal (null): a hard cut, read as a VALUE, never a branch at the call site. Never `default`: a default
+            // EnterExit is a real terminal (scale 0, opacity 0), which the engine plays as a zoom out of nothing.
+            Enter = Design.Reduced ? null : new EnterExit(Opacity: 0f, Active: true),
             Children = remote ? RemoteLine(props) : failed ? FailedLine(props) : WorkingLine(),
         };
         return new BoxEl

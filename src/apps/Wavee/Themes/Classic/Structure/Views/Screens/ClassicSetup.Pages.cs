@@ -36,7 +36,8 @@ internal static partial class ClassicSetup
         {
             SetupText.Body(Loc.Get(Strings.Setup.Theme.Body)),
             props.ThemePicker(),
-            SetupText.Group(ClassicSettings.AppModeRow(), ClassicSettings.LanguageRow(language)) with { Key = "setup:prefs" },
+            SetupText.Group(ClassicSettings.AppModeRow(), ClassicSettings.ColoursRow("appearance.colours.light"),
+                ClassicSettings.ColoursRow("appearance.colours.dark"), ClassicSettings.LanguageRow(language)) with { Key = "setup:prefs" },
         };
         if (props.ThemeOptions() is { } options) kids.Add(options);
         return WizardFrame(Setup.WizardPage.Theme, Loc.Get(Strings.Setup.Theme.Title), SetupText.Stack(kids.ToArray()));

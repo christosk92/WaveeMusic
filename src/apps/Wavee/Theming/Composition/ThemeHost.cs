@@ -65,11 +65,19 @@ public static class ThemeHost
         Task.FromResult(new ThemeTransactionResult(ThemeTransactionOutcome.Immediate));
 
     /// <summary>The OS accent the style resolves its definition with. It is an INPUT, not an override: the active style's
-    /// <c>Definition(options, OsAccent)</c> decides whether it uses it (Classic follows it; Zune only with "use the windows
+    /// <c>Definition(options, inputs)</c> decides whether it uses it (Classic follows it; Zune only with "use the windows
     /// accent"), and the engine's accent follows the resolved <c>ThemeDefinition.Accent</c>. Defaults to the WinUI ramp (which every
     /// definition treats as "use the baked accent tokens"); <c>Appearance</c> feeds the real one at boot and on every OS colour change
     /// (<see cref="FeedOsAccent"/>). Nothing may push the OS accent through <c>Tok.SetAccent</c>: an engine override wins over the definition.</summary>
     public static AccentRamp OsAccent { get; set; } = AccentRamp.FluentDefault;
+
+    /// <summary>The user's colour sets (#184), the style's other INPUT: a style maps a ladder onto its own tokens for each mode that has one
+    /// and keeps its own colours for a mode that has none. Assigned only by <see cref="Wavee.Theming.Colours.ColourChoice"/> (its seed before the
+    /// window, then each change).</summary>
+    public static Wavee.Theming.Colours.ColourPair Colours { get; set; }
+
+    /// <summary>What the active style resolves its definition from: the OS accent and the colour sets.</summary>
+    public static Wavee.Theming.Colours.StyleInputs Inputs => new(OsAccent, Colours);
 
     /// <summary>Assigns <see cref="OsAccent"/> from what the OS answered: the exact <paramref name="ramp"/> when it has one, else (only
     /// when <paramref name="allowPlainFallback"/>) the ramp derived from the <paramref name="plain"/> accent colour, else nothing (the
@@ -115,7 +123,7 @@ public static class ThemeHost
     /// <summary>The definition of the active composition for its option values and the OS accent, or null before
     /// <see cref="Install"/>. This is what the appearance seed installs (<c>Design.SeedPalette</c>), so a light/dark flip keeps
     /// the active theme's roles and not the base definition's. The composition memoizes it: the same inputs return the same instance.</summary>
-    public static ThemeDefinition? ActiveDefinition => s_installed ? s_current.Peek().Definition(s_values, OsAccent) : null;
+    public static ThemeDefinition? ActiveDefinition => s_installed ? s_current.Peek().Definition(s_values, Inputs) : null;
 
     /// <summary>Bumped by every switch (inside its transaction's apply flush): <c>ThemeRoot</c> remounts the root on it. A Transaction-mode
     /// option change does not bump it (it re-renders in place).</summary>
@@ -216,6 +224,7 @@ public static class ThemeHost
     {
         ThemeCatalog.Set([]);
         OsAccent = AccentRamp.FluentDefault;
+        Colours = default;
         s_installed = false;
         s_store = null;
         s_values = ThemeOptionValues.Empty;
@@ -242,7 +251,7 @@ public static class ThemeHost
         ThemeComposition previous = s_current.Peek();
         if (ReferenceEquals(target, previous)) return s_nothingToDo;
 
-        ThemeDefinition next = target.Definition(ThemeOptionStore.Load(target), OsAccent);
+        ThemeDefinition next = target.Definition(ThemeOptionStore.Load(target), Inputs);
         s_pendingSwitch.Value = target.Manifest.Id;
         return Transact(new ThemeTransactionRequest(next, Tok.Theme, () =>
         {
@@ -270,10 +279,23 @@ public static class ThemeHost
     {
         ThemeDefinition definition = ActiveDefinition ?? Tok.Definition;
         if (kind == Tok.Theme) return s_nothingToDo;
-        return Transact(new ThemeTransactionRequest(definition, kind, static () => { })
+        return Transact(new ThemeTransactionRequest(definition, kind, static () => RepublishFacts())
         {
             OnFailed = ex => Log.Warn("theme", "switching the theme kind failed and was rolled back", ex),
             Label = "kind:" + kind,
+        });
+    }
+
+    /// <summary>Installs <paramref name="next"/> (the active definition for new colour sets, #184) on a theme transaction, IN PLACE: the
+    /// colours changed together with something a live swap cannot carry (the window material, plan D5), so the frame freezes, the definition
+    /// is installed for the current kind and the frame dissolves. Nothing remounts: pages keep their scroll and state.</summary>
+    public static Task<ThemeTransactionResult> ApplyColoursInTransaction(ThemeDefinition next)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        return Transact(new ThemeTransactionRequest(next, Tok.Theme, static () => { })
+        {
+            OnFailed = ex => Log.Warn("theme", "applying the colour sets failed and was rolled back", ex),
+            Label = "colours",
         });
     }
 
@@ -325,7 +347,7 @@ public static class ThemeHost
             foreach (var c in changes) if (c.Option.Equals(lo)) return c.Value;
             return lo.Option.Peek(store.Store);
         });
-        ThemeDefinition next = active.Definition(nextValues, OsAccent);
+        ThemeDefinition next = active.Definition(nextValues, Inputs);
         return Transact(new ThemeTransactionRequest(next, Tok.Theme, () =>
         {
             foreach (var c in changes) store.Publish(c.Option, c.Value);
@@ -406,6 +428,24 @@ public static class ThemeHost
         ThemePickerFacts.Publish(new PickerState(ThemeCatalog.Installed, theme.Manifest.Id));
     }
 
+    /// <summary>The token set the active STYLE draws for <paramref name="kind"/> with no colour set: its own inks and layers, what a surface tuned
+    /// against them compares a user's colour set with (`Controls.ArtistHeroVeil`, #184). Null when <paramref name="kind"/> has no colour set (the
+    /// tokens on screen ARE the style's own) or before <see cref="Install"/>. The style's memo returns the instance it already built.</summary>
+    public static TokenSet? OwnTokensUnderColours(ThemeKind kind)
+    {
+        if (!s_installed || Colours.For(kind) is null) return null;
+        ThemeDefinition own = s_current.Peek().Style.Definition(s_values.Style,
+            new Wavee.Theming.Colours.StyleInputs(OsAccent, Wavee.Theming.Colours.ColourPair.None));
+        return kind == ThemeKind.Light ? own.Light : own.Dark;
+    }
+
+    /// <summary>Publishes the active composition's facts again: what changes a fact from outside the composition calls it (a colour set or the
+    /// light/dark kind moving the artwork veto, #184). A no-op before <see cref="Install"/>.</summary>
+    public static void RepublishFacts()
+    {
+        if (s_installed) PublishFacts(s_current.Peek());
+    }
+
     private static void PublishFacts(ThemeComposition theme)
     {
         // The tiers are the window's fact (T3b), not the composition's: keep what is published.
@@ -419,6 +459,10 @@ public static class ThemeHost
             Log.Warn("theme", "theme '" + theme.Manifest.Id + "' published policies the shell cannot run on; using the baseline: " + string.Join("; ", problems));
             facts = facts with { Policies = ThemePolicies.Default };
         }
+        // A user's colour set on screen with "Artwork colours" off (#184, plan D4): no washes and no artwork accent, so the window keeps the set's
+        // exact colours. Applied after the validation (it only turns things off). The now-playing colours stay the theme's: media surfaces.
+        if (Wavee.Theming.Colours.ColourChoice.VetoesArtwork && facts.Policies.Artwork is { } artwork && (artwork.Washes || artwork.AccentFromArtwork))
+            facts = facts with { Policies = facts.Policies with { Artwork = artwork with { AccentFromArtwork = false, Washes = false } } };
         s_facts.Value = facts;
         s_policies.Value = facts.Policies;
         s_metrics.Value = facts.Metrics;
@@ -428,7 +472,7 @@ public static class ThemeHost
     /// pairing (Classic) the definition IS the one the appearance seed installed, so nothing happens.</summary>
     private static void ApplyDefinition(ThemeComposition theme)
     {
-        ThemeDefinition definition = theme.Definition(s_values, OsAccent);
+        ThemeDefinition definition = theme.Definition(s_values, Inputs);
         if (!ReferenceEquals(definition, Tok.Definition)) Tok.Use(definition, Tok.Theme);
     }
 

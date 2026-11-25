@@ -51,6 +51,22 @@ public static class PlaylistCoverRules
         return false;
     }
 
+    /// <summary>Does the cover take this drop? Only when every dropped file is an image it can read: a song (or a song beside an image) is
+    /// the drop panel's, so the cover stays out of its way. Allocation-free: the drop asks per pointer move.</summary>
+    public static bool TakesDrop(string[] paths)
+    {
+        if (paths.Length == 0) return false;
+        foreach (string path in paths)
+        {
+            var ext = Path.GetExtension(path.AsSpan());
+            bool known = false;
+            foreach (string e in Extensions)
+                if (ext.Equals(e, StringComparison.OrdinalIgnoreCase)) { known = true; break; }
+            if (!known) return false;
+        }
+        return true;
+    }
+
     /// <summary>The checks a path can fail before any pixel is read: <paramref name="length"/> is the file's size, -1
     /// when it does not exist.</summary>
     public static CoverProblem CheckFile(string? path, long length)

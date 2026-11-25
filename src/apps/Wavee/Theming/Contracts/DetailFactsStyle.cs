@@ -56,7 +56,9 @@ public sealed class DetailFactsStyle
     /// <summary>The tempo distribution's style (the core adds its tooltip delay).</summary>
     public required Func<DensityPlot.Style> Density { get; init; }
 
-    /// <summary>A named artist row, bare (the core wraps its tooltip): <c>(name, count, lit, click or null)</c>.</summary>
+    /// <summary>A named artist row, bare: <c>(name, count, lit, click or null)</c>. The core adds NO tooltip (the row's own name and count
+    /// are its words; the face pile above keeps its tooltips) and places it in a row box whose target fills the width, so a style needs
+    /// no tooltip of its own either.</summary>
     public required Func<string, string, bool, Action?, Element> ArtistRow { get; init; }
 
     /// <summary>The gap between the face pile and the names, and between two names.</summary>

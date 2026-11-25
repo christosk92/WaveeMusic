@@ -96,7 +96,9 @@ public sealed partial class ZuneStructure : IStandInStructure
         CommonBlocks.Register(views, ZuneModulePage.Template, "zune.module.page",
             history: ZuneHistory.Template, historyTemplateId: "zune.screens.history",
             explainer: ZuneSettings.ExplainerTemplate, explainerTemplateId: "zune.screens.settings.explainer",
-            hint: ZuneHint.Template, hintTemplateId: "zune.hint");
+            hint: ZuneHint.Template, hintTemplateId: "zune.hint",
+            localFilesEmpty: ZuneLocalFiles.Empty, localFilesEmptyTemplateId: "zune.local-files.empty",
+            localFilesFind: ZuneLocalFiles.Find, localFilesFindTemplateId: "zune.local-files.find");
         // No drawer (the band is the navigation at every tier) and no masthead (a page's title and views are the band's row 2).
         CommonNothing.Register(views, ViewKeys.ShellNarrowDrawer);
         CommonNothing.Register(views, ViewKeys.ShellMasthead);
