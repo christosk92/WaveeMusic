@@ -198,6 +198,16 @@ public static partial class Playback
             return System.Net.WebUtility.HtmlDecode(text.ToString());
         }
 
+        /// <summary>The lexicon answers come without the network (<c>--fake</c>): a DJ restore need not wait for the session to be online.</summary>
+        internal static bool AnswersOffline => s_fake is not null;
+
+        /// <summary>How a DJ play began (<see cref="Session.Start"/>).</summary>
+        public enum DjStart : byte { Play, Transfer, Restore }
+
+        /// <summary>The lexicon url a deck on <paramref name="context"/> plays from, for the session document (the launch restore resolves it
+        /// again): the session's while one plays it, else the list's attribute; "" for any other context. UI thread.</summary>
+        public static string UrlFor(EntityId context) => Of(context) is { } s ? WireUrl(s.ContextUrl) : ListUrl(context);
+
         // ── the DJ list's own facts ──────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The lexicon url <paramref name="list"/> plays from (its <c>lexicon_context_url</c> attribute), or "" for a list that is

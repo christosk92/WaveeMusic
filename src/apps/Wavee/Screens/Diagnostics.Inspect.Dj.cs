@@ -105,6 +105,7 @@ public static partial class Diagnostics
                 w.WriteString("context", s.Context.Text);
                 w.WriteString("contextUrl", s.ContextUrl);
                 w.WriteString("reason", s.Reason);
+                w.WriteString("start", s.Start.ToString());
                 w.WriteString("uri", f.Uri);
                 w.WriteString("url", f.Url);
                 w.WriteBoolean("dj", f.IsDj);
@@ -165,6 +166,7 @@ public static partial class Diagnostics
                 w.WriteNumber("i", i);
                 w.WriteString("row", (i == st.Cursor.Index ? ">" : "") + Short(global::Wavee.Queue.RefAt(i).Id));
                 w.WriteNumber("page", row.Page);
+                w.WriteNumber("track", row.Track);
                 w.WriteString("segment", row.Segment);
                 w.WriteBoolean("jumpTarget", row.JumpTarget);
                 w.WriteString("narration", string.Join('+', Slots(row)));

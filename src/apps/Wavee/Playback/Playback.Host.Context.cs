@@ -623,6 +623,13 @@ public static partial class Playback
             for (int k = start + 1; k < context.Length && n < cap; k++)
                 AddRow(buffer, in context[k], QueueBucket.NextUp, refs, rows, ref n);
             if (sameContext) AddKeptAutoplay(refs, rows, ref n, cap);
+            // A DJ transferred here (plan-dj D4): the transferred track is the deck at its position, where the fresh session lists it
+            // (StartIndex, by uid then uri) or alone before the session when it does not (a fresh session's segments are new ones); the
+            // transfer's own queue, then the session's rows after it. Each row is laid once, so nothing plays twice.
+            if (dj is not null && transfer)
+                Log.Info("dj", "transfer into Wavee: the transferred track " + (start >= 0 ? "is row " + start + " of the fresh session" : "is no row of the fresh session")
+                    + ", on the deck at " + RemotePlan.StartPositionMs(in load, UnixNowMs()) + " ms; " + (context.Length - Math.Max(0, start + 1))
+                    + " session row(s) follow " + load.TrackCount + " queued row(s) of its own; reason=" + dj.Reason);
 
             // The context's own restrictions (the DJ: shuffle and repeat disallowed, plan-dj §2.5) win over the user's shuffle and a
             // controller's override; another context plays in the user's own shuffle, held while a locked one played.
@@ -664,7 +671,7 @@ public static partial class Playback
             s_pageContext = contextId;
             s_pageUrl = pageUrl;
             if (!sameContext) ForgetAutoplayPage();
-            if (dj is not null) Dj.Begin(contextId, dj, pageUrl);   // before ContextPages: its refill reads the session
+            if (dj is not null) Dj.Begin(contextId, dj, pageUrl, transfer ? Dj.DjStart.Transfer : Dj.DjStart.Play);   // before ContextPages: its refill reads the session
             else Dj.Leave(contextId);
             Apply(Input.ContextPages(contextId, pageUrl.Length > 0, now));   // after the Play: it names the new context
             Log.Info("playback", "context load rows=" + n + " start=" + at + " shuffle=" + (shuffle ? 1 : 0)
@@ -1154,6 +1161,8 @@ public static partial class Playback
     /// caller that gets true must wait for <see cref="LandSeedContext"/>, never block here.</summary>
     static bool ResolveSeedContext(long seq, EntityId context, EntityId currentId)
     {
+        // A DJ list resumes from its lexicon session, never as the bare playlist uri (plan-dj D4: Playback.Dj.Restore.cs).
+        if (s_state.Own.Kind != Owner.Foreign && SeedDjUrl(context) is { Length: > 0 } djUrl) return ResolveDjSeed(seq, context, currentId, djUrl);
         ClusterBuffer buffer = ClusterBuffer.Rent();
         string uri = context.Text;
         bool queued = Spotify.Api.Run(() =>
@@ -1282,7 +1291,10 @@ public static partial class Playback
         EntityRef row = Entities.Ref(point.Track);
         if (row.IsNone) return;
         LocalLibrary.RuleItem(point.Track);
-        QueueCursor cursor = Queue.Count == 0 && point.Rows is { Length: > 0 } persisted
+        // A DJ deck (plan-dj D4) resumes from a fresh lexicon session, not from the document's rows: those are an old session's
+        // segments, which no page of the new one holds (no DJ keys, no paging). The seed below resolves the session (ResolveDjSeed).
+        bool dj = NoteSeedDj(point.Context, point.ContextUrl), djSeed = false;
+        QueueCursor cursor = !dj && Queue.Count == 0 && point.Rows is { Length: > 0 } persisted
             ? LayPersistedRows(persisted, point.Track, point.CursorIndex)
             : QueueCursor.None;
         if (cursor.IsNone)
@@ -1294,12 +1306,13 @@ public static partial class Playback
             bool hasContext = !point.Context.IsEmpty && !point.Context.Equals(point.Track);
             Queue.SeedSource source = Queue.DecideSeed(Queue.State, hasCurrent: true, hasClusterTracks: false, hasContext);
             bool seeding;
-            if (source == Queue.SeedSource.Context && !Spotify.Current.IsOnline)
+            if (source == Queue.SeedSource.Context && !Spotify.Current.IsOnline && !(dj && Dj.AnswersOffline))
             {
                 Log.Info("playback", "queue seed deferred: the session is not online yet, arming a retry");
                 ArmSeedRetry(point.Context, point.Track);
                 seeding = true;                            // stay Unknown (the skeleton), not CurrentOnly
             }
+            else if (dj && source == Queue.SeedSource.Context) seeding = djSeed = true;   // asked below, after the deck's own post
             else seeding = source == Queue.SeedSource.Context && ResolveSeedContext(++s_seedSeq, point.Context, point.Track);
             if (!seeding)
             {
@@ -1312,6 +1325,13 @@ public static partial class Playback
         Post(Input.ShuffleOrdered(point.Shuffle));
         Post(Input.Repeat(point.Repeat));
         Post(Input.Restore(row, point.Track, point.Context, cursor, point.PositionMs, point.DurationMs, now));
+        // A DJ seed's answer can come back at once (a lexicon answer served from memory): asked only now, its landing queues behind
+        // the drain that folds the deck above, so it finds the deck it seeds (LandDjSeed's guard).
+        if (djSeed && !ResolveSeedContext(++s_seedSeq, point.Context, point.Track))
+        {
+            SeedCurrentRow(row);
+            Entities.Publish();
+        }
         // A restored context has no page held (the document keeps rows, not urls): saying so lets the refill rule ask
         // autoplay now instead of at the last row's endgame. Offline the ask defers to the session watch.
         s_pageContext = point.Context;

@@ -10,3 +10,5 @@ so the phone's Now Playing and controls match. Starting DJ in Wavee while your p
 starts DJ there, as the desktop app does; Wavee used to name DJ as an ordinary playlist, which has no songs of its own.
 When another device plays DJ, Wavee's shuffle and repeat buttons show it as DJ does ("Not available with DJ"), and while
 the DJ talks Wavee no longer offers a seek or a move to another speaker that the DJ would refuse.
+Moving DJ from your phone to Wavee, or restarting Wavee while DJ was playing, keeps the song you were on and carries on
+with DJ's next songs, with shuffle and repeat off as before.

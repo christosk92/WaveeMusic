@@ -7,6 +7,10 @@
 //                           then the mirror: the owner, its context, the toggle locks and the tips the buttons wear, may seek, may
 //                           transfer, its narration (flag, slot, caption); `try=1` then asks for shuffle, repeat and "play here" and
 //                           reads back that nothing changed
+//   dj do=transfer file=    a controller's `transfer` of a DJ into Wavee (the command body, JSON with its base64 TransferState),
+//                           handed to the host as the dealer glue does; waits for the session, then the `dj` readout
+//   dj do=restore track= [ms=] [uri=]   the launch restore of a deck left on the DJ list (the queue forgotten first, as at boot; the
+//                           point's shuffle on and repeat all, to show the DJ holding them); waits for the seed, then the readout
 //
 // Role: SHELL (UI thread)
 
@@ -19,7 +23,7 @@ public static partial class Diagnostics
     public sealed partial class InspectSession
     {
         /// <summary>The Connect sub-verbs' names, as the verb table lists them.</summary>
-        internal const string DjConnectVerbs = "envelope|cluster";
+        internal const string DjConnectVerbs = "envelope|cluster|transfer|restore";
 
         /// <summary>The Connect sub-verbs of `dj`; null when <paramref name="verb"/> is not one of them.</summary>
         string? DjConnectVerb(int id, string name, string verb, string uri, Inspect.Args a)
@@ -75,6 +79,37 @@ public static partial class Diagnostics
                             WriteDjMirror(w, "mirror", before);
                             if (a.Has("try")) WriteDjMirror(w, "afterTry", Playback.Snap());
                         });
+                    }
+                case "transfer":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=transfer needs a mount");
+                        string file = a.Str("file");
+                        if (file.Length == 0 || !File.Exists(file)) return Inspect.Reply.Fail(id, name, "dj do=transfer wants file=<a transfer command body (JSON)>");
+                        byte[] body = File.ReadAllBytes(file);
+                        Spotify.Decode.RemoteCommand command = Spotify.Decode.ConnectCommand(body);
+                        if (command.Kind != Spotify.Decode.RemoteCmd.Transfer) return Inspect.Reply.Fail(id, name, "dj do=transfer: the body is " + command.Kind);
+                        Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+                        Spotify.Decode.RemoteLoad load = Spotify.Decode.ConnectLoad(body, buffer);
+                        Playback.RemoteLoadArrived(in command, in load, buffer, Spotify.Current.Epoch);
+                        long until = Environment.TickCount64 + PlayLoadBudgetMs;
+                        while (Playback.Dj.Current is null && Environment.TickCount64 < until) { RunFrames(1); Thread.Sleep(2); }
+                        string phase = AwaitPlaybackLoad(PlayLoadBudgetMs);
+                        return Settled(id, name, a, w => { w.WriteString("do", verb); w.WriteString("phase", phase); WriteDjSession(w); });
+                    }
+                case "restore":
+                    {
+                        if (_shell is null) return Inspect.Reply.Fail(id, name, "dj do=restore needs a mount");
+                        if (!EntityId.TryParse(uri.AsSpan(), out EntityId list)) return Inspect.Reply.Fail(id, name, "not a uri: " + uri);
+                        if (!EntityId.TryParse(a.Str("track").AsSpan(), out EntityId track) || !track.IsPlayable)
+                            return Inspect.Reply.Fail(id, name, "dj do=restore wants track=spotify:track:...");
+                        global::Wavee.Queue.Clear();                 // as at boot: no queue yet, the seed decides it
+                        Playback.Restore(new Playback.RestorePoint(track, list, -1, Math.Max(0, a.Int("ms", 30_000)), 0, Shuffle: true,
+                            Repeat: Spotify.Decode.RepeatMode.Context));
+                        long until = Environment.TickCount64 + PlayLoadBudgetMs;
+                        while ((Playback.Dj.Current is null || global::Wavee.Queue.State == EdgeState.Unknown) && Environment.TickCount64 < until)
+                        { RunFrames(1); Thread.Sleep(2); }
+                        RunFrames(2);
+                        return Settled(id, name, a, w => { w.WriteString("do", verb); w.WriteString("track", track.Text); WriteDjSession(w); });
                     }
                 default:
                     return null;
