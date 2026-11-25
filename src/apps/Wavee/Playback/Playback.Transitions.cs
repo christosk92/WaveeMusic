@@ -117,11 +117,21 @@ public static partial class Playback
 
         /// <summary>The point a state persists. Empty unless the deck is OURS to restore: a foreign device's mirrored
         /// row (or the one it left behind) is not this device's session and must not come back as one.</summary>
+        /// <para>An AI DJ narration on the deck is never the point (its <c>wavee:tts:</c> clip is this session's): the point is the track
+        /// it belongs to, from its start, as Previous would land (<see cref="Dj.NarrationSkipTarget"/>); none when that row is gone.</para>
         public static RestorePoint Of(in State s, long nowMs)
-            => !s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)
-                ? default
-                : new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs,
-                    s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle, s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat);   // the user's own modes
+        {
+            if (!s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)) return default;
+            bool shuffle = s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle;   // the user's own modes
+            RepeatMode repeat = s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat;
+            if (!s.Narrating) return new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, shuffle, repeat);
+            int track = Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward: false);
+            EntityRef row = track >= 0 ? Queue.RefAt(track) : default;
+            if (row.IsNone || !row.Id.IsPlayable || Dj.IsNarrationId(row.Id)) return default;
+            int duration = row.Kind == EntityKind.Track && Entities.Current is { } scope && (uint)row.Slot < (uint)scope.Tracks.Count
+                ? new Track(row.Slot).DurationMs : 0;
+            return new(row.Id, s.Context, track, 0, duration, shuffle, repeat);
+        }
     }
 
     // ── 3. the inbound load planner (G-071 host half, G-070) ───────────────────────────────────────────────────────

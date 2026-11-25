@@ -314,6 +314,8 @@ public static partial class Spotify
                         + 3 * (row.Title.Length + row.ArtistName.Length + row.AlbumTitle.Length + row.UidText.Length)
                         + 4 * (14 + 3 * row.Image.Length);
                 foreach (ref readonly KeyValuePair<string, string> entry in row.DjKeys) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
+                if (row.Narration is { } spoken)
+                    foreach (KeyValuePair<string, string> entry in spoken.Keys) n += 3 * (entry.Key.Length + entry.Value.Length) + 32;
                 return n;
             }
         }
@@ -469,11 +471,14 @@ public static partial class Spotify
             w.Empty(18);                                       // suppressions {}
             if (window is not null)
             {
-                foreach (ref readonly Playback.WireRow row in window.Prev) QueueRow(ref w, 19, in row, context, -1, in ids, scratch, window);
+                foreach (ref readonly Playback.WireRow row in window.Prev)
+                    if (row.Narration is null) QueueRow(ref w, 19, in row, context, -1, in ids, scratch, window);   // narrations never go back (§3)
                 int view = Math.Max(0, contextIndex + 1), autoplayView = 0;
                 bool mixInDone = false;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
+                    // An AI DJ narration item sits between the tracks as the official player lays it (dj-protocol §4 f20), unnumbered.
+                    if (row.Narration is { } spoken) { NarrationItem(ref w, 20, spoken, in ids, scratch); continue; }
                     bool autoplay = row.Provider == QueueProvider.Autoplay;
                     bool numbered = autoplay || (contextIndex >= 0 && row.Provider != QueueProvider.Queue);   // context and autoplay rows number their run
                     // #48: the first upcoming row that is the planned incoming track carries the fade-in half.
@@ -645,6 +650,7 @@ public static partial class Spotify
             scoped Span<byte> scratch)
         {
             Playback.WireRow row = snap.Wire.Window is { } window ? window.Current : default;
+            if (row.Narration is { } spoken) { NarrationItem(ref w, 7, spoken, in snap.Wire.Ids, scratch); return; }   // AI DJ: the clip on the deck
             QueueProvider provider = snap.Wire.Window is null ? QueueProvider.Context : row.Provider;
             bool video = snap.Kind == Playback.PlayableKind.Video;
             int track = w.Open(7);
@@ -669,6 +675,20 @@ public static partial class Spotify
             Tail(ref w, provider, video, provider == QueueProvider.Autoplay ? -1 : contextIndex, in snap.Wire.Ids, scratch);
             w.Utf8(6, ProviderWord(provider));
             w.Close(track);
+        }
+
+        /// <summary>An AI DJ narration item (<see cref="Playback.NarrationWire"/>, dj-protocol §2.4), current (f7) or upcoming (f20): its
+        /// <c>spotify:media:</c> uri, its uid, its keys, the PUT's interaction and page-instance ids, its <c>narration/&lt;slot&gt;</c>
+        /// provider. No index, no view index.</summary>
+        static void NarrationItem(ref ProtoWriter w, int field, Playback.NarrationWire spoken, in Playback.WireIds ids, scoped Span<byte> scratch)
+        {
+            int m = w.Open(field);
+            w.Str(1, spoken.MediaUri);
+            w.Str(2, spoken.Uid);
+            foreach (KeyValuePair<string, string> entry in spoken.Keys) w.Entry(3, entry.Key, entry.Value);
+            Tail(ref w, QueueProvider.Narration, isVideo: false, -1, in ids, scratch);
+            w.Str(6, spoken.Provider);
+            w.Close(m);
         }
 
         /// <summary>A prev/next row. Never the current media, so its player is audio and it carries no video keys.</summary>

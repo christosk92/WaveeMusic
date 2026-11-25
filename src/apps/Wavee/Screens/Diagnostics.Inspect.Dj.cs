@@ -310,6 +310,13 @@ public static partial class Diagnostics
             w.WriteNumber("publishedPositionMs", Playback.PositionMs.Peek());
             w.WriteNumber("publishedDurationMs", Playback.DurationMs.Peek());
             w.WriteString("caption", Playback.Dj.Caption.Peek());
+            // What the session document would keep for the next launch: during a clip, the track it belongs to from its start.
+            Playback.RestorePoint point = Playback.RestorePointNow();
+            w.WriteStartObject("restorePoint");
+            w.WriteString("track", point.Track.IsEmpty ? "" : point.Track.Text);
+            w.WriteNumber("cursor", point.CursorIndex);
+            w.WriteNumber("positionMs", point.PositionMs);
+            w.WriteEndObject();
             w.WriteEndObject();
             w.WriteStartArray("rows");
             for (int i = 0; i < rows.Length; i++)

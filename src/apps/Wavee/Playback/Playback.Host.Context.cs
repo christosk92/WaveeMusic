@@ -571,6 +571,27 @@ public static partial class Playback
 
         ReadOnlySpan<ClusterTrack> context = buffer.Tracks(contextStart, contextCount);
         bool transfer = load.Kind == RemoteCmd.Transfer;
+        // A DJ transferred here while a narration was its current item (plan-dj §1.5: uri spotify:media:<track id>, no index): the clip is
+        // the other device's, so the deck is the track it belongs to, from its start; the welcome's all-zero id names none, so the deck is
+        // the fresh session's first row. No welcome either way (a transfer, Dj.AtStart).
+        if (dj is not null && transfer && load.HasCurrent && buffer.Utf8(load.Current.Uri).StartsWith("spotify:media:"u8))
+        {
+            RemoteLoad landed = load;
+            Span<byte> uri = stackalloc byte[96];
+            ReadOnlySpan<byte> media = buffer.Utf8(load.Current.Uri)["spotify:media:"u8.Length..];
+            bool welcome = media.IndexOfAnyExcept((byte)'0') < 0;
+            int n = 0;
+            if (!welcome && media.Length <= uri.Length - 14) { "spotify:track:"u8.CopyTo(uri); media.CopyTo(uri[14..]); n = 14 + media.Length; }
+            landed.Current = default;
+            landed.Current.Uri = n > 0 ? buffer.AddText(uri[..n]) : context.Length > 0 ? context[0].Uri : default;
+            landed.CurrentUid = default;
+            landed.PositionAsOfMs = 0;
+            landed.TimestampMs = 0;
+            Log.Info("dj", "transfer into Wavee during a narration (" + (welcome ? "the welcome" : "a clip of " + System.Text.Encoding.UTF8.GetString(uri[14..n]))
+                + "): the deck is " + (welcome ? "the session's first row" : "the track it belongs to") + ", from its start");
+            StartContext(seq, in landed, buffer, contextStart, contextCount, cause, now, pageUrl, dj);
+            return;
+        }
         EntityId contextId = load.ContextUri.IsEmpty ? default : EntityId.Parse(buffer.Utf8(load.ContextUri));
         // The same context again keeps its autoplay tail (and the held autoplay page); a transfer brings the remote's queue.
         bool sameContext = !transfer && RemotePlan.SameContext(contextId, s_state.Context);
@@ -617,6 +638,7 @@ public static partial class Playback
                 {
                     // A remote playing out of its user queue carries the current row at the queue's head.
                     if (k == 0 && load.IsPlayingQueue && buffer.Utf8(queued[k].Uri).SequenceEqual(buffer.Utf8(load.Current.Uri))) continue;
+                    if (dj is not null && buffer.Utf8(queued[k].Uri).StartsWith("spotify:media:"u8)) continue;   // a DJ narration item is the sender's
                     AddRow(buffer, in queued[k], QueueBucket.UserQueue, refs, rows, ref n);
                 }
             }

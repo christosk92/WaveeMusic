@@ -89,14 +89,29 @@ public static partial class Shell
         int n = Math.Min(packed.Length, rows.Length);
         if (n == 0) return SessionDeck.ToDto(in point);
         EntityId[] ids = ArrayPool<EntityId>.Shared.Rent(n);
+        QueueEdge[] kept = ArrayPool<QueueEdge>.Shared.Rent(n);
         try
         {
-            for (int i = 0; i < n; i++) ids[i] = Queue.Unpack(packed[i]).Id;
-            ReadOnlySpan<EntityId> idSpan = ids.AsSpan(0, n);
-            int deck = SessionDeck.DeckIndex(idSpan, rows[..n], point.Track, point.CursorIndex);
-            return SessionDeck.ToDto(in point, idSpan, rows[..n], deck);
+            // An AI DJ narration row (a wavee:tts: clip of this session) is never persisted: the next launch has no such clip, and a DJ
+            // deck resumes from a fresh session anyway (Playback.Dj.Restore.cs). The cursor hint is re-based past the rows left out.
+            int m = 0, hint = point.CursorIndex;
+            for (int i = 0; i < n; i++)
+            {
+                EntityId id = Queue.Unpack(packed[i]).Id;
+                if (Playback.Dj.IsNarrationId(id)) { if (i < point.CursorIndex) hint--; continue; }
+                ids[m] = id;
+                kept[m++] = rows[i];
+            }
+            ReadOnlySpan<EntityId> idSpan = ids.AsSpan(0, m);
+            ReadOnlySpan<QueueEdge> keptRows = kept.AsSpan(0, m);
+            int deck = SessionDeck.DeckIndex(idSpan, keptRows, point.Track, hint);
+            return SessionDeck.ToDto(in point, idSpan, keptRows, deck);
         }
-        finally { ArrayPool<EntityId>.Shared.Return(ids); }
+        finally
+        {
+            ArrayPool<EntityId>.Shared.Return(ids);
+            ArrayPool<QueueEdge>.Shared.Return(kept);
+        }
     }
 
     /// <summary>A row's audio began (G-079): one play-log entry, stamping its album and billed artists in the recency

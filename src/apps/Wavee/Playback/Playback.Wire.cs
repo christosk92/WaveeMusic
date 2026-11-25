@@ -69,6 +69,11 @@ public static partial class Playback
         public readonly EntityId AlbumId, ArtistId;
         readonly string? _uidText, _title, _artistName, _albumTitle, _image, _decisionId, _queuedBy, _localUri;
         readonly KeyValuePair<string, string>[]? _dj;
+        readonly NarrationWire? _narration;
+
+        /// <summary>AI DJ: the row is a narration clip (<c>wavee:tts:</c>, which never leaves): what the PUT names it instead (its
+        /// <c>spotify:media:</c> uri, uid, <c>narration/&lt;slot&gt;</c> provider and keys). Null for every other row.</summary>
+        public NarrationWire? Narration => _narration;
 
         /// <summary>AI DJ: the keys the row's lexicon page stated for it (<c>Dj.Row.Keys</c>: segment, decision id, attribution, station
         /// title and subtitle, images, the narration slots…), published on the row as the official DJ player does (plan-dj §1.9). Empty for
@@ -110,16 +115,21 @@ public static partial class Playback
             _title = title; _artistName = artistName; _albumTitle = albumTitle; _image = image;
             AlbumId = albumId; ArtistId = artistId; _decisionId = decisionId; _queuedBy = queuedBy; _localUri = localUri;
             _dj = null;
+            _narration = null;
         }
 
-        WireRow(in WireRow row, KeyValuePair<string, string>[]? dj)
+        WireRow(in WireRow row, KeyValuePair<string, string>[]? dj, NarrationWire? narration)
         {
             this = row;
             _dj = dj;
+            _narration = narration;
         }
 
+        /// <summary>This row again as the narration <paramref name="narration"/> names it (<see cref="Narration"/>).</summary>
+        public WireRow WithNarration(NarrationWire? narration) => new(in this, _dj, narration);
+
         /// <summary>This row again with its DJ keys (<see cref="DjKeys"/>).</summary>
-        public WireRow WithDj(KeyValuePair<string, string>[]? keys) => new(in this, keys);
+        public WireRow WithDj(KeyValuePair<string, string>[]? keys) => new(in this, keys, _narration);
 
         /// <summary>This row again with the autoplay answer's <paramref name="decisionId"/>.</summary>
         public WireRow WithDecision(string? decisionId)
@@ -223,12 +233,19 @@ public static partial class Playback
     /// <item><see cref="Page"/> / <see cref="Track"/>: f6 index of the deck row (page 1 = the first real page); 0 = the deck row is no
     /// page's (a transferred or restored track), and no index is written.</item>
     /// <item><see cref="PageMetadata"/>: f22, the deck row's page metadata whole.</item>
-    /// <item><see cref="Narrating"/>: THE NARRATION SEAM (plan-dj D2, D3). False until a narration item can be the deck row. The phase that
-    /// makes one current sets it while the narration is current and its target track has not started: the encoder then writes no index,
-    /// adds 3 / 9 / 13 = <c>narration</c> to f17 and <c>suppress_progress=true</c> on the current item. The item's own uri
-    /// (<c>spotify:media:…</c>) and f11 (the clip's length, unset while it streams) come from the snapshot as for any row; the
-    /// talk-over's fade keys ride <see cref="MixWire"/> (its Out on the narration, its In on the target), as Mix's already do.</item>
+    /// <item><see cref="Narrating"/>: a narration is the deck row (<c>State.Narrating</c>; D3's talk-over narrows it to "and its target track
+    /// has not started"): the encoder then writes no index, adds 3 / 9 / 13 = <c>narration</c> to f17 and <c>suppress_progress=true</c> on
+    /// the current item. The item itself (its <c>spotify:media:…</c> uri, provider, keys and manifest) is the window row's
+    /// <see cref="WireRow.Narration"/>; f11 (the clip's length, unset while it streams) comes from the snapshot as for any row; the
+    /// talk-over's fade keys will ride <see cref="MixWire"/> (its Out on the narration, its In on the target), as Mix's already do.</item>
     /// </list></summary>
+    /// <summary>An AI DJ narration item as the official player publishes it (dj-protocol §2.4): its uri (<c>spotify:media:</c> + the track
+    /// it belongs to, all zeros for the welcome), its uid (<c>list_intro_item</c> for the welcome, else 32 hex minted once per clip), its
+    /// provider (<c>narration/&lt;slot&gt;</c>) and its metadata in order (the display keys, <c>is_narration</c>, <c>hidden_in_queue</c>,
+    /// the decision id and attribution, the skip actions, <c>suppress_progress</c>, <c>media.manifest</c>, ...). No index. Built once per
+    /// clip on the UI thread (<c>Dj.WireOf</c>), immutable after.</summary>
+    public sealed record NarrationWire(string MediaUri, string Uid, string Provider, KeyValuePair<string, string>[] Keys);
+
     public sealed record DjWire(string ContextUrl, string NoRepeatContext, string NoRepeatTrack, string NoShuffle,
         int Page, int Track, KeyValuePair<string, string>[] PageMetadata, bool Narrating = false);
 

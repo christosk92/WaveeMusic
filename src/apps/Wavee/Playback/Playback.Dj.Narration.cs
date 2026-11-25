@@ -114,6 +114,45 @@ public static partial class Playback
                 : "spotify:media:" + (Track.IsEmpty ? "" : EntityUri.IdOf(Track.Text).ToString());
             /// <summary>The spoken words as plain text: the SSML's tags gone, an <c>&lt;entity&gt;</c>'s name kept (the caption lane's).</summary>
             public string Caption => PlainText(Ssml);
+            /// <summary>The item as the PUT names it (<see cref="WireOf"/>), built once.</summary>
+            internal NarrationWire? Wire;
+        }
+
+        /// <summary>The narration's Connect item (dj-protocol §2.4, plan-dj §1.5), built once per clip: its <c>spotify:media:</c> uri, its uid
+        /// (the welcome's <c>list_intro_item</c>, else 32 hex minted here: the official player's are random per item), <c>narration/&lt;slot&gt;</c>,
+        /// and its metadata: the display keys the session stated, the narration flags, the decision id and attribution, the skip actions
+        /// (<c>resume</c>), <c>automix.mode=radio</c>, <c>audio.fade_gapless</c> on a welcome or intro, <c>suppress_progress</c> and the
+        /// <c>media.manifest</c> of its fulfil request. The interaction and page-instance ids are the PUT's own (the encoder's tail). UI thread.</summary>
+        internal static NarrationWire WireOf(Spoken sp)
+        {
+            if (sp.Wire is { } built) return built;
+            var keys = new List<KeyValuePair<string, string>>(24);
+            void Add(string key, string value) { if (value.Length > 0 && Queue.ContextMetadataValueSound(value)) keys.Add(new(key, value)); }
+            string Key(string suffix) => sp.Keys.TryGetValue(suffix, out string? v) ? v : "";
+            Add("title", sp.Title.Length > 0 ? sp.Title : sp.Slot == Slot.Welcome ? "Welcome" : "Up next");
+            Add("artist_name", sp.Artist);
+            Add("album_artist_name", sp.Artist);
+            Add("album_title", sp.AlbumTitle);
+            // The cover as the session named it (the lexicon's https asset), under the PUT's own image rule (Spotify.Egress.AdmitsImage).
+            string cover = Spotify.Egress.AdmitsImage(sp.Image) ? sp.Image : "";
+            foreach (string image in (ReadOnlySpan<string>)["image_url", "image_small_url", "image_large_url", "image_xlarge_url"]) Add(image, cover);
+            Add("is_narration", "true");
+            Add("has_ephemeral_uri", "true");
+            Add("hidden_in_queue", "true");
+            Add("track_player", "audio");
+            Add("decision_id", Key("decision_id"));
+            Add("custom_reporting_attribution", Key("custom_reporting_attribution"));
+            Add("agentic_product_type", "dj");
+            Add("actions.skipping_next_past_track", "resume");
+            Add("actions.skipping_prev_past_track", "resume");
+            Add("automix.mode", "radio");
+            if (sp.Slot is Slot.Welcome or Slot.Intro) Add("audio.fade_gapless", "1");
+            Add("suppress_progress", "true");
+            Add("media.manifest", Convert.ToBase64String(Spotify.DjTts.EncodeManifest(Spotify.DjTts.FulfilBody(in sp.Request),
+                sp.Request.LoudnessLufs, sp.Request.TruePeakDb)));
+            string uid = sp.Slot == Slot.Welcome ? WelcomeUid : Guid.NewGuid().ToString("N");
+            sp.Wire = new NarrationWire(sp.MediaUri, uid, sp.Provider, keys.ToArray());
+            return sp.Wire;
         }
 
         public static string SlotName(Slot slot) => slot switch

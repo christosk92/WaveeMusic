@@ -133,7 +133,7 @@ public static partial class Playback
         WireWindow window = WindowNow();
         return new WireExtras(window, RevisionNow(), in s_wireIds, privateSession, output, sender, s_state.ContentRate, s_wireOrigin,
             OutputDeviceKind(), ContextIsAudiobook(), likedPlaylist, likedOwner, Mix.WireNow(in s_state), localFiles, s_wireQuality,
-            Dj.WireNow(s_state.Context, window.Current.ItemId));   // AI DJ: null unless the deck plays a lexicon session
+            Dj.WireNow(s_state.Context, window.Current.ItemId, s_state.Narrating));   // AI DJ: null unless the deck plays a lexicon session
     }
 
     // ── the quality the PUT states (Spotify.Decode.Quality.cs) ────────────────────────────────────────────────────────
@@ -381,7 +381,9 @@ public static partial class Playback
     /// <summary>A context row of the playing lexicon session carries the keys its page stated (plan-dj §1.9): the DJ book's, by item id.
     /// Every other row comes back as it was (a lookup that misses: the book holds only DJ rows).</summary>
     static WireRow DjKeysOn(WireRow row)
-        => row.Provider == QueueProvider.Context && Dj.RowOf(row.ItemId) is { } dj ? row.WithDj(dj.Keys) : row;
+        => row.Provider == QueueProvider.Context && Dj.RowOf(row.ItemId) is { } dj ? row.WithDj(dj.Keys)
+           : row.Provider == QueueProvider.Narration && Dj.NarrationOf(row.ItemId) is { } sp ? row.WithNarration(Dj.WireOf(sp))   // the item, as the official player names it
+           : row;
 
     /// <summary>A Wavee local file's names and its <c>spotify:local:</c> name, as the official client names a file (#240 E1, E4): its artist
     /// line and album from its tags (<see cref="Playlist.LocalNamesOf"/>), its title, its length truncated to seconds. Null when it has no

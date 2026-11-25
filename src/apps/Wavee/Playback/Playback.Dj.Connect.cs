@@ -38,15 +38,16 @@ public static partial class Playback
         static Session? s_wireSession;
         static ulong s_wireItem;
         static int s_wirePages = -1, s_wireRenewals = -1;
+        static bool s_wireNarrating;
 
         /// <summary>The DJ half of the PUT for a deck on <paramref name="context"/> whose row is <paramref name="deckItemId"/>, or null when
         /// no lexicon session plays it. Rebuilt only when the session, the deck row or the pages moved, so a pause or a seek reuses the
-        /// one built. UI thread (the capture).</summary>
-        internal static DjWire? WireNow(EntityId context, ulong deckItemId)
+        /// one built. <paramref name="narrating"/>: a narration is the deck row (<c>State.Narrating</c>). UI thread (the capture).</summary>
+        internal static DjWire? WireNow(EntityId context, ulong deckItemId, bool narrating)
         {
             if (Of(context) is not { } s) return null;
             if (s_wire is { } kept && ReferenceEquals(s, s_wireSession) && deckItemId == s_wireItem && s.Pages.Count == s_wirePages
-                && s.Renewals == s_wireRenewals)
+                && s.Renewals == s_wireRenewals && narrating == s_wireNarrating)
                 return kept;
             Row? row = RowOf(deckItemId);
             int page = row?.Page ?? 0, track = row?.Track ?? 0;
@@ -54,8 +55,12 @@ public static partial class Playback
             if (page > 0)
                 foreach (Page p in s.Pages)
                     if (p.Ordinal == page) { metadata = SoundEntries(p.Metadata); break; }
-            // THE NARRATION SEAM (plan-dj D2/D3): `Narrating` stays false until a narration item can be the deck row; see DjWire.
-            s_wire = new DjWire(WireUrl(s.ContextUrl), s.Facts.NoRepeatContext, s.Facts.NoRepeatTrack, s.Facts.NoShuffle, page, track, metadata);
+            // The narration restrictions (f17 3 / 9 / 13, no index, suppress_progress) while a clip is the deck. The official player lifts them
+            // once the clip's target starts under it (§1.6, the talk-over): until D3 the target never starts under a clip, so the deck being a
+            // narration IS "a narration current and its target not started". D3 narrows this to that.
+            s_wire = new DjWire(WireUrl(s.ContextUrl), s.Facts.NoRepeatContext, s.Facts.NoRepeatTrack, s.Facts.NoShuffle, page, track, metadata,
+                Narrating: narrating);
+            s_wireNarrating = narrating;
             s_wireSession = s;
             s_wireItem = deckItemId;
             s_wirePages = s.Pages.Count;
@@ -110,8 +115,8 @@ public static partial class Playback
         /// and its <see cref="Ssml"/> when the cluster carries it ("" otherwise).</summary>
         public readonly record struct NarrationFacts(bool Active, string Slot, string Ssml)
         {
-            /// <summary>The words, for a caption (<see cref="CaptionText"/>).</summary>
-            public string Text => CaptionText(Ssml ?? "");
+            /// <summary>The words, for a caption (<see cref="PlainText"/>, the one SSML-to-words rule the local narration uses too).</summary>
+            public string Text => PlainText(Ssml ?? "");
         }
 
         /// <summary>The foreign owner's narration, for the caption surfaces (the narration lanes draw it; the reducer's
@@ -178,24 +183,6 @@ public static partial class Playback
             }
             catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException or InvalidOperationException) { return ""; }
             finally { System.Buffers.ArrayPool<byte>.Shared.Return(bytes); }
-        }
-
-        /// <summary>SSML → the words a caption shows: the tags dropped (an <c>&lt;entity&gt;</c>'s name kept), the entities decoded, the
-        /// white space folded. The caption lanes may link the entity names themselves from the SSML. PURE.</summary>
-        public static string CaptionText(string ssml)
-        {
-            if (ssml.Length == 0) return "";
-            var text = new StringBuilder(ssml.Length);
-            bool tag = false, space = false;
-            foreach (char ch in ssml)
-            {
-                if (ch == '<') { tag = true; continue; }
-                if (tag) { if (ch == '>') tag = false; continue; }
-                if (char.IsWhiteSpace(ch)) { space = text.Length > 0; continue; }
-                if (space) { text.Append(' '); space = false; }
-                text.Append(ch);
-            }
-            return System.Net.WebUtility.HtmlDecode(text.ToString());
         }
 
         // ── the lexicon answer's body ────────────────────────────────────────────────────────────────────────────────
