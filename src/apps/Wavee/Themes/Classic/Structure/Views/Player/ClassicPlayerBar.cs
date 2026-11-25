@@ -292,6 +292,10 @@ internal static partial class ClassicPlayerBar
         {
             Key = "left-flow", Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f,
             Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = !mini,
+            // It hugs the text block, which eases (MoveMotion) when its lines change (a first track after "Nothing playing", the DJ's segment
+            // line arriving): the flow eases with it instead of taking the new width on the first frame while the block and the heart glide. The mini
+            // bar's door fills its row and keeps its own motion.
+            Animate = mini ? null : ClassicPlayerBarLayout.MoveMotion,
             Gap = mini ? ClassicPlayerTiers.MiniDoorGap : huge ? ClassicPlayerTiers.HugeLeftGap : m.LeftGap,
             Children = mini || v.ShowTitleBlock ? [art, metaCol] : [art],
         };
