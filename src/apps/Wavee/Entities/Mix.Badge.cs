@@ -25,7 +25,7 @@ internal sealed class MixCoverBadge : Component
         {
             _ = Entities.Current.Playlists.Changed.Value;   // the mix flags and a local "listen without" write bump the row
             var p = new Playlist(slot);
-            return p.IsValid && p.MixOn && !MixListenWithout.Is(p);
+            return p.IsValid && p.MixOn && !MixOptOut.Is(p);
         }).Value;
         return new BoxEl
         {

@@ -88,7 +88,7 @@ public static partial class Playback
                 cur.Kind == EntityKind.Track ? edges.TrackCues.Version(cur.Slot) : 0,
                 next.Kind == EntityKind.Track ? edges.TrackCues.Version(next.Slot) : 0,
                 pl > 0 ? edges.PlaylistTracks.Version(pl) : 0,
-                pl > 0 && MixListenWithout.Is(new global::Wavee.Playlist(pl)));
+                pl > 0 && MixOptOut.Is(new global::Wavee.Playlist(pl)));
             if (key == s_key) return;
             s_key = key;
 
@@ -173,7 +173,7 @@ public static partial class Playback
         {
             if (s.Context.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(s.Context, out int slot)) return null;
             var p = new global::Wavee.Playlist(slot);
-            bool without = MixListenWithout.Is(p);
+            bool without = MixOptOut.Is(p);
             var key = (Changed.Peek(), s.Context, (uint)p.MixFlags, without);
             if (key == s_wireKey) return s_wire;
             s_wireKey = key;
@@ -223,7 +223,7 @@ public static partial class Playback
             if (pl <= 0) return MixTiming.Refused(MixWhyNot.NotMixed);
             var p = new global::Wavee.Playlist(pl);
             if (!p.MixOn) return MixTiming.Refused(MixWhyNot.NotMixed);
-            if (MixListenWithout.Is(p)) return MixTiming.Refused(MixWhyNot.ListenWithoutMix);
+            if (MixOptOut.Is(p)) return MixTiming.Refused(MixWhyNot.ListenWithoutMix);
             if (s.Shuffle && !MixPrefs.WhenShuffling) return MixTiming.Refused(MixWhyNot.NotMixed);   // the Mix menu's "Mix when shuffling" off
             if (cur.IsNone || next.IsNone) return MixTiming.Refused(MixWhyNot.NotMixed);
             if (provider != QueueProvider.Context) return MixTiming.Refused(MixWhyNot.UserQueued);

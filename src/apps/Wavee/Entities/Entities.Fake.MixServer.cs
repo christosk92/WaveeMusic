@@ -53,6 +53,8 @@ public static partial class Entities
             public required byte[] Revision;
             public required List<Row> Rows;
             public bool Mixed, OptOut;
+            /// <summary>A list the server holds no rows for (the migration's ids): it answers its head and takes the opt-outs.</summary>
+            public bool Stub;
             public int EtagSerial;
             public readonly Dictionary<ulong, (string Base64, string Uri)> Recipes = new();
             public byte[] MixState = Spotify.Api.SignalTemplate("mix-state");
@@ -84,7 +86,12 @@ public static partial class Entities
         {
             if (!p.IsValid) return;
             string id = new(EntityUri.IdOf(p.Uri.Text.AsSpan()));
-            lock (s_gate) if (s_lists.ContainsKey(id)) return;
+            bool optOut;
+            lock (s_gate)
+            {
+                if (s_lists.TryGetValue(id, out var held) && !held.Stub) return;
+                optOut = held?.OptOut ?? false;   // a stub the migration made keeps its opt-out
+            }
             var edges = Current.Edges.PlaylistTracks;
             var targets = edges.Targets(p.Slot);
             var payload = edges.Payload(p.Slot);
@@ -109,7 +116,7 @@ public static partial class Entities
             var list = new ListState
             {
                 Title = Strings.Resolve(p.TitleId), Description = Strings.Resolve(p.DescriptionId), Revision = RevisionOf(id), Rows = rows,
-                Mixed = p.MixOn,
+                Mixed = p.MixOn, OptOut = optOut,
                 EtagSerial = etag is { Length: 8 } && uint.TryParse(etag, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint e0)
                     ? (int)(e0 - 0x0000BEEFu) : 0,
             };
@@ -170,15 +177,12 @@ public static partial class Entities
             lock (s_gate)
             {
                 if (s_mode == Mode.Fail) { status = 503; reply = []; }
-                else if (s_lists.TryGetValue(id, out var l)) reply = Reply(l);
                 else
                 {
-                    // A list the server holds no rows for (the migration's ids): its head, nothing more.
-                    var buffer = new byte[64];
-                    var w = new Spotify.Decode.ProtoWriter(buffer);
-                    w.Utf8Always(1, RevisionOf(id));
-                    w.UAlways(2, 0);
-                    reply = buffer.AsSpan(0, w.Length).ToArray();
+                    // A list the server holds no rows for yet (the migration's ids): a stub that answers its head.
+                    if (!s_lists.TryGetValue(id, out var l))
+                        s_lists[id] = l = new ListState { Title = "", Description = "", Revision = RevisionOf(id), Rows = [], Stub = true };
+                    reply = Reply(l);
                 }
                 s_log.Add(new Request("GET", route.Path, null, Spotify.Api.ApplyLensesValue(route.Headers), route.SyncReason,
                     (route.Headers & Spotify.HeaderSet.MixLens) != 0, [], status, reply.Length));
@@ -260,6 +264,14 @@ public static partial class Entities
         /// applies it by itself), else plain. UNDER THE LOCK.</summary>
         static byte[] Reply(ListState l)
         {
+            if (l.Stub)
+            {
+                var head = new byte[64];
+                var hw = new Spotify.Decode.ProtoWriter(head);
+                hw.Utf8Always(1, l.Revision);
+                hw.UAlways(2, 0);
+                return head.AsSpan(0, hw.Length).ToArray();
+            }
             int size = 512 + l.Title.Length * 3 + l.Description.Length * 3;
             foreach (var row in l.Rows) size += 160 + row.Uri.Length * 3 + (row.Template?.Length ?? 0) + (row.AddedBy?.Length ?? 0) * 3;
             foreach (var recipe in l.Recipes.Values) size += recipe.Base64.Length + recipe.Uri.Length + 96;

@@ -42,12 +42,12 @@ public static class MixMenu
     }
 
     /// <summary>The meta line's Mix words: "Mixed", or "Mixed · 2 of 9 transitions edited" when some pairs are edited in Spotify
-    /// or on this PC; null while Mix is off for the playlist (or this PC listens without it). Counts adjacent mixable pairs and
+    /// or on this PC; null while Mix is off for the playlist (or this account listens without it). Counts adjacent mixable pairs and
     /// the stored and local records over them: no analysis needed. UI thread, at the page's render.</summary>
     public static string? MetaSuffix(Playlist p)
     {
         if (!p.IsValid || !p.MixOn) return null;
-        if (MixListenWithout.Is(p)) return null;
+        if (MixOptOut.Is(p)) return null;
         var edges = Entities.Current.Edges.PlaylistTracks;
         var targets = edges.Targets(p.Slot);
         var payload = edges.Payload(p.Slot);
@@ -71,17 +71,26 @@ public static class MixMenu
     public static bool Offered(Playlist p)
         => p.IsValid && (p.MixOn || (Spotify.Mixes.CanWrite(p) && (p.MixFlags & PlaylistMixFlags.XmMixable) != 0));
 
-    /// <summary>The toggle is lit: Mix is on and this PC plays it mixed.</summary>
-    public static bool Lit(Playlist p) => p.IsValid && p.MixOn && !MixListenWithout.Is(p);
+    /// <summary>The toggle is lit: Mix is on and this account listens with it.</summary>
+    public static bool Lit(Playlist p) => p.IsValid && p.MixOn && !MixOptOut.Is(p);
 
     /// <summary>The toggle (decision D3): a mixed playlist flips "listen without Mix"; an unmixed one the user may mix (owner or
     /// collaborator) turns Mix on at Spotify.</summary>
     public static void Toggle(Playlist p)
     {
         if (!p.IsValid) return;
-        if (p.MixOn) { Spotify.Mixes.SetListenWithoutMix(p, without: !MixListenWithout.Is(p)); return; }
+        if (p.MixOn) { ListenWithout(p, !MixOptOut.Is(p)); return; }
         if (Spotify.Mixes.CanWrite(p)) TurnOn(p);
     }
+
+    /// <summary>Listen without Mix, synced to the account: the choice applies here at once; when Spotify cannot take it now, one quiet
+    /// note says it is kept here and synced at the next start (MixOptOut).</summary>
+    static void ListenWithout(Playlist p, bool without)
+        => Spotify.Mixes.SetListenWithoutMix(p, without, outcome =>
+        {
+            if (outcome is Spotify.Mixes.Outcome.Offline or Spotify.Mixes.Outcome.Failed)
+                Notify.Say(Loc.Get(Strings.Mix.OptOutPending), InfoBarSeverity.Informational, dedupeKey: "mix.optout");
+        });
 
     /// <summary>Mix on at Spotify; only a failure says anything (the button lights when the reply lands).</summary>
     static void TurnOn(Playlist p)
@@ -122,9 +131,9 @@ public static class MixMenu
         if (p.MixOn) items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.Transitions), transitionsOpen, toggleTransitions));
         if (p.MixOn)
         {
-            bool without = MixListenWithout.Is(p);
+            bool without = MixOptOut.Is(p);
             items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.ListenWithout), without,
-                () => Spotify.Mixes.SetListenWithoutMix(p, !without)));
+                () => ListenWithout(p, !without)));
             if (Spotify.Mixes.CanWrite(p))
                 items.Add(new FluentGpu.Controls.MenuFlyoutItem(Loc.Get(Strings.Mix.TurnOffForEveryone), default, Spotify.Mixes.CanToggle(p),
                     () => TurnOffForEveryone(p)));

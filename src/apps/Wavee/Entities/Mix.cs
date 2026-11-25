@@ -314,7 +314,7 @@ public static partial class Entities
             string id = MixPlaylistId(slot);
             if (id.Length == 0) continue;
             var flags = (PlaylistMixFlags)playlists.MixFlags[slot];
-            bool lens = PlaylistMixRules.On(flags) && !MixListenWithout.Is(new global::Wavee.Playlist(slot));
+            bool lens = PlaylistMixRules.On(flags) && !MixOptOut.Is(new global::Wavee.Playlist(slot));
             MixData.SetLens(id, lens);
             // Once per playlist per session: a lens read that still names no mix lens must not loop.
             if (lens && PlaylistMixRules.OwesLensRead(flags)
@@ -327,44 +327,149 @@ public static partial class Entities
     }
 }
 
-/// <summary>The local "listen without Mix" choice for one playlist (decision D3): this PC reads and plays it without the
-/// lens. Nothing is sent. Persisted in the settings registry as one comma list of bare playlist ids (a handful of rows
-/// at most: it is a per-playlist opt-out the user makes by hand).</summary>
-public static class MixListenWithout
+/// <summary>"Listen without Mix" for one playlist, SYNCED TO THE ACCOUNT (owner decision 2026-11-25): the account's
+/// `mix-opt-out` / `mix-remove-opt-out` signals (Spotify.Mixes.SetListenWithoutMix), and this LOCAL MIRROR of them, which is
+/// what Wavee reads: this account reads and plays an opted-out playlist without the lens.
+/// <para>THE MIRROR IS THE SOURCE OF TRUTH. How an opt-out reads back on another device (which attribute or lens shows it) is open
+/// (protocol §3.3, §13 #14): no lens read in M1's fixtures or the captures carries one, so nothing here is updated from a read.
+/// The opt-out replies' shape is logged (the `mix` line after each one) so the owner's live check can name the field.</para>
+/// <para>Each entry is (account, playlist id) → (opted out, pending): pending = Spotify has not taken it yet (offline, refused, or
+/// migrated); <see cref="OnSessionReady"/> sends every pending entry when the account's session comes online. Persisted in the
+/// settings registry as one line per entry, <c>&lt;account&gt;|&lt;playlist id&gt;|&lt;1 or 0&gt;[|p]</c>. UI thread.</para>
+/// <para>THE MIGRATION: the per-PC list this replaces (`playback.mix.listenWithout`, a comma list of playlist ids) is moved into the
+/// mirror of the first account that comes online, sent as opt-outs, and the key is removed; one log line says so.</para></summary>
+public static class MixOptOut
 {
-    static HashSet<string>? s_ids;
+    /// <summary>The per-PC "listen without Mix" list before M2. Read once by the migration, then removed.</summary>
+    static readonly SettingKey<string> s_legacy = new("playback.mix.listenWithout", "");
 
-    static HashSet<string> Ids => s_ids ??= Load();
+    static Dictionary<(string Account, string Playlist), (bool Out, bool Pending)>? s_map;
 
-    static HashSet<string> Load()
-    {
-        var set = new HashSet<string>(StringComparer.Ordinal);
-        string raw = Platform.Settings.Get(Platform.Keys.MixListenWithout);
-        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) set.Add(part);
-        return set;
-    }
+    static Dictionary<(string Account, string Playlist), (bool Out, bool Pending)> Map => s_map ??= Load();
 
-    /// <summary>The key a playlist's choice is stored under: its bare id, or its uri for a text id (the fake seed).</summary>
+    static string Account => Entities.Current?.Key.Account ?? "";
+
+    /// <summary>The key a playlist's choice is stored under: its bare base62 id (a fake text id's last part).</summary>
     public static string KeyOf(Playlist p)
     {
         string id = Entities.MixPlaylistId(p.Slot);
-        return id.Length > 0 ? id : p.Uri.Text;
+        return id.Length > 0 ? id : new string(EntityUri.IdOf(p.Uri.Text.AsSpan()));
     }
 
-    /// <summary>Is this playlist set to play without Mix on this PC?</summary>
+    /// <summary>Does this account listen to the playlist without Mix?</summary>
     public static bool Is(Playlist p) => p.IsValid && Is(KeyOf(p));
 
-    /// <summary>Is this playlist (bare id) set to play without Mix on this PC? Thread safe for reads after the first load
-    /// on the UI thread (the provider never calls it).</summary>
-    public static bool Is(string playlistId) => playlistId.Length > 0 && Ids.Contains(playlistId);
+    /// <summary>Does this account listen to the playlist (bare id) without Mix? UI thread (the provider never calls it).</summary>
+    public static bool Is(string playlistId)
+        => playlistId.Length > 0 && Map.TryGetValue((Account, playlistId), out var e) && e.Out;
 
-    /// <summary>Set or clear the choice; persists. UI thread.</summary>
-    public static void Set(string playlistId, bool without)
+    /// <summary>Is the choice for this playlist still waiting for Spotify?</summary>
+    public static bool IsPending(string playlistId) => Map.TryGetValue((Account, playlistId), out var e) && e.Pending;
+
+    /// <summary>Record the user's choice (pending until Spotify takes it); persists. UI thread.</summary>
+    internal static void Set(string playlistId, bool without, bool pending)
     {
         if (playlistId.Length == 0) return;
-        bool changed = without ? Ids.Add(playlistId) : Ids.Remove(playlistId);
-        if (!changed) return;
-        Platform.Settings.Set(Platform.Keys.MixListenWithout, string.Join(',', Ids));
+        var key = (Account, playlistId);
+        // An opted-in playlist Spotify has taken needs no line at all: absent = listen with Mix.
+        if (!without && !pending) { if (!Map.Remove(key)) return; }
+        else if (Map.TryGetValue(key, out var e) && e == (without, pending)) return;
+        else Map[key] = (without, pending);
+        Save();
         if (without) MixData.SetLens(playlistId, false);
+    }
+
+    /// <summary>Spotify took <paramref name="without"/> for the playlist: the entry stops being pending (unless the user changed
+    /// it again while the write was out).</summary>
+    internal static void Landed(string playlistId, bool without)
+    {
+        if (Map.TryGetValue((Account, playlistId), out var e) && e.Out == without) Set(playlistId, without, pending: false);
+    }
+
+    /// <summary>The signed-in account's pending entries, in playlist-id order.</summary>
+    static List<(string Playlist, bool Out)> PendingNow()
+    {
+        var list = new List<(string, bool)>();
+        string account = Account;
+        foreach (var (key, value) in Map) if (key.Account == account && value.Pending) list.Add((key.Playlist, value.Out));
+        list.Sort(static (a, b) => string.CompareOrdinal(a.Item1, b.Item1));
+        return list;
+    }
+
+    /// <summary>The per-PC list's raw value (empty once migrated; the inspector's proof).</summary>
+    public static string LegacyValue => Platform.Settings.Get(s_legacy);
+
+    /// <summary>Seed the per-PC list (the inspector's migration proof under --fake only).</summary>
+    internal static void SeedLegacy(string commaList) { if (Platform.Args.Fake) Platform.Settings.Set(s_legacy, commaList); }
+
+    /// <summary>The mirror's entries for this account (diagnostics).</summary>
+    public static IEnumerable<(string Playlist, bool Out, bool Pending)> Entries()
+    {
+        string account = Account;
+        foreach (var (key, value) in Map) if (key.Account == account) yield return (key.Playlist, value.Out, value.Pending);
+    }
+
+    /// <summary>The account's session is online (Spotify.Library.SyncNow; the inspector's `mix migrate` under --fake): migrate the
+    /// per-PC list into this account's mirror as pending opt-outs, then send every pending entry. When the migration had entries,
+    /// one log line once they all settled, and the per-PC key is removed (the mirror keeps any that failed pending, for the next
+    /// start). <paramref name="reported"/> hears that line (or "" when there was nothing to migrate) after the last send settles.</summary>
+    public static void OnSessionReady(Action<string>? reported = null)
+    {
+        if (Account.Length == 0) { reported?.Invoke(""); return; }
+        string legacy = Platform.Settings.Get(s_legacy);
+        var migrated = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var part in legacy.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            // The per-PC key held a bare id, or a playlist uri for a text id.
+            string id = part.Contains(':') ? new string(EntityUri.IdOf(part.AsSpan())) : part;
+            if (id.Length == 0 || !migrated.Add(id)) continue;
+            Set(id, without: true, pending: true);
+        }
+        var pending = PendingNow();
+        if (pending.Count == 0)
+        {
+            if (legacy.Length > 0) Finish(0, 0);
+            else reported?.Invoke("");
+            return;
+        }
+        int left = pending.Count, sent = 0, failed = 0;
+        foreach (var (id, without) in pending)
+        {
+            bool fromLegacy = migrated.Contains(id) && without;
+            Spotify.Mixes.SendOptOut(id, without, outcome =>
+            {
+                if (fromLegacy) { if (outcome == Spotify.Mixes.Outcome.Landed) sent++; else failed++; }
+                if (--left == 0) { if (legacy.Length > 0) Finish(sent, failed); else reported?.Invoke(""); }
+            });
+        }
+
+        void Finish(int sentCount, int failedCount)
+        {
+            Platform.Settings.Remove(s_legacy.Name);
+            string line = "listen-without migrated: per-PC entries=" + migrated.Count + " sent as account opt-outs=" + sentCount
+                        + " failed=" + failedCount + (failedCount > 0 ? " (kept pending, sent at the next start)" : "") + "; per-PC key removed";
+            Log.Info("mix", line);
+            reported?.Invoke(line);
+        }
+    }
+
+    static Dictionary<(string Account, string Playlist), (bool Out, bool Pending)> Load()
+    {
+        var map = new Dictionary<(string Account, string Playlist), (bool Out, bool Pending)>();
+        foreach (var line in Platform.Settings.Get(Platform.Keys.MixOptOuts).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var f = line.Split('|');
+            if (f.Length < 3 || f[0].Length == 0 || f[1].Length == 0) continue;
+            map[(f[0], f[1])] = (f[2] == "1", f.Length > 3 && f[3] == "p");
+        }
+        return map;
+    }
+
+    static void Save()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var (key, value) in Map)
+            sb.Append(key.Item1).Append('|').Append(key.Item2).Append('|').Append(value.Item1 ? '1' : '0').Append(value.Item2 ? "|p" : "").Append('\n');
+        Platform.Settings.Set(Platform.Keys.MixOptOuts, sb.ToString());
     }
 }

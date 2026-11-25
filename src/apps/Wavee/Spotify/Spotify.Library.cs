@@ -251,6 +251,9 @@ public static partial class Spotify
             Entities.RefreshEdge(FetchEdge.SavedShows, me, FetchPriority.Visible);
             Entities.RefreshEdge(FetchEdge.Recents, me, FetchPriority.Prefetch);
             Entities.Ensure(new User(me), UserFields.Identity, FetchPriority.Visible);
+            // #48 Mix: "Listen without Mix" choices Spotify has not taken yet (offline, refused, or the per-PC list's one-time
+            // migration) go out now that the account can write (Entities/Mix.cs, MixOptOut).
+            MixOptOut.OnSessionReady();
             // Podcast progress: ONE ListCurrentStates for every resume point touched in the last 180 days, folded into the
             // episode rows (podcast plan §5.8). Every sync of the scope — a reconnect catches up on what another device
             // played meanwhile, and keeps the scope's settled hydrate rather than resetting it.

@@ -16,3 +16,8 @@ you're offline, or Spotify doesn't take the change, the transition still plays y
 saved yet and offers Retry, and the Transitions list marks the pair "Not saved". On a playlist you can't edit, edits stay on
 this PC as before ("Saved on this PC only"). The song menu's "Don't mix into the next song" saves the same way. All three
 themes.
+
+**"Listen without Mix" follows your account.** Choosing it in the Mix menu now tells Spotify, so your other devices play
+that playlist unmixed for you too, and choosing it again undoes it everywhere. Playlists you set to listen without Mix on
+this PC before are sent to your account once, the first time Wavee connects. When Spotify can't take the choice right
+away, it applies here at once and reaches your account the next time Wavee connects.

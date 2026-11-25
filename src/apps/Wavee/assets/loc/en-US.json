@@ -5555,6 +5555,7 @@
     "offOffline": "You're offline. Mix stays on until you can turn it off.",
     "onFailed": "Couldn't turn on Mix. Try again.",
     "onOffline": "You're offline. Turn on Mix once you're back online.",
+    "optOutPending": "Kept on this PC for now. It reaches your Spotify account the next time Wavee connects.",
     "showTransitions": "Show transitions",
     "onHover": "On hover",
     "always": "Always",

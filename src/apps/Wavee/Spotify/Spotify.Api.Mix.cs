@@ -85,7 +85,7 @@ public static partial class Spotify
     public static class Mixes
     {
         /// <summary>The writes this file sends (protocol §3).</summary>
-        public enum Write : byte { Off, On, SaveTransition, ResetToAuto }
+        public enum Write : byte { Off, On, SaveTransition, ResetToAuto, OptOut, RemoveOptOut }
 
         /// <summary>How a write settled. <see cref="Offline"/>: nothing was sent (no session that can send).</summary>
         public enum Outcome : byte { Landed, Failed, Offline, Refused }
@@ -94,6 +94,8 @@ public static partial class Spotify
         public static string SignalOf(Write w) => w switch
         {
             Write.SaveTransition or Write.ResetToAuto => "set-transition",
+            Write.OptOut => "mix-opt-out",
+            Write.RemoveOptOut => "mix-remove-opt-out",
             _ => "mix-state",
         };
 
@@ -104,6 +106,10 @@ public static partial class Spotify
             Write.On => SignalRoute.MixOn,          // mix,auto + CBAQAQ== [wire]
             Write.SaveTransition => SignalRoute.MixLens,   // mix,auto + CA8QAQ== [wire: both saves, sent after Mix on]
             Write.ResetToAuto => SignalRoute.MixLens,      // the save's route [client: the same signal with no payload]
+            // OPEN (protocol §3.3, §13 #14): the opt-outs were never seen on the wire. They take the mix-state route's values, each
+            // with the direction it resembles: opting out like Mix off, removing the opt-out like Mix on. Change them here.
+            Write.OptOut => SignalRoute.Edit,       // auto + CA8QAQ== [as Mix off]
+            Write.RemoveOptOut => SignalRoute.MixOn,       // mix,auto + CBAQAQ== [as Mix on]
             _ => SignalRoute.Edit,                  // Mix off: auto + CA8QAQ== [wire]
         };
 
@@ -254,7 +260,7 @@ public static partial class Spotify
                 else
                 {
                     SetFlags(slot, before);
-                    if (lensId.Length > 0) MixData.SetLens(lensId, PlaylistMixRules.On((PlaylistMixFlags)before) && !MixListenWithout.Is(p));
+                    if (lensId.Length > 0) MixData.SetLens(lensId, PlaylistMixRules.On((PlaylistMixFlags)before) && !MixOptOut.Is(p));
                 }
                 settled?.Invoke(outcome);
             });
@@ -268,18 +274,40 @@ public static partial class Spotify
             table.Bump(slot);
         }
 
-        /// <summary>The local "listen without Mix" (decision D3): this PC plays and reads the playlist without the lens; nothing is
-        /// sent. Turning it back on asks the rows again through the lens.</summary>
-        public static void SetListenWithoutMix(Playlist p, bool without)
+        /// <summary>"Listen without Mix", synced to the account (owner decision 2026-11-25): the choice lands in the local mirror at
+        /// once (MixOptOut: this account plays and reads the playlist without the lens; turning it back on asks the rows again through
+        /// the lens), then `mix-opt-out` / `mix-remove-opt-out` goes to Spotify. Offline or refused, the mirror keeps it pending and
+        /// MixOptOut.OnSessionReady sends it at the next start.</summary>
+        public static void SetListenWithoutMix(Playlist p, bool without, Action<Outcome>? settled = null)
         {
-            string id = Entities.MixPlaylistId(p.Slot);
-            MixListenWithout.Set(MixListenWithout.KeyOf(p), without);
-            if (!without && id.Length > 0 && p.MixOn)
+            string key = MixOptOut.KeyOf(p);
+            string lensId = Entities.MixPlaylistId(p.Slot);
+            MixOptOut.Set(key, without, pending: true);
+            if (!without && lensId.Length > 0 && p.MixOn)
             {
-                MixData.SetLens(id, true);
+                MixData.SetLens(lensId, true);
                 Entities.RefreshEdge(FetchEdge.PlaylistTracks, p.Slot);
             }
             Entities.Current.Playlists.Bump(p.Slot);
+            SendOptOut(key, without, settled, p);
+        }
+
+        /// <summary>One opt-out signal for a playlist id (`mix-opt-out` / `mix-remove-opt-out`, args {1 "mix"}, no payload; protocol
+        /// §3.3). The reply is NOT folded — how it shows an opt-out is open — but its shape is logged (lenses, Mix attributes, list
+        /// signals) for the owner's live check. A landed write clears the mirror's pending mark. <paramref name="p"/>: the loaded
+        /// playlist (its held revision), or default for one this PC has not loaded (the migration: its head is read first).</summary>
+        public static void SendOptOut(string playlistId, bool without, Action<Outcome>? settled, Playlist p = default)
+        {
+            var kind = without ? Write.OptOut : Write.RemoveOptOut;
+            byte[] template = Api.SignalTemplate(SignalOf(kind));
+            Action<Outcome> done = outcome =>
+            {
+                if (outcome == Outcome.Landed) MixOptOut.Landed(playlistId, without);
+                settled?.Invoke(outcome);
+            };
+            Func<byte[], byte[]> body = revision => Api.SignalBody(revision, template, default, hasPayload: false);
+            if (p.IsValid) Send(p, kind, body, fold: false, "", done);
+            else SendCore(playlistId, "spotify:playlist:" + playlistId, null, kind, body, fold: false, "", done);
         }
 
         // ── the one send ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -316,6 +344,63 @@ public static partial class Spotify
             return n > 0 ? head[..n].ToArray() : null;
         }
 
+        /// <summary>A list reply in one line, for a reply nobody folds: the applied lenses (f22), the list format attribute keys (f3.12),
+        /// the item format attribute keys seen on any item (contents.3[].2.11), and the list signals (contents.5[].1). PURE.</summary>
+        internal static string ReplyShape(ReadOnlySpan<byte> selectedListContent)
+        {
+            var lenses = new List<string>();
+            var attrs = new SortedSet<string>(StringComparer.Ordinal);
+            var itemAttrs = new SortedSet<string>(StringComparer.Ordinal);
+            var signals = new List<string>();
+            for (var r = new Decode.ProtoReader(selectedListContent); r.Next();)
+            {
+                if (r.Wire != 2) { r.Skip(); continue; }
+                var value = r.Bytes();
+                if (r.Field == 22) Lenses(value, lenses, 0);
+                else if (r.Field == 3) Keys(value, 12, attrs);
+                else if (r.Field == 5)
+                {
+                    for (var c = new Decode.ProtoReader(value); c.Next();)
+                    {
+                        if (c.Wire != 2) { c.Skip(); continue; }
+                        var part = c.Bytes();
+                        if (c.Field == 5) signals.Add(System.Text.Encoding.UTF8.GetString(new Decode.ProtoReader(part).Bytes(1)));
+                        else if (c.Field == 3)
+                            for (var item = new Decode.ProtoReader(part); item.Next();)
+                            {
+                                if (item.Field == 2 && item.Wire == 2) Keys(item.Bytes(), 11, itemAttrs);
+                                else item.Skip();
+                            }
+                    }
+                }
+            }
+            return "lenses=" + string.Join(",", lenses) + " attrs=" + string.Join(",", attrs) + " itemAttrs=" + string.Join(",", itemAttrs)
+                 + " signals=" + string.Join(",", signals);
+
+            static void Lenses(ReadOnlySpan<byte> entry, List<string> into, int depth)
+            {
+                var name = new Decode.ProtoReader(entry).Bytes(1);
+                bool text = !name.IsEmpty && name.Length <= 32;
+                foreach (byte b in name) if (b is < 0x20 or > 0x7E) { text = false; break; }
+                if (text) { into.Add(System.Text.Encoding.ASCII.GetString(name)); return; }
+                if (depth > 0) return;
+                for (var h = new Decode.ProtoReader(entry); h.Next();)
+                {
+                    if (h.Wire == 2) Lenses(h.Bytes(), into, depth + 1);
+                    else h.Skip();
+                }
+            }
+
+            static void Keys(ReadOnlySpan<byte> attributes, int field, SortedSet<string> into)
+            {
+                for (var a = new Decode.ProtoReader(attributes); a.Next();)
+                {
+                    if (a.Field == field && a.Wire == 2) into.Add(System.Text.Encoding.UTF8.GetString(new Decode.ProtoReader(a.Bytes()).Bytes(1)));
+                    else a.Skip();
+                }
+            }
+        }
+
         /// <summary>A refusal that a stale held revision may explain (a conflict or a bad request): read the head and send once more.
         /// Never for auth, a missing list or a rate limit.</summary>
         static bool MayBeStale(int status) => status is >= 400 and < 500 and not (401 or 403 or 404 or 429);
@@ -326,18 +411,23 @@ public static partial class Spotify
         /// and <paramref name="detail"/>.</summary>
         static void Send(Playlist p, Write kind, Func<byte[], byte[]> body, bool fold, string detail, Action<Outcome> settled)
         {
-            string signal = SignalOf(kind);
             if (!p.IsValid) { settled(Outcome.Refused); return; }
+            if (Platform.Args.Fake && !Entities.FakeMixServer.Offline) Entities.FakeMixServer.Adopt(p);
+            SendCore(WireId(p), p.Uri.Text, HeldRevision(p), kind, body, fold, detail, settled);
+        }
+
+        /// <summary><see cref="Send"/> for a playlist by its id: <paramref name="held"/> its held head, or null to read it first.</summary>
+        static void SendCore(string id, string uri, byte[]? held, Write kind, Func<byte[], byte[]> body, bool fold, string detail,
+            Action<Outcome> settled)
+        {
+            string signal = SignalOf(kind);
             if (!Online(out var scope))
             {
                 Log.Info("mix", signal + " not sent: offline" + (detail.Length > 0 ? " " + detail : ""));
                 settled(Outcome.Offline);
                 return;
             }
-            string id = WireId(p), uri = p.Uri.Text;
             if (id.Length == 0) { settled(Outcome.Refused); return; }
-            if (Platform.Args.Fake) Entities.FakeMixServer.Adopt(p);
-            byte[]? held = HeldRevision(p);
             var net = Library.Net;
             SignalRoute route = RouteOf(kind);
             string routeText = RouteText(route);
@@ -374,8 +464,10 @@ public static partial class Spotify
                     }
                     int status = r.Status, length = r.Length;
                     bool ok = r.Ok;
+                    // A reply that is not folded (the opt-outs) is described instead: how it reads back is what the live check needs.
+                    string shape = ok && !fold && length > 0 ? " shape=" + ReplyShape(r.Bytes) : "";
                     Log.Info("mix", signal + (detail.Length > 0 ? " " + detail : "") + " route=" + routeText + " status=" + status
-                                    + " reply=" + length + "B" + (ok ? fold ? " folded" : "" : " failed"));
+                                    + " reply=" + length + "B" + (ok ? fold ? " folded" : "" : " failed") + shape);
                     Post(() =>
                     {
                         if (staging is not null && ReferenceEquals(scope, Entities.Current)) { Entities.Commit(staging); Entities.Publish(); }

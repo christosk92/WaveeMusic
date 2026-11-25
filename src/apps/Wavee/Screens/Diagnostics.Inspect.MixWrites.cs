@@ -34,6 +34,7 @@ public static partial class Diagnostics
                 return Inspect.Reply.Ok(id, name, w => { WriteRequests(w, log); });
             }
             if (_shell is null) return Inspect.Reply.Fail(id, name, "mount first: a write's reply lands on the UI thread's frames");
+            if (show == "migrate") return MixMigrate(id, name, a);
 
             Entities.FakeMixServer.Clear();
             var steps = new List<Action<Utf8JsonWriter>>();
@@ -53,6 +54,15 @@ public static partial class Diagnostics
             Save("save over a stored pair", StoredPair(), (int)MixStyle.Lift, 0);
             Save("no transition", AutoPair(), (int)MixStyle.NoMix, 0);
             Reset("reset to auto", 0);
+
+            // 7-8. "Listen without Mix", synced to the account: the opt-out and its removal (the mirror, and the reply's shape logged).
+            string key = MixOptOut.KeyOf(p);
+            long mark = LogMark();
+            Run("listen without mix", settled => Spotify.Mixes.SetListenWithoutMix(p, true, settled));
+            Note("listen without mix (mix-opt-out)", outcome, "optedOut=" + MixOptOut.Is(p) + " pending=" + MixOptOut.IsPending(key) + " log: " + string.Join(" | ", MixLogSince(mark)));
+            mark = LogMark();
+            Run("listen with mix", settled => Spotify.Mixes.SetListenWithoutMix(p, false, settled));
+            Note("listen with mix (mix-remove-opt-out)", outcome, "optedOut=" + MixOptOut.Is(p) + " pending=" + MixOptOut.IsPending(key) + " log: " + string.Join(" | ", MixLogSince(mark)));
 
             var recorded = Entities.FakeMixServer.Log();
             var server = Entities.FakeMixServer.StateOf(wireId);
@@ -78,15 +88,11 @@ public static partial class Diagnostics
                 Pump(label, fin => write(o => { outcome = o; fin(); }));
             }
 
-            // Frames until the write calls back (5 s of wall clock at most): its reply crosses an api thread and lands on a frame.
             void Pump(string label, Action<Action> write)
             {
                 done = false;
                 write(() => done = true);
-                long until = Environment.TickCount64 + 5_000;
-                while (!done && Environment.TickCount64 < until) { RunFrames(1); if (!done) Thread.Sleep(2); }
-                RunFrames(2);
-                if (!done) Log.Warn("mix", "inspector: " + label + " did not settle");
+                PumpUntil(() => done, label);
             }
 
             void Note(string label, Spotify.Mixes.Outcome settled, string after) => steps.Add(w =>
@@ -323,6 +329,61 @@ public static partial class Diagnostics
                 }
                 return list;
             }
+        }
+
+        /// <summary>Frames until <paramref name="done"/> (5 s of wall clock at most): a write's reply crosses an api thread and lands on
+        /// a frame.</summary>
+        void PumpUntil(Func<bool> done, string label)
+        {
+            long until = Environment.TickCount64 + 5_000;
+            while (!done() && Environment.TickCount64 < until) { RunFrames(1); if (!done()) Thread.Sleep(2); }
+            RunFrames(2);
+            if (!done()) Log.Warn("mix", "inspector: " + label + " did not settle");
+        }
+
+        /// <summary>The newest log entry's sequence: the mark <see cref="MixLogSince"/> counts from.</summary>
+        static long LogMark() { var all = Log.Snapshot(); return all.Length > 0 ? all[^1].Sequence : 0; }
+
+        /// <summary>The `mix` and `library` log lines written after <paramref name="mark"/>.</summary>
+        static List<string> MixLogSince(long mark)
+        {
+            var lines = new List<string>();
+            foreach (var e in Log.Snapshot())
+                if (e.Sequence > mark && e.Category is "mix" or "library") lines.Add(e.Category + ": " + e.Message);
+            return lines;
+        }
+
+        /// <summary>`mix migrate`: what a session start does with "Listen without Mix" (MixOptOut.OnSessionReady): the per-PC list
+        /// (seed= fills it first, as a build before M2 left it) moved into the account's mirror and sent as opt-outs, the one log
+        /// line, and the per-PC key after. Run it again for "the next start": the key is gone and nothing is sent.</summary>
+        string MixMigrate(int id, string name, Inspect.Args a)
+        {
+            string before = MixOptOut.LegacyValue;
+            if (a.Has("seed")) MixOptOut.SeedLegacy(a.Str("seed"));
+            string seeded = MixOptOut.LegacyValue;
+            Entities.FakeMixServer.Clear();
+            long mark = LogMark();
+            string? line = null;
+            MixOptOut.OnSessionReady(l => line = l);
+            PumpUntil(() => line is not null, "migrate");
+            var recorded = Entities.FakeMixServer.Log();
+            var logged = MixLogSince(mark);
+            string after = MixOptOut.LegacyValue;
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteString("perPcBefore", before);
+                w.WriteString("perPcSeeded", seeded);
+                w.WriteString("perPcAfter", after);
+                w.WriteString("migrationLine", line ?? "(did not settle)");
+                w.WriteStartArray("mirror");
+                foreach (var (playlist, optedOut, pending) in MixOptOut.Entries())
+                    w.WriteStringValue(playlist + " optedOut=" + optedOut + " pending=" + pending);
+                w.WriteEndArray();
+                w.WriteStartArray("log");
+                foreach (var l in logged) w.WriteStringValue(l);
+                w.WriteEndArray();
+                WriteRequests(w, recorded);
+            });
         }
 
         /// <summary>`mix fake`: switch the fake server (fake=ok|offline|fail|clear) or read the fake playlist as someone else's
