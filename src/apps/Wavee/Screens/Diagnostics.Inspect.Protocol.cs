@@ -609,10 +609,13 @@ public static partial class Diagnostics
                                  + "Connect device (refused during a narration); the Connect half (D4): envelope = the play body a start of uri= sends another "
                                  + "device, cluster = fold the ClusterUpdates of file= (base64 per line) as a dealer push and read the mirror, transfer file= = a "
                                  + "transfer of the DJ in uri= into Wavee from file= (a transfer command body), restore = the launch restore of a DJ "
-                                 + "deck on track=, bodies = the lexicon decode of the fake session as identity, gzip and zstd bodies", "status",
-                                 "status|answers|play|jump|starve|expire|run|" + InspectSession.DjConnectVerbs),
+                                 + "deck on track=, bodies = the lexicon decode of the fake session as identity, gzip and zstd bodies; telemetry (D5) = "
+                                 + "on=true arms a tap on the play report's events (on=false drops it), without on= the tapped RawCoreStream and "
+                                 + "RawCoreStreamSegment payloads decoded field by field (all=true lists every event by name)", "status",
+                                 "status|answers|play|jump|starve|expire|run|telemetry|" + InspectSession.DjConnectVerbs),
                              Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
-                             Arg("on", ArgType.String, "do=starve: true (no more pages) or false"),
+                             Arg("on", ArgType.String, "do=starve: true (no more pages) or false; do=telemetry: true arms the tap, false drops it"),
+                             Arg("all", ArgType.String, "do=telemetry: true lists every tapped event (the rest by name and size)"),
                              Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
                              Arg("ms", ArgType.Int, "do=run: how much of the frame clock to play (default 1000, at most 600000); do=restore: the deck's position (default 30000)"),
                              Arg("until", ArgType.Enum, "do=run: stop early when the deck moves", "ms", "ms|change"),

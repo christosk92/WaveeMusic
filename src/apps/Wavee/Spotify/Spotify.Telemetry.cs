@@ -266,6 +266,7 @@ public static partial class Spotify
         /// <see cref="Overflow"/> for why the two ends choose differently.</summary>
         public static void Enqueue(string eventName, byte[] payload)
         {
+            Tapped(eventName, payload);
             if (Egress.NamesWaveeUri(payload)) { Log.Warn("spotify", "gabo event " + eventName + " named a non-Spotify uri; not sent"); return; }
             // `--fake` (the demo seed, the inspector) has no account: nothing is journaled or sent. Before #240 no fake play reached here (a
             // fake track is not a Spotify id); a playlist's spotify:local: item is one.
@@ -278,6 +279,36 @@ public static partial class Spotify
             JournalGabo(account, envelope);
             if (!GaboQueue.TryAdd(new GaboWork(envelope, account)))
                 Log.Warn("spotify", "gabo worker queue full; durable event retained");
+        }
+
+        // ── the inspector's tap (what would be sent, as sent; never on unless the inspector arms it) ──
+
+        static List<(string Name, byte[] Payload)>? s_tap;
+        static readonly object s_tapLock = new();
+        const int TapCap = 256;
+
+        /// <summary>The inspector (`dj do=telemetry`): keep a copy of every event handed to <see cref="Enqueue"/> (the newest
+        /// <see cref="TapCap"/>), or stop and forget them. Off in every real run.</summary>
+        public static void Tap(bool on)
+        {
+            lock (s_tapLock) s_tap = on ? new List<(string, byte[])>(64) : null;
+        }
+
+        /// <summary>The events the tap holds, oldest first (a copy).</summary>
+        public static (string Name, byte[] Payload)[] TapNow()
+        {
+            lock (s_tapLock) return s_tap?.ToArray() ?? [];
+        }
+
+        static void Tapped(string eventName, byte[] payload)
+        {
+            if (Volatile.Read(ref s_tap) is null) return;
+            lock (s_tapLock)
+            {
+                if (s_tap is not { } tap) return;
+                if (tap.Count >= TapCap) tap.RemoveAt(0);
+                tap.Add((eventName, payload));
+            }
         }
 
         /// <summary>Ask for a flush now — the app is closing, or the user signed out.</summary>
@@ -436,6 +467,30 @@ public static partial class Spotify
             public bool Open, SegmentActive;
             public double PlaybackSpeed;
             public long SegmentStartTick;
+            /// <summary>AI DJ (plan-dj §2.9): the recommendation's decision id (a narration's <c>dj~…</c>, a DJ track's <c>ssp~…</c>) and its
+            /// <c>custom_reporting_attribution</c> (<c>&lt;segment&gt;:&lt;page&gt;:&lt;slot&gt;:0</c>), "" for any other play
+            /// (<see cref="Attribute"/>).</summary>
+            public string? DecisionId, Attribution;
+            /// <summary>AI DJ talk-over (plan-dj §1.6, §2.9): the ms this narration played over its target (<c>ms_played_overlapping</c>, 16, and
+            /// the official client's 67), and the ms of a narration this track played under (<c>ms_narration_overlapping</c>, 46). 0 until the
+            /// talk-over (D3) plays one under the other: it writes them through <see cref="Overlapped"/>.</summary>
+            public int OverlapMs, NarrationOverlapMs;
+        }
+
+        /// <summary>AI DJ: stamp an open registration with the DJ's decision id and reporting attribution (plan-dj §2.9). The open-time
+        /// events are already out (they carry neither); the closing RawCoreStream names both.</summary>
+        public static void Attribute(ref Registration r, string decisionId, string attribution)
+        {
+            r.DecisionId = decisionId;
+            r.Attribution = attribution;
+        }
+
+        /// <summary>AI DJ talk-over (D3's seam, plan-dj §1.6): this narration played <paramref name="overMs"/> over its target, or this
+        /// track played <paramref name="underNarrationMs"/> under a narration. Summed, so a clip that ducks twice reports both.</summary>
+        public static void Overlapped(ref Registration r, int overMs = 0, int underNarrationMs = 0)
+        {
+            r.OverlapMs += Math.Max(0, overMs);
+            r.NarrationOverlapMs += Math.Max(0, underNarrationMs);
         }
 
         static bool s_firstPlayInSession = true;
@@ -613,7 +668,11 @@ public static partial class Spotify
                 CoreBundle = "full",
                 IsAssumedPremium = isAssumedPremium,
                 PlaybackStack = PlaybackStack,
-                DecisionId = "",
+                DecisionId = r.DecisionId ?? "",
+                CustomReportingAttribution = r.Attribution ?? "",
+                MsPlayedOverlapping = r.OverlapMs,
+                MsOverlappingSecondary = r.OverlapMs,
+                MsNarrationOverlapping = r.NarrationOverlapMs,
                 PlayContextDecisionId = "",
                 StreamId = ByteString.CopyFrom(r.Ids.StreamId),
                 PlayerSessionId = r.PlayerSessionId ?? "",
