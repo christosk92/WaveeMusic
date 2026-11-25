@@ -1,19 +1,27 @@
 // ── Spotify/Spotify.Friends.cs — the friend-activity feed's host (#277) ─────────────────────────────────────────────
 //
 // Fills `Edges.Friends` (under `Rail.Friends.Feed`) and `Rail.Friends.State`, and assigns the panel's two seams
-// (`Rail.Friends.SetActive`, `Rail.Friends.Refresh`). It reads what the desktop client's panel reads (and what spotifast
-// reads through librespot):
+// (`Rail.Friends.SetActive`, `Rail.Friends.Refresh`). It does what the official desktop client (1.3.10.2586, captured)
+// does for its panel, and nothing more:
 //
-//   feed      POST /listening-activity/v1/feed {"unused":true,"resultLimit":100}  — every followed friend's latest track
-//             polled every 15 s while the panel is open, and only then; also on open, a new connection and Retry
-//   fallback  GET /presence-view/v1/buddylist  — when the feed fails (it carries its own words)
-//   words     the feed names only identities, so the friends' users, tracks and context playlists are ENSURED through
-//             the fetch layer; a watch on the track table fills each row's album and artist as tracks land
-//   offline   signed out: state Offline and the run cleared (the next account never sees these rows)
+//   feed       POST /listening-activity/v1/feed {"unused":true,"resultLimit":100} — every followed friend's latest
+//              activity, once: when the panel is shown, on a new dealer connection while it is shown, and on Retry
+//   subscribe  POST /listening-activity/v1/subscribe — every user the feed named, on THIS dealer connection; it lives
+//              48 h. Sent again on a new connection id, for a user it does not cover yet, and before it expires.
+//   push       a friend's change arrives as a dealer MESSAGE on `hm://listening-activity/…` (observed on Wavee's own
+//              connection, 2026-11-25). The push is the SIGNAL, not the data: a shown panel loads the feed again,
+//              pushes inside `PushSettleMs` folded into one load; a hidden one loads on its next show.
+//   words      the feed names only identities, so the friends' users, tracks and context playlists are ENSURED through
+//              the fetch layer (extended-metadata); a watch on the track table fills each row's album and artist
+//   failure    rows kept (rows win, `Rail.Friends.SurfaceFor`), the error face with none; the next try waits for the
+//              answer's Retry-After or a doubling back-off, and only while the panel is shown. Logged on a change of
+//              state (ok → failing, failing → ok), never per try.
+//   offline    "Sign in" only while signed out: `OnSignedOut` (or a launch with no stored credential) and nothing else.
+//              The run is cleared, so the next account never sees these rows.
 //
-// (The v2 init-friend-feed + hm://presence2 pushes 0.2.9 used answered a handful of stale rows: replaced.) UI thread
-// except the bodies handed to `Api.Run` and the poll timer (which only posts). `--fake` lands the fake feed through the
-// real decoder (Entities.Fake.Friends.cs). Plan: docs/plans/wavee/friend-activity-implementation.md.
+// No poll and no fallback source: the official client has neither (two launches captured, 130 s with the panel open and no
+// second request); a feed request follows a push, never a clock. UI thread except the bodies handed to `Api.Run` and the two timers (which only post). `--fake` lands the
+// fake feed through the real decoder (Entities.Fake.Friends.cs). Plan: docs/plans/wavee/friend-activity-implementation.md.
 
 using System.Globalization;
 using FluentGpu.Signals;
@@ -24,15 +32,33 @@ public static partial class Spotify
 {
     public static class Friends
     {
-        /// <summary>The poll cadence while the panel is open (the desktop client's).</summary>
-        public const int PollMs = 15_000;
-        /// <summary>How many friends one answer may carry.</summary>
+        /// <summary>How many friends one answer may carry (the desktop client's ask).</summary>
         const int Limit = 100;
+        /// <summary>The first wait after a failure with no Retry-After; doubled per failure up to <see cref="BackoffMaxMs"/>.</summary>
+        const int BackoffFirstMs = 15_000;
+        const int BackoffMaxMs = 15 * 60_000;
+        /// <summary>Renew the subscription this long before it expires.</summary>
+        const long RenewAheadMs = 60 * 60_000L;
+        /// <summary>The lifetime the capture showed, for an answer whose expiry does not read.</summary>
+        const long CapturedLifetimeMs = 48 * 3_600_000L;
+        const string UserPrefix = "spotify:user:";
+        /// <summary>Pushes this close together (a friend skipping through tracks, several friends at once) are one load.</summary>
+        const int PushSettleMs = 2_000;
 
         static bool s_attached, s_active, s_inflight, s_again;
         static uint s_generation;                        // bumped on sign-out: an answer from before it is dropped
-        static int s_lastRows = -1;
-        static Timer? s_poll;
+        static int s_failures;                           // consecutive failed loads; 0 = the last one landed
+        static long s_holdUntilMs;                       // no feed request before this (Retry-After or the back-off)
+        static Timer? s_retry, s_renew, s_push;
+        static int s_pushes;                             // pushes folded into the pending load (the dealer thread counts)
+
+        // The subscription as the service last confirmed it.
+        static bool s_subInflight;
+        static string s_subConnection = "";
+        static string[] s_subUsers = [];
+        static long s_subExpiresMs;
+        static int s_subFailStatus = -1;                 // the last failed subscribe's status, so a repeat is not logged
+
         static ReactiveRuntime? s_runtime;
         static Effect? s_refill;
         static bool s_flushPosted;
@@ -49,7 +75,11 @@ public static partial class Spotify
             s_runtime = new ReactiveRuntime { FrameRequested = RequestFlush };
             s_refill = new Effect(s_runtime, WatchTracks);
             if (Platform.Args.Fake) LandFake();
+            else if (NoAccount) Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
         }
+
+        /// <summary>A launch with no stored credential: signed out without a sign-out.</summary>
+        static bool NoAccount => Current.Fault == SessionFault.NoCredential;
 
         static void RequestFlush()
         {
@@ -72,26 +102,57 @@ public static partial class Spotify
         static void SetActive(bool active)
         {
             s_active = active;
-            if (active)
-            {
-                s_poll ??= new Timer(static _ => Post(static () => { if (s_active) Load("poll"); }), null, Timeout.Infinite, Timeout.Infinite);
-                s_poll.Change(PollMs, PollMs);
-                Load("shown");
-            }
-            else s_poll?.Change(Timeout.Infinite, Timeout.Infinite);
+            if (active) Load("shown");
+            else s_retry?.Change(Timeout.Infinite, Timeout.Infinite);   // nobody is looking: no retries
         }
 
-        /// <summary>UI thread (Session's AnnounceDevice effect): a NEW dealer connection — back online, so a visible panel reloads.</summary>
+        /// <summary>UI thread (Session's AnnounceDevice effect): a NEW dealer connection. Signed in again if the panel read
+        /// "Sign in"; a shown panel reloads, and the load re-subscribes on the new connection id.</summary>
         public static void OnConnection()
         {
-            if (s_attached && s_active) Load("connection");
+            if (!s_attached) return;
+            if (Rail.Friends.State.Value == Rail.Friends.FeedState.Offline) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
+            if (s_active) Load("connection");
         }
 
-        /// <summary>UI thread (Session's SignedOut effect): no feed, and no rows left for the next account.</summary>
+        /// <summary>DEALER THREAD: a MESSAGE frame nobody else took. A <c>hm://listening-activity/</c> push (a friend's
+        /// activity changed) arms the settle timer and answers true; anything else answers false.</summary>
+        public static bool OnDealerPush(ReadOnlySpan<byte> uri)
+        {
+            if (!uri.StartsWith("hm://listening-activity/"u8)) return false;
+            if (Interlocked.Increment(ref s_pushes) == 1)
+            {
+                var timer = Volatile.Read(ref s_push);
+                if (timer is null)
+                {
+                    var made = new Timer(static _ => Post(s_settled), null, Timeout.Infinite, Timeout.Infinite);
+                    timer = Interlocked.CompareExchange(ref s_push, made, null) ?? made;
+                    if (!ReferenceEquals(timer, made)) made.Dispose();
+                }
+                timer.Change(PushSettleMs, Timeout.Infinite);
+            }
+            return true;
+        }
+
+        static readonly Action s_settled = static () =>
+        {
+            int pushes = Interlocked.Exchange(ref s_pushes, 0);
+            if (pushes > 0 && s_attached && s_active) Load("push");   // hidden: the next show loads anyway
+        };
+
+        /// <summary>UI thread (Session's SignedOut effect): no feed, no subscription and no rows left for the next account.</summary>
         public static void OnSignedOut()
         {
             s_generation++;
-            s_lastRows = -1;
+            s_failures = 0;
+            s_holdUntilMs = 0;
+            s_again = false;
+            s_retry?.Change(Timeout.Infinite, Timeout.Infinite);
+            s_renew?.Change(Timeout.Infinite, Timeout.Infinite);
+            s_subConnection = "";
+            s_subUsers = [];
+            s_subExpiresMs = 0;
+            s_subFailStatus = -1;
             if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) > 0)
             {
                 Entities.Current.Edges.Friends.Clear(Rail.Friends.Feed);
@@ -100,22 +161,34 @@ public static partial class Spotify
             Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
         }
 
-        // ── the load ────────────────────────────────────────────────────────────────────────────────────────────────
+        static int Rows => Entities.Current.Edges.Friends.Count(Rail.Friends.Feed);
+
+        // ── the feed ────────────────────────────────────────────────────────────────────────────────────────────────
 
         static void Load(string why)
         {
             if (Platform.Args.Fake) { LandFake(); return; }
-            if (!Current.IsOnline)
+            if (NoAccount) { Rail.Friends.State.Value = Rail.Friends.FeedState.Offline; return; }
+            var session = Current;
+            if (!session.IsOnline)
             {
-                if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
+                // Signed in but not connected: a session that gave up is an outage (the error face, rows kept); one still
+                // connecting loads on its connection (OnConnection).
+                if (session.Phase == SessionPhase.Failed) LandFailure();
                 return;
             }
-            if (s_inflight) { s_again |= why != "poll"; return; }   // one request at a time; a user's ask runs once more after it
+            if (s_inflight) { s_again = true; return; }   // one request at a time; the ask runs once more after it
+            long now = Playback.UnixNowMs();
+            if (now < s_holdUntilMs)
+            {
+                // Inside Retry-After or the back-off: Retry (or a show) waits for it rather than asking early.
+                ArmRetry(s_holdUntilMs - now);
+                return;
+            }
             s_inflight = true;
-            if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
+            if (Rows == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
 
             uint epoch = Entities.Current.Epoch, generation = s_generation;
-            long nowMs = Playback.UnixNowMs();
             bool queued = Api.Run(() =>
             {
                 var s = Staging.Rent();
@@ -125,30 +198,21 @@ public static partial class Spotify
                 {
                     var answer = Api.ListeningActivity(Limit, CancellationToken.None);
                     report.Status = answer.Status;
-                    if (answer.Ok)
-                    {
-                        report.Ok = Decode.ListeningFeed(answer.Bytes, s, nowMs, out report.Entries, out report.Skipped);
-                        if (!report.Ok) report.Shape = Decode.FriendFeedShape(answer.Bytes);
-                    }
-                    if (!report.Ok)
-                    {
-                        // The fallback: the buddy list, which carries its own words.
-                        var buddies = Api.FriendBuddylist(CancellationToken.None);
-                        report.Source = "buddylist " + buddies.Status.ToString(CultureInfo.InvariantCulture);
-                        if (buddies.Ok) report.Ok = Decode.FriendFeed(buddies.Bytes, s, out report.Entries, out report.Skipped);
-                    }
+                    report.RetryAfterSeconds = answer.RetryAfterSeconds;
+                    report.Bytes = answer.Length;
+                    if (answer.Ok) report.Ok = Decode.ListeningFeed(answer.Bytes, s, out report.Entries, out report.Skipped);
                 }
-                catch (Exception ex) { Log.Warn("friends", "load failed", ex); }
+                catch (Exception ex) { report.Error = ex.GetType().Name; }
                 Post(() => Land(generation, s, report));
             });
-            if (!queued) { s_inflight = false; LandFailure(); }
+            if (!queued) { s_inflight = false; Failed(new Report { Why = why, Error = "notQueued" }); }
         }
 
         /// <summary>What one load learned, for the always-on line: counts, statuses and key names only.</summary>
         sealed class Report
         {
-            public string Why = "", Source = "", Skipped = "", Shape = "";
-            public int Status, Entries;
+            public string Why = "", Skipped = "", Error = "";
+            public int Status, Entries, Bytes, RetryAfterSeconds;
             public bool Ok;
         }
 
@@ -158,29 +222,27 @@ public static partial class Spotify
             {
                 s_inflight = false;
                 if (generation != s_generation) return;          // signed out while it flew
-                if (!report.Ok)
-                {
-                    Log.Warn("friends", "feed answered " + report.Status.ToString(CultureInfo.InvariantCulture)
-                        + (report.Shape.Length > 0 ? " shape={" + report.Shape + "}" : "")
-                        + (report.Source.Length > 0 ? " fallback=" + report.Source : "") + " why=" + report.Why);
-                    LandFailure();
-                    return;
-                }
+                if (!report.Ok) { Failed(report); return; }
+
+                if (s_failures > 0)
+                    Log.Info("friends", "feed recovered after " + s_failures.ToString(CultureInfo.InvariantCulture) + " failed loads");
+                s_failures = 0;
+                s_holdUntilMs = 0;
+                s_retry?.Change(Timeout.Infinite, Timeout.Infinite);
+
                 Entities.Commit(s);
                 Entities.Publish();
                 Rail.Friends.State.Value = Rail.Friends.FeedState.Ready;
                 EnsureWords();
 
-                int rows = Entities.Current.Edges.Friends.Count(Rail.Friends.Feed);
                 var (dropped, dropKinds) = Entities.LastFriendsDropped;
-                // A poll that changed nothing says nothing (every 15 s); everything else is one line.
-                if (report.Why != "poll" || rows != s_lastRows || dropped > 0)
-                    Log.Info("friends", "feed landed rows=" + rows.ToString(CultureInfo.InvariantCulture)
+                // A push-driven load is routine (one per friend's change): it says nothing unless something is off.
+                if (report.Why != "push" || dropped > 0 || report.Skipped.Length > 0)
+                    Log.Info("friends", "feed landed rows=" + Rows.ToString(CultureInfo.InvariantCulture)
                         + " entries=" + report.Entries.ToString(CultureInfo.InvariantCulture)
                         + " dropped=" + dropped.ToString(CultureInfo.InvariantCulture) + (dropKinds.Length > 0 ? " (" + dropKinds + ")" : "")
-                        + (report.Skipped.Length > 0 ? " skipped=[" + report.Skipped + "]" : "")
-                        + " source=" + (report.Source.Length > 0 ? report.Source : "listening-activity") + " why=" + report.Why);
-                s_lastRows = rows;
+                        + (report.Skipped.Length > 0 ? " skipped=[" + report.Skipped + "]" : "") + " why=" + report.Why);
+                Subscribe();
             }
             finally
             {
@@ -189,10 +251,109 @@ public static partial class Spotify
             }
         }
 
+        /// <summary>A failed load: the rows stay (the error face with none), the next try waits for Retry-After or the
+        /// back-off, and the log hears about it once, when the feed starts failing.</summary>
+        static void Failed(Report report)
+        {
+            s_failures++;
+            long delay = report.RetryAfterSeconds > 0 ? report.RetryAfterSeconds * 1000L
+                : Math.Min((long)BackoffMaxMs, (long)BackoffFirstMs << Math.Min(s_failures - 1, 10));
+            s_holdUntilMs = Playback.UnixNowMs() + delay;
+            if (s_failures == 1)
+                Log.Warn("friends", "feed failing status=" + report.Status.ToString(CultureInfo.InvariantCulture)
+                    + (report.Status is >= 200 and < 300 ? " unknown shape (" + report.Bytes.ToString(CultureInfo.InvariantCulture) + " bytes)" : "")
+                    + (report.Error.Length > 0 ? " error=" + report.Error : "")
+                    + " retryIn=" + (delay / 1000).ToString(CultureInfo.InvariantCulture) + "s why=" + report.Why);
+            LandFailure();
+            if (s_active) ArmRetry(delay);
+        }
+
         /// <summary>A failed load keeps the rows it held (rows win, <c>Rail.Friends.SurfaceFor</c>); with none, the error face.</summary>
         static void LandFailure()
         {
-            if (Entities.Current.Edges.Friends.Count(Rail.Friends.Feed) == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Error;
+            if (Rows == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Error;
+        }
+
+        static void ArmRetry(long delayMs)
+        {
+            s_retry ??= new Timer(static _ => Post(static () => { if (s_active) Load("backoff"); }), null, Timeout.Infinite, Timeout.Infinite);
+            s_retry.Change(Math.Clamp(delayMs, 1L, CapturedLifetimeMs), Timeout.Infinite);   // a wild Retry-After cannot overflow the timer
+        }
+
+        // ── the subscription ────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>After a landed feed: subscribe this dealer connection to every user it named, unless the standing
+        /// subscription already covers them on this connection and is not near its expiry. An empty feed subscribes nothing.</summary>
+        static void Subscribe()
+        {
+            if (s_subInflight) return;
+            string connection = ConnectionId();
+            if (connection.Length == 0) return;
+            var run = Entities.Current.Edges.Friends.Payload(Rail.Friends.Feed);
+            if (run.IsEmpty) return;
+            var users = new string[run.Length];
+            int n = 0;
+            for (int i = 0; i < run.Length; i++)
+            {
+                string uri = new User(run[i].UserSlot).Uri.Text;
+                if (uri.StartsWith(UserPrefix, StringComparison.Ordinal)) users[n++] = Uri.UnescapeDataString(uri[UserPrefix.Length..]);
+            }
+            if (n == 0) return;
+            if (n < users.Length) Array.Resize(ref users, n);
+
+            long now = Playback.UnixNowMs();
+            if (connection == s_subConnection && now < s_subExpiresMs - RenewAheadMs && Covers(s_subUsers, users)) return;
+
+            s_subInflight = true;
+            uint generation = s_generation;
+            bool queued = Api.Run(() =>
+            {
+                int status = 0;
+                long expires = 0;
+                try
+                {
+                    var answer = Api.ListeningSubscribe(connection, users, CancellationToken.None);
+                    status = answer.Status;
+                    if (answer.Ok) expires = Decode.ListeningSubscription(answer.Bytes);
+                }
+                catch (Exception) { status = -2; }
+                Post(() => LandSubscribe(generation, connection, users, status, expires));
+            });
+            if (!queued) s_subInflight = false;
+        }
+
+        static void LandSubscribe(uint generation, string connection, string[] users, int status, long expiresMs)
+        {
+            s_subInflight = false;
+            if (generation != s_generation) return;
+            if (status is < 200 or >= 300)
+            {
+                // The next feed (a show, a new connection, Retry) asks again; logged once per distinct failure.
+                s_subConnection = "";
+                if (status != s_subFailStatus)
+                    Log.Warn("friends", "subscribe failed status=" + status.ToString(CultureInfo.InvariantCulture)
+                        + " users=" + users.Length.ToString(CultureInfo.InvariantCulture));
+                s_subFailStatus = status;
+                return;
+            }
+            long now = Playback.UnixNowMs();
+            bool read = expiresMs > now;
+            s_subConnection = connection;
+            s_subUsers = users;
+            s_subExpiresMs = read ? expiresMs : now + CapturedLifetimeMs;
+            s_subFailStatus = -1;
+            Log.Info("friends", "subscribed users=" + users.Length.ToString(CultureInfo.InvariantCulture)
+                + " expiresIn=" + ((s_subExpiresMs - now) / 3_600_000L).ToString(CultureInfo.InvariantCulture) + "h"
+                + (read ? "" : " (expiry unread: the captured 48 h assumed)"));
+            s_renew ??= new Timer(static _ => Post(static () => { if (s_active) Load("renew"); }), null, Timeout.Infinite, Timeout.Infinite);
+            s_renew.Change(Math.Clamp(s_subExpiresMs - RenewAheadMs - now, 60_000L, CapturedLifetimeMs), Timeout.Infinite);
+        }
+
+        static bool Covers(string[] held, string[] wanted)
+        {
+            foreach (string w in wanted)
+                if (Array.IndexOf(held, w) < 0) return false;
+            return true;
         }
 
         /// <summary>The words the feed does not carry: each friend's name and avatar, each track's title, cover and artists,
@@ -217,15 +378,14 @@ public static partial class Spotify
 
         // ── --fake ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The fake feed, through the real decoder and commit: its times are relative to now, so two rows are live.</summary>
+        /// <summary>The fake feed, through the real decoder and commit: its times are relative to now, two friends playing.</summary>
         static void LandFake()
         {
             var s = Staging.Rent();
             try
             {
                 s.Epoch = Entities.Current.Epoch;
-                long now = Playback.UnixNowMs();
-                if (!Decode.ListeningFeed(Entities.FakeFriendFeed(now), s, now, out _, out _)) return;
+                if (!Decode.ListeningFeed(Entities.FakeFriendFeed(Playback.UnixNowMs()), s, out _, out _)) return;
                 Entities.Commit(s);
                 Entities.Publish();
                 Rail.Friends.State.Value = Rail.Friends.FeedState.Ready;

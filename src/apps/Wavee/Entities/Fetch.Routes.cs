@@ -182,8 +182,6 @@ public enum SpclientRoute : byte
     CollectionPage,
     /// <summary><c>/playlist/v2/list/recents/page</c> (and its <c>/diff</c> once a revision is held).</summary>
     Recents,
-    /// <summary><c>/listening-activity/v1/feed</c>.</summary>
-    FriendFeed,
     /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;?playlist_limit=10&amp;artist_limit=10&amp;episode_limit=10&amp;market=from_token</c>
     /// on spclient.wg (protobuf): the profile's name, avatar, colour, counts, flags and the viewer's follow — AND its
     /// public playlists and recently played artists, which land their relations from the same answer.</summary>
@@ -465,7 +463,6 @@ public static class FetchRoutes
         FetchEdge.Liked or FetchEdge.SavedAlbums or FetchEdge.FollowedArtists or FetchEdge.SavedShows
             or FetchEdge.Pins => FetchRoute.Spclient(SpclientRoute.CollectionPage, 0),
         FetchEdge.Recents => FetchRoute.Spclient(SpclientRoute.Recents, 0),
-        FetchEdge.Friends => FetchRoute.Spclient(SpclientRoute.FriendFeed, 0),
         FetchEdge.PlaylistTracks => FetchRoute.Spclient(SpclientRoute.PlaylistRead, 0),
         // AlbumV4 carries every disc row in one answer; only a page past it (a 300-track box set through getAlbum's
         // own paging) goes to the pathfinder.

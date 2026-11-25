@@ -1,22 +1,24 @@
 // ── Entities/Friends.cs — CORE: the friend-activity relation's staged form and its commit (#277) ─────────────────────
 //
 // `Edges.Friends` is ONE run under the synthetic parent `Rail.Friends.Feed`. A worker cannot resolve slots (C1), so a
-// decoded friend crosses as five identities and a time; the commit resolves them and rewrites the run newest first. Every
-// answer is the WHOLE feed, so a batch always replaces the run. The listening-activity feed names only the user, the
-// track and the context, so a friend's album and artist come from the TRACK row once it has loaded: the commit takes
-// them when the row already knows them, and `RefillFriends` fills the rest as track rows land. Session-only: never
+// decoded friend crosses as three identities, a start time and a playing flag; the commit resolves them and rewrites the
+// run playing first, then newest. Every answer is the WHOLE feed, so a batch always replaces the run. The
+// listening-activity feed names only the user, the track and the context, so a friend's album and artist come from the
+// TRACK row once it has loaded: the commit takes them when the row already knows them, and `RefillFriends` fills the
+// rest as track rows land. Session-only: never
 // persisted (Store.cs §6). The host is `Spotify.Friends`; plan: docs/plans/wavee/friend-activity-implementation.md.
 
 using FluentGpu.Foundation;
 
 namespace Wavee;
 
-/// <summary>One decoded friend: identities as the wire gave them (the commit resolves them); an empty album or artist is
-/// read off the track row.</summary>
+/// <summary>One decoded friend: identities as the wire gave them (the commit resolves them), when the activity started,
+/// and whether the friend is playing it now. The album and artist are read off the track row.</summary>
 public struct StagedFriend
 {
-    public StagedId User, Track, Album, Artist, Context;
+    public StagedId User, Track, Context;
     public long TimestampMs;
+    public bool Playing;
 }
 
 public sealed partial class Staging
@@ -50,7 +52,7 @@ public static partial class Entities
     static FriendEdge[] s_friendPayload = new FriendEdge[32];
 
     /// <summary>Land a friends feed after the rows it names: the run becomes the staged friends, one per user (the
-    /// newest), newest first, Complete (empty included).</summary>
+    /// newest), playing first and then newest, Complete (empty included).</summary>
     static partial void CommitFriends(Staging s)
     {
         if (!s.AnswersFriends) return;
@@ -69,12 +71,10 @@ public static partial class Entities
                 if (!dropKinds.Contains(kind, StringComparison.Ordinal)) dropKinds += (dropKinds.Length > 0 ? "," : "") + kind;
                 continue;
             }
-            int album = x.Album.IsEmpty ? 0 : s.Slot(Current.Albums, in x.Album);
-            int artist = x.Artist.IsEmpty ? 0 : s.Slot(Current.Artists, in x.Artist);
             // The context slot is a PLAYLIST slot (Rail.Friends.TargetOf); an album or artist context falls back to the
-            // album / artist the row names.
+            // album / artist the track row names.
             int context = x.Context.IsEmpty || x.Context.Kind(s) != EntityKind.Playlist ? 0 : s.Slot(Current.Playlists, in x.Context);
-            var edge = FromTrack(new FriendEdge(user, x.TimestampMs, track, album, artist, context));
+            var edge = FromTrack(new FriendEdge(user, x.TimestampMs, track, 0, 0, context, x.Playing));
             int dup = -1;
             for (int i = 0; i < n; i++) if (s_friendPayload[i].UserSlot == user) { dup = i; break; }
             if (dup < 0) s_friendPayload[n++] = edge;
@@ -116,7 +116,9 @@ public static partial class Entities
     static void LandFriends(int n)
     {
         var rows = s_friendPayload.AsSpan(0, n);
-        rows.Sort(static (a, b) => b.TimestampMs.CompareTo(a.TimestampMs));
+        // Playing first, then newest; the user slot breaks a tie so the order is stable from one answer to the next.
+        rows.Sort(static (a, b) => a.Playing != b.Playing ? (a.Playing ? -1 : 1)
+            : b.TimestampMs != a.TimestampMs ? b.TimestampMs.CompareTo(a.TimestampMs) : a.UserSlot.CompareTo(b.UserSlot));
         for (int i = 0; i < n; i++) s_friendTargets[i] = rows[i].UserSlot;
         Current.Edges.Friends.Replace(Rail.Friends.Feed, s_friendTargets.AsSpan(0, n), rows, EdgeState.Complete, n);
     }
