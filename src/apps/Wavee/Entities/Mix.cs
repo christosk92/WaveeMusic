@@ -67,6 +67,20 @@ public static class PlaylistMixRules
     public static bool OwesLensRead(PlaylistMixFlags f) => On(f) && (f & PlaylistMixFlags.LensApplied) == 0;
 }
 
+/// <summary>A mixed list's CACHE IDENTITY is (revision, mix lens etag) (full-support plan §2.1.5): a signal changes the items
+/// without moving the revision and causes no push, only the mix lens etag moves (protocol §3.4), and a <c>/diff</c> answer names
+/// the etag it holds now in f22 (protocol §1 step 4, §2). So a held mixed list stands only when the diff says the revision is
+/// unchanged AND names the etag the list is held at; anything else (a moved etag, a moved revision, a diff that names no mix
+/// lens, a failed diff) reads the list in full through the lens. PURE.</summary>
+public static class MixIdentity
+{
+    public enum Verdict : byte { Stands, FullRead }
+
+    public static Verdict Decide(bool revisionUnchanged, string? heldEtag, string? answerEtag)
+        => revisionUnchanged && !string.IsNullOrEmpty(heldEtag) && string.Equals(heldEtag, answerEtag, StringComparison.Ordinal)
+            ? Verdict.Stands : Verdict.FullRead;
+}
+
 /// <summary>The playlist membership edge's WIRE flags (<see cref="PlaylistTrackEdge.Flags"/>) for Mix.</summary>
 public static class PlaylistItemFlags
 {
@@ -130,6 +144,14 @@ public sealed class MixSignals
     /// <summary>The item's <c>not-mixable.reason</c>; null when it has none.</summary>
     public string? NotMixableReason(ulong itemId) => _reasons?.GetValueOrDefault(itemId);
 
+    /// <summary>Every item holding a template or a not-mixable reason (the list write's snapshot, Mix.Persist.cs). Allocates.</summary>
+    public IEnumerable<ulong> Items()
+    {
+        foreach (ulong item in _items.Keys) yield return item;
+        if (_reasons is null) yield break;
+        foreach (ulong item in _reasons.Keys) if (!_items.ContainsKey(item)) yield return item;
+    }
+
     /// <summary>Room for <paramref name="bytes"/> more template bytes: a new set is sized exactly, a later page doubles.</summary>
     internal void Reserve(int bytes)
     {
@@ -156,14 +178,28 @@ public sealed partial class Staging
 }
 
 /// <summary>The Mix side tables: the stored transitions per playlist, kind 217's analysis id per track, and the set of
-/// playlists the provider reads through the mix lens. In memory only: a mixed list is re-read through its lens when its
-/// page opens (O8: no dealer push for a save is known), so nothing here has to survive a restart.</summary>
+/// playlists the provider reads through the mix lens with the lens etag each one is held at. A playlist's transitions,
+/// templates and etag are PERSISTED WITH ITS LIST (Mix.Persist.cs, `list_head.mix`), so a cold start owes no lens read; the
+/// page's revalidation still asks (signals cause no push), and a moved etag reads the list again (MixIdentity).</summary>
 public static class MixData
 {
     static readonly Dictionary<int, Dictionary<ulong, MixTransition>> s_transitions = new();
     static readonly Dictionary<int, MixSignals> s_signals = new();
     static readonly Dictionary<int, string> s_beatsIds = new();
     static readonly ConcurrentDictionary<string, byte> s_lens = new(StringComparer.Ordinal);
+    static readonly ConcurrentDictionary<string, string> s_heldEtags = new(StringComparer.Ordinal);
+
+    /// <summary>WORKER THREAD SAFE: the mix lens etag a lens-read playlist (bare base62 id) is held at — with its revision, the
+    /// list's cache identity (MixIdentity) — or null when none is held.</summary>
+    public static string? HeldEtag(string playlistId) => s_heldEtags.GetValueOrDefault(playlistId);
+
+    /// <summary>Hold (or forget, null) the etag a list read through the lens landed with. UI thread, at commit.</summary>
+    internal static void SetHeldEtag(string playlistId, string? etag)
+    {
+        if (playlistId.Length == 0) return;
+        if (string.IsNullOrEmpty(etag)) s_heldEtags.TryRemove(playlistId, out _);
+        else s_heldEtags[playlistId] = etag;
+    }
 
     /// <summary>Bumped on every change to the transitions or the lens set. UI-thread reads only.</summary>
     public static int Version { get; private set; }
@@ -255,6 +291,9 @@ public static partial class Entities
     /// asked again once (plan §3.2: "the first open of a mixed playlist may cost one extra read").</summary>
     static readonly HashSet<int> s_lensReread = new();
 
+    /// <summary>How many times this session a mixed list owed a lens read (diagnostics: a list restored with its Mix half owes none).</summary>
+    public static int MixLensRereads { get; private set; }
+
     static void CommitMix(Staging s)
     {
         var playlists = Current.Playlists;
@@ -316,10 +355,14 @@ public static partial class Entities
             var flags = (PlaylistMixFlags)playlists.MixFlags[slot];
             bool lens = PlaylistMixRules.On(flags) && !MixOptOut.Is(new global::Wavee.Playlist(slot));
             MixData.SetLens(id, lens);
+            // The list's cache identity is (revision, mix lens etag): the etag a lens read (or the disk) landed is held beside the
+            // revision for the provider's revalidation (Spotify.Api.ReadList, MixIdentity).
+            MixData.SetHeldEtag(id, lens && (flags & PlaylistMixFlags.LensApplied) != 0 ? Strings.Resolve(playlists.MixLensEtag[slot]) : null);
             // Once per playlist per session: a lens read that still names no mix lens must not loop.
             if (lens && PlaylistMixRules.OwesLensRead(flags)
                 && Current.Edges.PlaylistTracks.State(slot) != EdgeState.Unknown && s_lensReread.Add(slot))
             {
+                MixLensRereads++;
                 Log.Info("mix", "lens read owed for a mixed playlist; asking its rows again");
                 RefreshEdge(FetchEdge.PlaylistTracks, slot);
             }

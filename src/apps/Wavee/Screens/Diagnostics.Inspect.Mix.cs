@@ -54,7 +54,7 @@ public static partial class Diagnostics
                 return Inspect.Reply.Ok(id, name, w => { w.WriteString("body", Convert.ToHexString(body).ToLowerInvariant()); w.WriteNumber("bytes", body.Length); });
             }
             string show = a.Str("show", "dump");
-            if (show is "writes" or "fake" or "requests" or "migrate") return MixWritesVerb(id, name, show, a);   // M2: Diagnostics.Inspect.MixWrites.cs
+            if (show is "writes" or "fake" or "requests" or "migrate" or "coldstart") return MixWritesVerb(id, name, show, a);   // M2: Diagnostics.Inspect.MixWrites.cs
             if (show == "semantics") return MixSemantics(id, name);
             if (show == "cancel") return MixCancel(id, name, Math.Clamp(a.Float("at", 0.4f), 0.05f, 0.95f));
             if (a.Has("recipe") && show != "roundtrip")

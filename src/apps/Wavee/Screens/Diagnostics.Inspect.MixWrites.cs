@@ -35,6 +35,7 @@ public static partial class Diagnostics
             }
             if (_shell is null) return Inspect.Reply.Fail(id, name, "mount first: a write's reply lands on the UI thread's frames");
             if (show == "migrate") return MixMigrate(id, name, a);
+            if (show == "coldstart") return MixColdStart(id, name, p, uri, wireId);
 
             Entities.FakeMixServer.Clear();
             var steps = new List<Action<Utf8JsonWriter>>();
@@ -384,6 +385,113 @@ public static partial class Diagnostics
                 w.WriteEndArray();
                 WriteRequests(w, recorded);
             });
+        }
+
+        /// <summary>`mix coldstart`: the persistence of a mixed list's Mix half, through the calls the store makes. The blob the list
+        /// write keeps (MixPersist.Encode, what Store.SaveList puts in list_head.mix); then a launch: the playlist's Mix half forgotten
+        /// (this process holds none of it before the disk read); then the disk read's staging (MixPersist.Stage, what
+        /// Store.StageDiskList calls) committed: the recipes, templates, etag and lens are back and no lens read is owed (the log
+        /// shows none). Last, the cache identity (Api.MixListStands, the provider's revalidation) against the fake server's /diff
+        /// answer: the held etag stands, an etag moved by an edit elsewhere reads the list in full. --fake keeps no store, so the
+        /// SQLite write and read of the column themselves are not run here.</summary>
+        string MixColdStart(int id, string name, Playlist p, string uri, string wireId)
+        {
+            int slot = p.Slot;
+            var table = Entities.Current.Playlists;
+            byte[]? blob = MixPersist.Encode(Entities.Current, slot);
+            if (blob is null) return Inspect.Reply.Fail(id, name, "the playlist holds no Mix half to persist (not mixed, or not read through the lens)");
+            var before = Snap();
+
+            // A launch: nothing of the list's Mix half is in memory before the disk read lands.
+            MixData.Replace(slot, null);
+            MixData.ReplaceSignals(slot, null);
+            table.MixFlags[slot] = 0;
+            table.ClearText(ref table.MixLensEtag, slot);
+            MixData.SetHeldEtag(wireId, null);
+            table.Bump(slot);
+            RunFrames(1);
+            var forgotten = Snap();
+
+            long mark = LogMark();
+            int rereads = Entities.MixLensRereads;
+            var staging = Staging.Rent();
+            bool staged;
+            try
+            {
+                staging.Epoch = Entities.Current.Epoch;
+                staged = MixPersist.Stage(staging, uri, blob);
+                if (staged) { Entities.Commit(staging); Entities.Publish(); }
+            }
+            finally { Staging.Return(staging); }
+            RunFrames(2);
+            var restored = Snap();
+            var logged = MixLogSince(mark);
+            int owed = Entities.MixLensRereads - rereads;
+
+            // The cache identity: the held revision and etag against the server's /diff answer, unchanged and then moved.
+            string revision = Entities.Strings.Resolve(table.Revision[slot]);
+            var baseline = Store.SnapshotList(Entities.Current, EdgeRelation.PlaylistTracks, slot);
+            string held = Entities.Strings.Resolve(table.MixLensEtag[slot]);
+            byte[] same = Entities.FakeMixServer.DiffAnswer(wireId) ?? [];
+            bool standsSame = Spotify.Api.MixListStands(true, same, revision, baseline, held, out string? etagSame);
+            Entities.FakeMixServer.EditElsewhere(wireId);
+            byte[] moved = Entities.FakeMixServer.DiffAnswer(wireId) ?? [];
+            bool standsMoved = Spotify.Api.MixListStands(true, moved, revision, baseline, held, out string? etagMoved);
+            string blobFields = ProtoFields(blob, 0);
+
+            return Inspect.Reply.Ok(id, name, w =>
+            {
+                w.WriteNumber("blobBytes", blob.Length);
+                w.WriteString("blobFields", blobFields.Length > 700 ? blobFields[..700] + "…" : blobFields);
+                WriteSnap(w, "persisted", before);
+                WriteSnap(w, "launch", forgotten);
+                w.WriteBoolean("staged", staged);
+                WriteSnap(w, "restored", restored);
+                w.WriteNumber("lensReadsOwed", owed);
+                w.WriteStartArray("log");
+                foreach (var l in logged) w.WriteStringValue(l);
+                w.WriteEndArray();
+                w.WriteStartObject("identity");
+                w.WriteString("heldRevision", revision);
+                w.WriteString("heldEtag", held);
+                w.WriteString("diffSame", Convert.ToHexString(same).ToLowerInvariant());
+                w.WriteString("answerEtagSame", etagSame ?? "");
+                w.WriteString("verdictSame", standsSame ? "stands" : "full-read");
+                w.WriteString("diffMoved", Convert.ToHexString(moved).ToLowerInvariant());
+                w.WriteString("answerEtagMoved", etagMoved ?? "");
+                w.WriteString("verdictMoved", standsMoved ? "stands" : "full-read");
+                w.WriteEndObject();
+            });
+
+            string[] Snap()
+            {
+                var signals = MixData.Signals(slot);
+                var raws = new System.Text.StringBuilder();
+                foreach (var t in MixData.All(slot))
+                    raws.Append(t.Recipe.FromItemId.ToString("x16", CultureInfo.InvariantCulture)).Append(':').Append(t.Raw.Length).Append("B ");
+                return
+                [
+                    MixData.Count(slot).ToString(CultureInfo.InvariantCulture), raws.ToString().Trim(),
+                    (signals?.Count ?? 0).ToString(CultureInfo.InvariantCulture), (signals?.Bytes ?? 0).ToString(CultureInfo.InvariantCulture),
+                    signals?.MixState is { } ms ? DescribeSignal(ms) : "", Entities.Strings.Resolve(table.MixLensEtag[slot]),
+                    ((PlaylistMixFlags)table.MixFlags[slot]).ToString(),
+                    PlaylistMixRules.OwesLensRead((PlaylistMixFlags)table.MixFlags[slot]) ? "true" : "false",
+                ];
+            }
+
+            static void WriteSnap(Utf8JsonWriter w, string key, string[] s)
+            {
+                w.WriteStartObject(key);
+                w.WriteString("storedTransitions", s[0]);
+                w.WriteString("recipes", s[1]);
+                w.WriteString("signalTemplates", s[2]);
+                w.WriteString("signalTemplateBytes", s[3]);
+                w.WriteString("mixStateSignal", s[4]);
+                w.WriteString("lensEtag", s[5]);
+                w.WriteString("flags", s[6]);
+                w.WriteString("owesLensRead", s[7]);
+                w.WriteEndObject();
+            }
         }
 
         /// <summary>`mix fake`: switch the fake server (fake=ok|offline|fail|clear) or read the fake playlist as someone else's

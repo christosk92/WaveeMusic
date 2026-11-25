@@ -131,19 +131,21 @@ public static partial class Spotify
             if (on) row.MixFlags |= (uint)bit;
         }
 
-        /// <summary>The list half of a v2 read (beside <see cref="PlaylistFormatAttributes"/>): the Mix format attributes,
-        /// f22's mix lens etag, and — when the answer was read THROUGH the mix lens — the stored recipes, signal templates and
-        /// not-mixable reasons of its items and the list's mix-state template, as one staged run (a first page replaces the
-        /// playlist's set; a later page of a truncated list adds to it).
-        /// A diff answer with no attributes says nothing about the list attributes and stages none of them.</summary>
-        static void MixList(ReadOnlySpan<byte> attributes, ReadOnlySpan<byte> lenses22Owner, ReadOnlySpan<byte> contents,
-                            bool sawContents, in StagedId id, Staging s)
+        /// <summary>The mix lens etag a list answer names in f22 (a full read, a signal's reply, or a <c>/diff</c> answer, which carries
+        /// f6 and f22 only: protocol §2); null when it names no mix lens. PURE: the api thread's cache-identity check reads it.</summary>
+        public static string? MixLensEtag(ReadOnlySpan<byte> selectedListContent)
         {
-            // f22: the applied lenses. Seen as `22 { {1 "auto" 2 "auto" 3{…}} {1 "mix" 2 "10b30ddc" 3{…}} }`: read every
-            // f22 either as one lens entry or as a holder of entries.
+            ReadOnlySpan<byte> etag = MixLensEtagBytes(selectedListContent, out _);
+            return etag.IsEmpty ? null : System.Text.Encoding.ASCII.GetString(etag);
+        }
+
+        /// <summary>f22, the applied lenses. Seen as `22 { {1 "auto" 2 "auto" 3{…}} {1 "mix" 2 "10b30ddc" 3{…}} }`: every f22 is read
+        /// either as one lens entry or as a holder of entries. The mix lens's etag, or empty; <paramref name="sawLenses"/>: f22 was there.</summary>
+        static ReadOnlySpan<byte> MixLensEtagBytes(ReadOnlySpan<byte> selectedListContent, out bool sawLenses)
+        {
             ReadOnlySpan<byte> mixEtag = default;
-            bool sawLenses = false;
-            for (var r = new ProtoReader(lenses22Owner); r.Next();)
+            sawLenses = false;
+            for (var r = new ProtoReader(selectedListContent); r.Next();)
             {
                 if (r.Field != 22 || r.Wire != 2) { r.Skip(); continue; }
                 sawLenses = true;
@@ -155,6 +157,34 @@ public static partial class Spotify
                     if (LensEntry(h.Bytes(), out name, out etag) && Is(name, "mix")) mixEtag = etag;
                 }
             }
+            return mixEtag;
+        }
+
+        static bool LensEntry(ReadOnlySpan<byte> entry, out ReadOnlySpan<byte> name, out ReadOnlySpan<byte> etag)
+        {
+            name = etag = default;
+            var r = new ProtoReader(entry);
+            while (r.Next())
+            {
+                if (r.Field == 1 && r.Wire == 2) name = r.Bytes();
+                else if (r.Field == 2 && r.Wire == 2) etag = r.Bytes();
+                else r.Skip();
+            }
+            // A lens name is a short token ("auto", "mix"); a holder's f1 is a nested message, which never is.
+            if (name.IsEmpty || name.Length > 32) return false;
+            foreach (byte b in name) if (b < 0x20 || b > 0x7E) return false;
+            return true;
+        }
+
+        /// <summary>The list half of a v2 read (beside <see cref="PlaylistFormatAttributes"/>): the Mix format attributes,
+        /// f22's mix lens etag, and — when the answer was read THROUGH the mix lens — the stored recipes, signal templates and
+        /// not-mixable reasons of its items and the list's mix-state template, as one staged run (a first page replaces the
+        /// playlist's set; a later page of a truncated list adds to it).
+        /// A diff answer with no attributes says nothing about the list attributes and stages none of them.</summary>
+        static void MixList(ReadOnlySpan<byte> attributes, ReadOnlySpan<byte> lenses22Owner, ReadOnlySpan<byte> contents,
+                            bool sawContents, in StagedId id, Staging s)
+        {
+            ReadOnlySpan<byte> mixEtag = MixLensEtagBytes(lenses22Owner, out bool sawLenses);
             bool lensApplied = !mixEtag.IsEmpty;
             if (attributes.IsEmpty && !sawLenses) return;
 
@@ -243,22 +273,6 @@ public static partial class Spotify
             ref var none = ref recipes.Add();                        // a first page with none: "this list has no edits"
             none.Playlist = id;
             none.ListTemplate = s.AddText(mixState);
-
-            static bool LensEntry(ReadOnlySpan<byte> entry, out ReadOnlySpan<byte> name, out ReadOnlySpan<byte> etag)
-            {
-                name = etag = default;
-                var r = new ProtoReader(entry);
-                while (r.Next())
-                {
-                    if (r.Field == 1 && r.Wire == 2) name = r.Bytes();
-                    else if (r.Field == 2 && r.Wire == 2) etag = r.Bytes();
-                    else r.Skip();
-                }
-                // A lens name is a short token ("auto", "mix"); a holder's f1 is a nested message, which never is.
-                if (name.IsEmpty || name.Length > 32) return false;
-                foreach (byte b in name) if (b < 0x20 || b > 0x7E) return false;
-                return true;
-            }
         }
     }
 }

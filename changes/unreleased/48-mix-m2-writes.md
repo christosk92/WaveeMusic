@@ -21,3 +21,7 @@ themes.
 that playlist unmixed for you too, and choosing it again undoes it everywhere. Playlists you set to listen without Mix on
 this PC before are sent to your account once, the first time Wavee connects. When Spotify can't take the choice right
 away, it applies here at once and reaches your account the next time Wavee connects.
+
+**Mixed playlists open with their transitions at once.** Wavee keeps a mixed playlist's transitions with the playlist on
+this PC, so after a restart its seams, edited transitions and Mix menu are there before Spotify answers; when the
+playlist page opens, Wavee asks Spotify whether any transition changed elsewhere and reads the playlist again only then.
