@@ -139,12 +139,29 @@ internal static class WinUiMixEditor
         };
     }
 
-    /// <summary>Customize: the expander's header, and while open its body (the five pickers, Beatmatching, "use the preset's styles"), easing in as
-    /// the app's disclosures do.</summary>
+    /// <summary>Customize: the expander's header (its chevron trailing the words, as WinUI's Expander puts it), and while open its body (the five
+    /// pickers, Beatmatching, "use the preset's styles"), easing in as the app's disclosures do.</summary>
     static Element Customize(MixEditorProps p, float target)
     {
-        var header = Button.Create(p.CustomizeLabel, p.ToggleCustomize, ButtonAppearance.Subtle, glyph: p.CustomizeOpen ? Icons.ChevronUp : Icons.ChevronDown)
-            with { Key = "mix:ed:customize", MinHeight = target, AlignSelf = FlexAlign.Start };
+        var button = Button.Create(p.CustomizeLabel, p.ToggleCustomize, ButtonAppearance.Subtle);
+        var label = (TextEl)button.Children[0];
+        var chevron = new BoxEl
+        {
+            Key = "mix:ed:customize:chevron", Width = E.ChevronBox, Height = E.ChevronBox, Shrink = 0f, Margin = new Edges4(E.ChevronGap, 0f, 0f, 0f),
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Children =
+            [
+                new TextEl(p.CustomizeOpen ? Icons.ChevronUp : Icons.ChevronDown)
+                {
+                    Size = E.ChevronGlyph, FontFamily = Tok.Definition.Fonts.Icon, Color = Tok.TextSecondary, HoverColor = Tok.TextSecondary,
+                    PressedColor = Tok.TextTertiary, DisabledColor = Tok.TextDisabled,
+                },
+            ],
+        };
+        var header = button with
+        {
+            Key = "mix:ed:customize", MinHeight = target, AlignSelf = FlexAlign.Start, Children = [label with { Shrink = 1f }, chevron],
+        };
         if (!p.CustomizeOpen)
             return new BoxEl { Key = "mix:ed:customize:host", Direction = 1, MinWidth = 0f, Children = [header] };
         var pickers = new List<Element>(p.Ingredients.Length + 1);

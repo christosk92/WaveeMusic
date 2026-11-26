@@ -19,6 +19,9 @@ internal static class WinUiMixEditorRules
     public const float LinkInset = 11f;
     /// <summary>The overlap stepper's value cell (its widest readout, "35.0 s · 32 bars", reserved so a step never moves the buttons).</summary>
     public const float StepperValue = 132f;
+    /// <summary>Customize's chevron, trailing its label as WinUI's Expander places it: the 12-DIP ChevronDown / ChevronUp glyph in its own box, a
+    /// control gap after the words.</summary>
+    public const float ChevronBox = 12f, ChevronGlyph = 12f, ChevronGap = 8f;
     /// <summary>The touch target at Compact (WinUI's 40) and the standard control height.</summary>
     public const float CompactTarget = 40f, Target = 32f;
 
