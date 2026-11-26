@@ -331,8 +331,10 @@ answers this plan:
   abandons a preview without restoring. When the receiving device does not offer `stop-automix-preview`, Wavee sends
   `resume`, not the client's skip-next, which would move the user's own track.
 - **Overlap on the wire (§2.4.4, D14):** the wire follows the official player (B current from the overlap's start,
-  f11 = `fade_out_start_time`, speedB published from the overlap's start). Wavee's own bar is still D14 (b); the
-  owner's decision is open.
+  f11 = `fade_out_start_time`, speedB published from the overlap's start). Wavee's own bar stays D14 (b): the
+  outgoing song with "Mixing into …" until it ends (owner decision, 2026-11-26).
+- **Local "Don't mix into the next song"** ignores Crossfade, like a Spotify "No transition" pair (owner decision,
+  2026-11-26).
 - **Track metadata keys (protocol §6.3):** upcoming rows carry cuepoint position 0 and `automix.mode=auto` even with
   only a fade-in; the current row carries the fade-in of the seam it came in by as well as its own fade-out.
 - **Smart reorder (M8):** in the desktop client it is the Auto-mix button ("Turn on mixing"): `mix-auto-toggle-on/off`
