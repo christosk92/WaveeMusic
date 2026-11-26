@@ -889,7 +889,7 @@ public static partial class Diagnostics
             {
                 Positional = ["do"],
                 Args = [Arg("do", ArgType.Enum, "fulfil, ensure, cache, play, gain or reset", "cache", "fulfil|fulfill|ensure|cache|play|gain|reset"),
-                        Arg("fixture", ArgType.Enum, "a fake clip: welcome (3.4 s), jump (4.9 s), intro (24.5 s, streamed with no length), flaky (the fulfil fails once), broken (fails twice)", null, "welcome|jump|intro|flaky|broken"),
+                        Arg("fixture", ArgType.Enum, "a fake clip: welcome (3.4 s), jump (4.9 s), intro (24.5 s, streamed with no length), flaky (the fulfil fails once), broken (fails twice), cdnflaky (the CDN refuses its first GET)", null, "welcome|jump|intro|flaky|broken|cdnflaky"),
                         Arg("ssml", ArgType.String, "the narration's SSML (instead of a fixture)"),
                         Arg("manifest", ArgType.String, "a narration item's media.manifest, base64: its body (field 1.1.4) is sent verbatim"),
                         Arg("via", ArgType.Enum, "with do=fulfil: build the body from the narration keys, or wrap a reordered body in a manifest and send that", "keys", "keys|manifest"),

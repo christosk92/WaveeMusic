@@ -17,7 +17,8 @@
 //
 // THE FIXTURES (invented SSML; nothing here was captured): welcome 3.4 s (130 frames, 3.396 s), jump 4.9 s (188 frames, 4.911 s),
 // intro 24.5 s (938 frames, 24.503 s) streamed as a cache MISS with no Content-Length over 5.3 s, flaky (the fulfil fails once, then
-// answers), broken (the fulfil fails twice: dropped). Any other SSML is a clip of 70 ms per spoken character plus its
+// answers), broken (the fulfil fails twice: dropped), cdnflaky (the CDN refuses its first GET with a 503, then serves it: the retry
+// fulfils again). The CDN client goes through the app's wire log as the live one does (`Wire.Handler`, in process). Any other SSML is a clip of 70 ms per spoken character plus its
 // `<break time="…"/>`s, served whole: `djtts ensure seconds=200 n=9` fills the 64 MB cap with it.
 
 using System.Net;
@@ -53,8 +54,9 @@ public static partial class Spotify
 
             public const int StreamFirstByteMs = 400, StreamTotalMs = 5_300;
 
-            /// <summary>A named clip. <see cref="FailFirst"/>: how many fulfils of it answer 503 before one answers 303.</summary>
-            public sealed record Fixture(string Name, string Ssml, int Frames, Delivery Delivery, int FailFirst = 0)
+            /// <summary>A named clip. <see cref="FailFirst"/>: how many fulfils of it answer 503 before one answers 303;
+            /// <see cref="CdnFailFirst"/>: how many CDN GETs of it answer 503 before one serves it.</summary>
+            public sealed record Fixture(string Name, string Ssml, int Frames, Delivery Delivery, int FailFirst = 0, int CdnFailFirst = 0)
             {
                 public long ExpectedFrames => (long)Frames * SamplesPerFrame;
                 public double ExpectedMs => ExpectedFrames * 1000.0 / SampleRate;
@@ -69,6 +71,7 @@ public static partial class Spotify
                     938, Delivery.Stream),
                 new("flaky", "<speak xml:lang=\"en-US\">One more try and this one gets through.</speak>", 75, Delivery.Whole, FailFirst: 1),
                 new("broken", "<speak xml:lang=\"en-US\">This one never arrives.</speak>", 60, Delivery.Whole, FailFirst: 2),
+                new("cdnflaky", "<speak xml:lang=\"en-US\">The audio server hiccups once, then this plays.</speak>", 70, Delivery.Whole, CdnFailFirst: 1),
             ];
 
             public static Fixture? FixtureNamed(string name)
@@ -122,6 +125,7 @@ public static partial class Spotify
             static readonly Lock s_seenGate = new();
             static SeenRequest s_lastFulfil;
             static readonly Dictionary<string, int> s_fulfilsBySsml = new(StringComparer.Ordinal);
+            static readonly Dictionary<string, int> s_cdnBySsml = new(StringComparer.Ordinal);
             static long s_fulfilRequests, s_cdnRequests, s_cdnCredentials;
 
             public static SeenRequest LastFulfil { get { lock (s_seenGate) return s_lastFulfil; } }
@@ -132,14 +136,14 @@ public static partial class Spotify
             /// <summary>CDN requests that carried an Authorization or client-token header (must stay 0).</summary>
             public static long CdnCredentials => Interlocked.Read(ref s_cdnCredentials);
 
-            /// <summary>Forget how often each SSML was fulfilled (so `flaky` and `broken` fail again).</summary>
+            /// <summary>Forget how often each SSML was fulfilled and fetched (so `flaky`, `broken` and `cdnflaky` fail again).</summary>
             public static void ResetCounts()
             {
-                lock (s_seenGate) { s_fulfilsBySsml.Clear(); s_lastFulfil = default; }
+                lock (s_seenGate) { s_fulfilsBySsml.Clear(); s_cdnBySsml.Clear(); s_lastFulfil = default; }
             }
 
             public static readonly HttpMessageInvoker Spclient = new(new SpclientHandler());
-            public static readonly HttpClient Cdn = new(new CdnHandler()) { Timeout = Timeout.InfiniteTimeSpan };
+            public static readonly HttpClient Cdn = new(Wire.Handler("cdn", new CdnHandler(), storms: false, inProcess: true)) { Timeout = Timeout.InfiniteTimeSpan };
 
             // ── the spclient ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -238,6 +242,14 @@ public static partial class Spotify
                     try { ssml = Encoding.UTF8.GetString(Convert.FromBase64String(Uri.UnescapeDataString(segment).Replace('-', '+').Replace('_', '/'))); }
                     catch (FormatException) { return new HttpResponseMessage(HttpStatusCode.NotFound); }
                     Fixture? fixture = FixtureFor(ssml);
+                    int fetched;
+                    lock (s_seenGate)
+                    {
+                        s_cdnBySsml.TryGetValue(ssml, out fetched);
+                        s_cdnBySsml[ssml] = fetched + 1;
+                    }
+                    if (fixture is { CdnFailFirst: > 0 } && fetched < fixture.CdnFailFirst)
+                        return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) { RequestMessage = request };
                     byte[] mp3 = SilentMp3(FramesFor(ssml));
                     bool stream = fixture?.Delivery == Delivery.Stream;
                     var response = new HttpResponseMessage(HttpStatusCode.OK)

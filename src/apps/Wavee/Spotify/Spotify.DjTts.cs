@@ -746,6 +746,7 @@ public static partial class Spotify
                 Version = System.Net.HttpVersion.Version20,
                 VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
             };
+            request.Options.Set(Wire.LogPathOption, LogPath(url));   // the path carries the narration's text: the wire log names a hash of it
             HttpResponseMessage response;
             try { response = await CdnHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false); }
             catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException)
@@ -834,6 +835,30 @@ public static partial class Spotify
 
         static string HostOf(string url)
             => Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.Host : "-";
+
+        /// <summary>The CDN url's path as the wire log may name it: the url carries the narration's SSML (its words) base64 in a path segment,
+        /// so every segment from the first long one on (more than 24 characters: a voice, format or rate segment is short) is replaced by
+        /// <c>{ssml:&lt;8 hex&gt;}</c>, a hash of the rest that tells two clips (and a retry of one) apart without the words. The query, signed,
+        /// is never logged anyway. PURE.</summary>
+        internal static string LogPath(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)) return "/-";
+            string path = uri.AbsolutePath;
+            int start = 0;
+            while (start < path.Length)
+            {
+                int end = path.IndexOf('/', start + 1);
+                if (end < 0) end = path.Length;
+                if (end - start - 1 > 24)
+                {
+                    uint hash = 2166136261;
+                    for (int i = start; i < path.Length; i++) { hash ^= path[i]; hash *= 16777619; }
+                    return path[..start] + "/{ssml:" + hash.ToString("x8", System.Globalization.CultureInfo.InvariantCulture) + "}";
+                }
+                start = end;
+            }
+            return path;
+        }
 
         // ── 6. the cap and the spill ─────────────────────────────────────────────────────────────────────────────────────
 

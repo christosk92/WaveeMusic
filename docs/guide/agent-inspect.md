@@ -1072,7 +1072,8 @@ dj do=telemetry                    # (after `dj do=telemetry on=true` before the
 The AI DJ's text-to-speech client (`Spotify/Spotify.DjTts.cs`). The inspector is `--fake`, so the fulfil and the CDN are the in-process
 transports of `Spotify.DjTts.Fake.cs` (silent MPEG-1 Layer III clips of exact length); everything above the wire is the real code. No
 mount. Fixtures: `welcome` (3.4 s), `jump` (4.9 s), `intro` (24.5 s, a cache MISS streamed with no Content-Length over 5.3 s), `flaky`
-(the fulfil fails once), `broken` (fails twice: dropped).
+(the fulfil fails once), `broken` (fails twice: dropped), `cdnflaky` (the CDN answers its first GET 503, then serves it). The fake CDN
+logs through the app's wire log as the live one does, under `wire.local` (`status log="wire.call"`): the url's SSML segment is named `{ssml:<hash>}`, never its words.
 
 - `djtts fulfil fixture=welcome`: the body built from the narration keys (`body` hex, `fields`, `tail` against the spec's
   `18 05 28 01 30 06 38 c4 d8 02`), what the transport received (`request`: verb, url, headers, `receivedEqualsSent`), the `status` and
