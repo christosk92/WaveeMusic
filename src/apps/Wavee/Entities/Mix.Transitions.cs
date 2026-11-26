@@ -89,9 +89,7 @@ internal sealed class MixTransitionsPanel(Playlist playlist, Signal<int> selecte
         }, FluentGpu.Hooks.DepKey.From(open));
         // The editor is THE disclosure motion (Design.Reveal.Drawer): it mounts to open and unmounts to close, its layout lands once and the
         // presented height springs, so the rows below ride it instead of taking one long first step. The host stays while the editor moves
-        // between pairs (the editor is keyed by its pair, so a new pair starts a fresh draft and the host only resizes). Opened WITH the panel
-        // (a seam's click on a shut list) the list bar's slot already eases the whole panel in: a second size motion inside it ended the slot's
-        // ease on a half-sprung editor and the rows under it stepped by the difference, so the editor only springs once the panel stands.
+        // between pairs (the editor is keyed by its pair, so a new pair starts a fresh draft and the host only resizes).
         Element? editor = open >= 0 && open < count
             ? new BoxEl
             {

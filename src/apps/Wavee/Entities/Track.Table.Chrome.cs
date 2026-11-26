@@ -1159,8 +1159,9 @@ public readonly partial struct Track
             scene.BringIntoView(vp, node, 0f, ScrollMove.Glide, band);
         }
 
-        /// <summary>The Tune strip's slot (contract 1.120): the structure's strip while Tune is open, nothing while it is shut, its height easing through real
-        /// layout (the chips slot's form), so the strip opening or shutting slides the rows instead of moving them at once. The strip keeps the rows' gutter,
+        /// <summary>The Tune strip's slot (contract 1.120): the structure's strip while Tune is open, nothing while it is shut, its height revealing as THE
+        /// disclosure mode (<see cref="SlotReveal"/>: layout lands once, the presented height reveals in lockstep with the rows under it, so a strip that
+        /// reveals inside it, Mix's editor, composes with it instead of fighting a Reflow tween), so the strip opening or shutting slides the rows. The strip keeps the rows' gutter,
         /// with the bar's air over it and the header's under it. Its own component: the strip's reads (open, applying, the mix's tuning) re-render this slot,
         /// never the chrome.
         /// <para>#48: a strip can be far taller than the bar (Mix's transition editor). The hero list's slot scrolls with the page under the pinned header
@@ -1193,9 +1194,10 @@ public readonly partial struct Track
                     strip = new ScrollEl { ContentSized = true, MaxHeight = host.TuneSlotCap(), AutoEdgeFade = true, Content = strip };
                 return new BoxEl
                 {
-                    Key = "chrome:tune-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = host.ChromeResize, OnRealized = _capture,
-                    Padding = strip is null ? default : new Edges4(p.PadX, Spacing.XS, p.PadX, Spacing.S),
-                    Children = strip is null ? [] : [strip],
+                    Key = "chrome:tune-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = host.SlotReveal, OnRealized = _capture,
+                    // The air rides inside what reveals (padding cannot ease: on the slot itself it landed with the first frame).
+                    Children = strip is null ? []
+                        : [new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(p.PadX, Spacing.XS, p.PadX, Spacing.S), Children = [strip] }],
                 };
             }
         }

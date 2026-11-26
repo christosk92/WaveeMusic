@@ -115,17 +115,28 @@ internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt,
     readonly Action<int> _open = open;
     int _index = -1;
 
-    Prop<float>? _hoverOpacity;
+    bool _hovered;
+    NodeHandle _hoverNode;
+    Action<NodeHandle>? _captureHover;
     Action<Point2>? _enter;
     Action? _exit;
 
+    /// <summary>The hover band toward shown or hidden (the static opacity a re-render asserts is the same end value).</summary>
+    void Hover(bool on)
+    {
+        if (_hovered == on) return;
+        _hovered = on;
+        if (Context.Scene is { } scene && !_hoverNode.IsNull && scene.IsLive(_hoverNode))
+            Context.Anim?.SeedValue(_hoverNode, AnimChannel.Opacity, on ? 1f : 0f, MotionTokenId.ControlFast);
+    }
+
     public override Element Render()
     {
-        // The hover band's opacity is a bound channel over one signal, written on the strip's enter and exit only (no state per move).
-        var hovered = UseFloatSignal(0f);
-        _hoverOpacity ??= Prop.Of(() => hovered.Value);
-        _enter ??= _ => { if (hovered.Peek() < 1f) hovered.Value = 1f; };
-        _exit ??= () => hovered.Value = 0f;
+        // The hover band fades in and out on the strip's enter and exit only (no state per move, no re-render): a control-fast opacity track on its
+        // node. It fades rather than cuts, so a band the row slides away from (its pair's editor opening) leaves with the row instead of vanishing.
+        _captureHover ??= n => _hoverNode = n;
+        _enter ??= _ => Hover(true);
+        _exit ??= () => Hover(false);
         var seam = UseComputed(() =>
         {
             _ = Entities.Current.Playlists.Changed.Value;          // the mix flags, a local record (its write bumps the row)
@@ -190,7 +201,7 @@ internal sealed class MixSeamLayer(Func<int> display, Func<int, int> originalAt,
             {
                 // A column, not a stack: the handle row above the hairline. The handle sits at the row's right end, where every theme's row
                 // leaves its bottom edge empty (the title lane's subtitle runs along the left half of that edge).
-                Key = "mix:seam:hover", Direction = 1, Grow = 1f, MinWidth = 0f, Opacity = _hoverOpacity!.Value,
+                Key = "mix:seam:hover", Direction = 1, Grow = 1f, MinWidth = 0f, Opacity = _hovered ? 1f : 0f, OnRealized = _captureHover,
                 Cursor = CursorId.Hand, OnClick = () => _open(_index), OnHoverMove = _enter, OnPointerExit = _exit,
                 Children =
                 [

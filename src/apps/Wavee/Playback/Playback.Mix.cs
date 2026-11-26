@@ -491,6 +491,11 @@ internal sealed class MixRailSegment : FluentGpu.Hooks.Component
             : new FluentGpu.Dsl.BoxEl { Key = "mix:rail:stack", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false, Children = [segment, tip] };
     }
 
+    /// <summary>The segment's move when the plan or the duration lands (a track that just loaded reports its real duration a frame later): its
+    /// bounds ease over the control-normal step instead of snapping (its edge slides, its length reveals).</summary>
+    static readonly FluentGpu.Foundation.LayoutTransition s_segmentMotion = new(FluentGpu.Foundation.TransitionChannels.Bounds,
+        FluentGpu.Animation.MotionTok.ControlNormal.ToDynamics(), FluentGpu.Foundation.SizeMode.Reveal, Axes: FluentGpu.Foundation.SizeAxes.Width);
+
     static FluentGpu.Dsl.Element Segment(float from)
     {
         return new FluentGpu.Dsl.BoxEl
@@ -502,6 +507,7 @@ internal sealed class MixRailSegment : FluentGpu.Hooks.Component
                 new FluentGpu.Dsl.BoxEl
                 {
                     Key = "mix:rail:segment", Grow = 1f - from, Basis = 0f, Height = 2f, HitTestVisible = false,
+                    Animate = Design.Reduced ? null : s_segmentMotion,
                     Fill = FluentGpu.Dsl.Tok.TextPrimary with { A = 0.55f },
                 },
             ],

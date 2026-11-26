@@ -695,6 +695,12 @@ public readonly partial struct Track
         /// <summary>A chrome slot whose height a crossing changes (the chips coming into the pinned chrome from the page bar): it eases through real layout,
         /// the rows under it riding it (audit B9). None under reduced motion.</summary>
         internal LayoutTransition? ChromeResize => Design.Reduced ? null : s_listResize;
+
+        /// <summary>The list bar's slot (Tune, Mix's Transitions and editor, Smart reorder): THE disclosure mode (Design.Reveal.Resize: layout lands once,
+        /// the presented height reveals) on the chrome's 280 ms clock, the one the header and rows under the slot ride, so its edge and what follows move
+        /// in lockstep (on the reveal spring the rows ran ahead of the edge and a gap opened between them, closing late). None under reduced motion.</summary>
+        internal LayoutTransition? SlotReveal => Design.Reduced ? null : s_slotReveal;
+        static readonly LayoutTransition s_slotReveal = Design.Reveal.Resize with { Dynamics = s_listResize.Dynamics };
         Snapshot _orderSeen;
         Track[] _curTracks = [], _prevTracks = [];
         StringId[] _curIds = [], _prevIds = [];
