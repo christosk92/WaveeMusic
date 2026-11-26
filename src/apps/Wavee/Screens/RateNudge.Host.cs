@@ -64,7 +64,8 @@ public static partial class RateNudge
     static string s_lastBlocker = "";
     static Action<Action>? s_post;        // the UI thread, from the layer's UsePost
 
-    /// <summary>The UI lane's layer hands the host the UI-thread poster (Shell.Overlays' UsePost). Until then, posts run inline.</summary>
+    /// <summary>The UI lane's layer hands the host the UI-thread poster (Shell.Overlays' UsePost). Until then, posts go
+    /// through <c>Playback.ToUi</c> (<see cref="Post"/>).</summary>
     internal static void BindPost(Action<Action> post) => s_post = post;
 
     public static Policy Rules { get; private set; } = Policy.Default;
@@ -250,7 +251,10 @@ public static partial class RateNudge
         if (why is not null) Log.Info(Cat, why + ": " + Describe(next));
     }
 
-    static void Post(Action a) { if (s_post is { } p) p(a); else a(); }
+    /// <summary>Onto the UI thread: the layer's poster once it is bound, before that the app's own marshaller
+    /// (<c>Playback.ToUi</c>, which queues until the root attaches). Never inline: the stars fetch lands on a pool thread,
+    /// and a settings write there breaks C1 (a fresh profile's first launch failed fast on it before the first frame).</summary>
+    static void Post(Action a) { if (s_post is { } p) p(a); else Playback.ToUi(a); }
 
     // ══ 8. THE LIVE PLATFORM SEAMS ═════════════════════════════════════════════════════════════════════════════════
 
