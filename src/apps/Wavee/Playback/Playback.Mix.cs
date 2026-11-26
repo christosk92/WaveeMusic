@@ -21,8 +21,10 @@ namespace Wavee;
 
 public static partial class Playback
 {
-    /// <summary>What the planner reads of one track: a value built from the track row and its cue edge.</summary>
-    public readonly record struct PairFacts(long DurationMs, ushort TempoX10, byte Camelot, TrackCues Cues, bool Mixable, bool IsLocal);
+    /// <summary>What the planner reads of one track: a value built from the track row and its cue edge. <paramref name="Uri"/>
+    /// (the track uri) seeds the beatmatched Auto's preset pick (<see cref="MixPlanner.AutoBeatmatched"/>).</summary>
+    public readonly record struct PairFacts(long DurationMs, ushort TempoX10, byte Camelot, TrackCues Cues, bool Mixable, bool IsLocal,
+        string? Uri = null);
 
     public static partial class Mix
     {
@@ -105,8 +107,8 @@ public static partial class Playback
             var key = new FollowKey(s.CurrentId, next.IsNone ? default : next.Id, s.Context, MixData.Version, MixOverrides.Version,
                 cur.Kind == EntityKind.Track ? edges.TrackBeats.Version(cur.Slot) : 0,
                 next.Kind == EntityKind.Track ? edges.TrackBeats.Version(next.Slot) : 0,
-                cur.Kind == EntityKind.Track ? edges.TrackCues.Version(cur.Slot) : 0,
-                next.Kind == EntityKind.Track ? edges.TrackCues.Version(next.Slot) : 0,
+                cur.Kind == EntityKind.Track ? BeatmatchFacts.Version(cur.Slot, edges) : 0,      // kinds 28, 218, 6 (and 217)
+                next.Kind == EntityKind.Track ? BeatmatchFacts.Version(next.Slot, edges) : 0,
                 pl > 0 ? edges.PlaylistTracks.Version(pl) : 0,
                 pl > 0 && MixOptOut.Is(new global::Wavee.Playlist(pl)));
             if (key == s_key) return;
@@ -293,13 +295,13 @@ public static partial class Playback
             var edges = Entities.Current.Edges;
             var fa = Facts(a, edges);
             var fb = Facts(b, edges);
-            return MixPlanner.Plan(in fa, edges.TrackBeats.Payload(cur.Slot), in fb, edges.TrackBeats.Payload(next.Slot), hasRecipe, in recipe);
+            return MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, cur.Slot, edges), in fb, BeatmatchFacts.Live(in fb, next.Slot, edges), hasRecipe, in recipe);
         }
 
         internal static PairFacts Facts(global::Wavee.Track t, Edges edges)
         {
             var cues = edges.TrackCues.Payload(t.Slot);
-            return new PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, t.IsLocal);
+            return new PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, t.IsLocal, t.Uri.Text);
         }
 
         /// <summary>The timing for an arbitrary pair of the open playlist (the Transitions view, diagnostics): the same
@@ -337,7 +339,7 @@ public static partial class Playback
             var edges = Entities.Current.Edges;
             var fa = Facts(a, edges);
             var fb = Facts(b, edges);
-            return MixPlanner.Plan(in fa, edges.TrackBeats.Payload(a.Slot), in fb, edges.TrackBeats.Payload(b.Slot), hasRecipe, in recipe);
+            return MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, a.Slot, edges), in fb, BeatmatchFacts.Live(in fb, b.Slot, edges), hasRecipe, in recipe);
         }
     }
 
@@ -347,9 +349,9 @@ public static partial class Playback
     /// `mix autocheck`): A's overlap runs from 2500 ms before A's last end candidate (kind 28 field 4, the largest ms) to 2500 ms
     /// after it, or to A's end when that comes first; B enters at 0 and fades in to 2500 ms after its first start candidate
     /// (kind 28 field 3, the smallest ms), its own length; Fade (preset 1), bars 0, speeds 1. Which pairs Spotify beatmatches,
-    /// and how, is not fitted yet, and the engine cannot stretch one voice (M4): <see cref="AutoBeatmatched"/> is where that fit
-    /// plugs in, and until then every Auto pair takes the rule above.</para></summary>
-    public static class MixPlanner
+    /// and how, is <see cref="AutoBeatmatched"/> (Playback.Mix.Auto.cs, reference §7.2); a pair it finds no beatmatched window
+    /// for takes the rule above.</para></summary>
+    public static partial class MixPlanner
     {
         /// <summary>The rule's reach around a cue candidate: A's overlap spans this before and after A's last end candidate, B's
         /// fade-in runs this far past B's first start candidate.</summary>
@@ -360,9 +362,10 @@ public static partial class Playback
         public const uint FallbackWindowMs = 2_510;
         public const uint MinTrackMs = 30_000;
 
-        /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. Spans are the tracks' kind-217
-        /// grids in <see cref="BeatGrid"/> packing (may be empty), for <see cref="AutoBeatmatched"/>.</summary>
-        public static MixTiming Plan(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB,
+        /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. <paramref name="ia"/> /
+        /// <paramref name="ib"/> are the tracks' analysis for <see cref="AutoBeatmatched"/> (<see cref="BeatmatchFacts.Live(in PairFacts, int, Edges)"/>;
+        /// default = none, the pair is not beatmatched).</summary>
+        public static MixTiming Plan(in PairFacts a, in BeatmatchFacts ia, in PairFacts b, in BeatmatchFacts ib,
             bool hasRecipe, in MixRecipe recipe)
         {
             if (a.IsLocal || b.IsLocal) return MixTiming.Refused(MixWhyNot.LocalFile);
@@ -370,17 +373,7 @@ public static partial class Playback
             if (hasRecipe && recipe.IsNoTransition) return MixTiming.Refused(MixWhyNot.NoTransition);
             if (a.DurationMs < MinTrackMs || b.DurationMs <= 0) return MixTiming.Refused(MixWhyNot.TooShort);
             if (hasRecipe) return Saved(in recipe, in a, in b);
-            return AutoBeatmatched(in a, beatsA, in b, beatsB, out var matched) ? matched : Auto(in a, in b);
-        }
-
-        /// <summary>THE SEAM for Spotify's beatmatched Auto (reference §7.2: which pairs it matches, 2 or 4 bars, the preset by
-        /// score, B's speed). Not fitted yet (the engine plays a speed since M4; the fit is its own open item), so it says no and the
-        /// pair takes <see cref="Auto"/>. When the fit lands it returns true with a plan of <c>durationBars</c> 2 or 4, its preset and
-        /// <see cref="MixTiming.SpeedB"/>.</summary>
-        public static bool AutoBeatmatched(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB, out MixTiming timing)
-        {
-            timing = default;
-            return false;
+            return AutoBeatmatched(in a, in ia, in b, in ib, out var matched) ? matched : Auto(in a, in b);
         }
 
         /// <summary>Spotify's Auto for a pair it does not beatmatch (see the class summary). Every value is the rule's; a missing

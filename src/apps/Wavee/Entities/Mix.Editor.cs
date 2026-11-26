@@ -75,7 +75,9 @@ public static class MixEdit
         ulong itemB = MixRecipe.Hex64(Entities.Strings.Resolve(payload[index + 1].ItemId));
         var fa = Facts(a);
         var fb = Facts(b);
-        var auto = Playback.MixPlanner.Plan(in fa, edges.TrackBeats.Payload(a.Slot), in fb, edges.TrackBeats.Payload(b.Slot), false, default);
+        // The pair's Auto with every analysis the beatmatched Auto reads (and the uris its preset pick seeds from), as the deck plans it.
+        var auto = Playback.MixPlanner.Plan(in fa, Playback.BeatmatchFacts.Live(in fa, a.Slot, edges), in fb,
+            Playback.BeatmatchFacts.Live(in fb, b.Slot, edges), false, default);
         var now = Playback.Mix.PlanListPair(playlistSlot, index, index + 1);
         bool local = MixOverrides.TryGet(p.Id.Text, itemA, itemB, out var rec);
         bool writes = Spotify.Mixes.CanWrite(p) && MixData.Signals(playlistSlot) is { } signals && !signals.TransitionTemplate(itemA).IsEmpty;
@@ -85,7 +87,7 @@ public static class MixEdit
     static Playback.PairFacts Facts(Track t)
     {
         var cues = Entities.Current.Edges.TrackCues.Payload(t.Slot);
-        return new Playback.PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, false);
+        return new Playback.PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, false, t.Uri.Text);
     }
 
     /// <summary>The pair is edited (a Spotify recipe, or a record on this PC that is not "Auto").</summary>
@@ -231,7 +233,8 @@ public static class MixEdit
         var fa = Facts(pair.A);
         var fb = Facts(pair.B);
         var edges = Entities.Current.Edges;
-        return Playback.MixPlanner.Plan(in fa, edges.TrackBeats.Payload(pair.A.Slot), in fb, edges.TrackBeats.Payload(pair.B.Slot), true, in recipe);
+        return Playback.MixPlanner.Plan(in fa, Playback.BeatmatchFacts.Live(in fa, pair.A.Slot, edges), in fb,
+            Playback.BeatmatchFacts.Live(in fb, pair.B.Slot, edges), true, in recipe);
     }
 
     /// <summary>The recipe a save of <paramref name="to"/> sends (opened as <paramref name="from"/>), and the bytes it is patched over (the

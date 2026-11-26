@@ -193,8 +193,8 @@ public static partial class Spotify
 
             if (route.Transport == RouteTransport.Metadata)
             {
-                ReadOnlySpan<int> one = [route.Extension];
-                MetadataFor(batch, one, s, ref outcome);
+                Span<int> kinds = stackalloc int[4];
+                MetadataFor(batch, kinds[..FetchRoutes.EdgeKinds(edge, offset, kinds)], s, ref outcome);
                 return;
             }
 

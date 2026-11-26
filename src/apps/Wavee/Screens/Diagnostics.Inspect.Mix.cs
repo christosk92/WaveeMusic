@@ -148,6 +148,17 @@ public static partial class Diagnostics
                     else w.WriteString("cues", Entities.Current.Edges.TrackCues.State(targets[i]).ToString());
                     // The waveform the editor's lanes draw (kind 237 samples; 0 = none yet).
                     w.WriteNumber("waveSamples", Entities.Current.Edges.TrackWaveform.Payload(targets[i]).Length);
+                    // The rest of what the beatmatched Auto reads: kind 28's candidate lists, kind 218's frames, kind 6's genres.
+                    var cands = Entities.Current.Edges.TrackCueCandidates.Payload(targets[i]);
+                    var startCands = new List<uint>(); var endCands = new List<uint>();
+                    foreach (uint c in cands) (CueCandidate.IsEnd(c) ? endCands : startCands).Add(CueCandidate.Ms(c));
+                    w.WriteString("startCandidatesMs", string.Join(" ", startCands));
+                    w.WriteString("endCandidatesMs", string.Join(" ", endCands));
+                    var frames = VocalBlock.Read(Entities.Current.Edges.TrackVocals.Payload(targets[i]), out float fps);
+                    w.WriteString("vocals", frames.IsEmpty ? Entities.Current.Edges.TrackVocals.State(targets[i]).ToString()
+                        : frames.Length + " frames at " + fps.ToString(CultureInfo.InvariantCulture) + " fps");
+                    var genres = Entities.Current.Edges.TrackMixGenres.Payload(targets[i]);
+                    w.WriteString("genres", genres.Length > 0 ? genres[0].ToString() : "Unknown");
                     if (MixData.TryGet(slot, MixRecipe.Hex64(item), out var tr)) { var rec = tr.Recipe; WriteRecipe(w, "recipe", in rec, tr.TransitionUri); }
                     w.WriteEndObject();
                 }
@@ -182,6 +193,7 @@ public static partial class Diagnostics
                         if (t.Curves is not null) w.WriteString("curveOverrides", t.Curves.ToString());
                         if (t.SpeedB != 1f) w.WriteNumber("speedB", t.SpeedB);
                         if (t.Notes != MixPlanNotes.None) w.WriteString("notes", t.Notes.ToString());
+                        if (t.Source == MixSource.Auto && t.Bars > 0) WriteBeatmatchScores(w, targets[i], targets[i + 1]);
                     }
                     w.WriteEndObject();
                 }
@@ -192,6 +204,32 @@ public static partial class Diagnostics
                 w.WriteNumber("userFadeMs", Playback.Audio.CrossfadeMs);
                 w.WriteNumber("pumpFadeMs", Playback.Audio.HandOffFadeMsNow);
             });
+        }
+
+        /// <summary>The beatmatched Auto's scores for the window it chose for A → B (reference §7.2: r0 place, r1 cue, r2 vocals,
+        /// r3 key, r4 genre, the total, the Pareto layer, the candidates kept and found), over the tracks' stored analysis.</summary>
+        static void WriteBeatmatchScores(Utf8JsonWriter w, int slotA, int slotB)
+        {
+            var edges = Entities.Current.Edges;
+            var a = new Track(slotA);
+            var b = new Track(slotB);
+            var cuesA = edges.TrackCues.Payload(slotA);
+            var cuesB = edges.TrackCues.Payload(slotB);
+            var fa = new Playback.PairFacts(a.DurationMs, a.Tempo, a.Camelot, cuesA.Length > 0 ? cuesA[0] : default, true, false, a.Uri.Text);
+            var fb = new Playback.PairFacts(b.DurationMs, b.Tempo, b.Camelot, cuesB.Length > 0 ? cuesB[0] : default, true, false, b.Uri.Text);
+            if (!Playback.MixPlanner.AutoBeatmatched(in fa, Playback.BeatmatchFacts.Live(in fa, slotA, edges), in fb,
+                    Playback.BeatmatchFacts.Live(in fb, slotB, edges), out _, out var sc)) return;
+            w.WriteStartObject("scores");
+            w.WriteNumber("r0", sc.R0);
+            w.WriteNumber("r1", sc.R1);
+            w.WriteNumber("r2", sc.R2);
+            w.WriteNumber("r3", sc.R3);
+            w.WriteNumber("r4", sc.R4);
+            w.WriteNumber("total", sc.Total);
+            w.WriteNumber("layer", sc.Layer);
+            w.WriteNumber("kept", sc.Kept);
+            w.WriteNumber("found", sc.Found);
+            w.WriteEndObject();
         }
 
         /// <summary>`mix roundtrip`: every stored recipe of the playlist (and `recipe=`), decoded and encoded again over its own

@@ -626,7 +626,7 @@ public static partial class Diagnostics
                         Arg("eq", ArgType.Int, "curves=: an EQ style override (recipe 2.4)"),
                         Arg("filter", ArgType.Int, "curves=: a filter style override (recipe 2.5)"),
                         Arg("fx", ArgType.Int, "curves=: an effect style override (recipe 2.12)"),
-                        Arg("autocheck", ArgType.Path, "Spotify's Auto against the official client's own answers: a folder outside the repo holding auto-pairs*.json (the client's Auto per adjacent pair) and *inputs*.json (kind 28 cue candidates and kind 10 durations per track uri); each pair's inputs run through the real planner (MixPlanner.Plan), the matches counted, every miss listed")],
+                        Arg("autocheck", ArgType.Path, "Spotify's Auto against the official client's own answers: a folder outside the repo holding auto-pairs*.json (the client's Auto per adjacent pair) *inputs*.json (kind 28 cue candidates and kind 10 durations per track uri) and wire*.json (each track's raw kind 217, 28, 218 and 6 payloads, base64, for the live line: Wavee's own decoders); each pair's inputs run through the real planner (MixPlanner.Plan), the matches counted, every miss listed")],
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {

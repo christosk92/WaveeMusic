@@ -97,8 +97,10 @@ public static partial class Playback
             var a = new global::Wavee.Track(targets[fromIndex]);
             var b = new global::Wavee.Track(targets[toIndex]);
             if (!a.IsValid || !b.IsValid || a.IsLocal || b.IsLocal) return false;
+            var fa = Mix.Facts(a, edges);
+            var fb = Mix.Facts(b, edges);
             MixTiming timing = recipe is { } edit
-                ? MixPlanner.Plan(Mix.Facts(a, edges), edges.TrackBeats.Payload(a.Slot), Mix.Facts(b, edges), edges.TrackBeats.Payload(b.Slot), true, in edit)
+                ? MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, a.Slot, edges), in fb, BeatmatchFacts.Live(in fb, b.Slot, edges), true, in edit)
                 : Mix.PlanListPair(playlistSlot, fromIndex, toIndex);
             if (ForwardsPlays) return Send(p, fromIndex, toIndex, a, b, recipe, raw);
             return Play(new EntityRef(EntityKind.Track, a.Slot), new EntityRef(EntityKind.Track, b.Slot), in timing, Origin.Local, loop, -1);
@@ -133,7 +135,7 @@ public static partial class Playback
             var fb = Mix.Facts(tb, edges);
             if (fa.DurationMs <= 0) fa = fa with { DurationMs = Math.Max(MixPlanner.MinTrackMs, (long)recipe.OutStartMs + recipe.OverlapMs) };
             if (fb.DurationMs <= 0) fb = fb with { DurationMs = (long)recipe.InStartMs + MixStyles.MaxTransitionMs + PostRollMs };
-            var timing = MixPlanner.Plan(in fa, edges.TrackBeats.Payload(a.Slot), in fb, edges.TrackBeats.Payload(b.Slot), hasRecipe, in recipe);
+            var timing = MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, a.Slot, edges), in fb, BeatmatchFacts.Live(in fb, b.Slot, edges), hasRecipe, in recipe);
             int preRoll = (int)Math.Clamp(preview.StartPositionMs, 0, 60_000);
             Log.Info("mix", "automix-preview received: preset=" + timing.Preset + " out=" + timing.OutStartMs + " overlap=" + timing.OutDurationMs
                 + " preRoll=" + preRoll + (hasRecipe ? "" : " (no recipe: Auto)"));

@@ -10,8 +10,9 @@
 //   item attributes (f14 set-transition, not-mixable, the recipe)     ─▶ PlaylistTrackEdge.Flags + MixData.Transitions
 //   item f14 / f11 not-mixable.reason, contents.5 mix-state (lens)    ─▶ MixData.Signals (the templates a write echoes)
 //
-// The per-track analysis the planner reads (kind 217 beats, kind 28 cue points) lands in Edges.TrackBeats and
-// Edges.TrackCues (Edges.cs); kind 217's analysis id, which a recipe pins, in MixData.BeatsIds.
+// The per-track analysis the planner reads (kind 217 beats, kind 28 cue points and candidate lists, kind 218 vocal activity,
+// kind 6's genre facts) lands in Edges.TrackBeats, TrackCues, TrackCueCandidates, TrackVocals and TrackMixGenres (Edges.cs);
+// kind 217's analysis id, which a recipe pins, in MixData.BeatsIds.
 //
 // UI THREAD, single writer (the entity tables' rule), EXCEPT the lens set: the fetch provider reads it on its worker
 // thread to choose the `spotify-apply-lenses` header, so it is a concurrent set written at commit.
@@ -94,19 +95,61 @@ public static class PlaylistItemFlags
 
 /// <summary>Kind 28: the chosen start and end cue (fields 1, 2), ms, 0 = none; and of the candidate lists (fields 3, 4) the
 /// smallest start candidate and the largest end candidate, which Spotify's Auto for a pair it does not beatmatch reads (A's
-/// last end candidate, B's first start candidate; full-support reference §7.1). A candidate may sit at 0 ms, so
-/// <see cref="Candidates"/> says which one the answer had. 20 bytes, unmanaged: the payload of <see cref="Edges.TrackCues"/>
-/// (the <see cref="WaveSample"/> payload-only precedent; not persisted).</summary>
+/// last end candidate, B's first start candidate; full-support reference §7.1). A cue or a candidate may sit at 0 ms, so
+/// <see cref="Candidates"/> says which the answer had. The whole candidate lists, in answer order, are
+/// <see cref="Edges.TrackCueCandidates"/> (the beatmatched Auto reads them, §7.2). 20 bytes, unmanaged: the payload of
+/// <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent; not persisted).</summary>
 public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, CueCandidates Candidates = CueCandidates.None,
     uint FirstStartCandidateMs = 0, uint LastEndCandidateMs = 0)
 {
     public bool HasFirstStartCandidate => (Candidates & CueCandidates.Start) != 0;
     public bool HasLastEndCandidate => (Candidates & CueCandidates.End) != 0;
+    /// <summary>Field 1 was on the wire (its ms may be absent: 0).</summary>
+    public bool HasStartCue => (Candidates & CueCandidates.StartCue) != 0;
+    /// <summary>Field 2 was on the wire (its ms may be absent: 0).</summary>
+    public bool HasEndCue => (Candidates & CueCandidates.EndCue) != 0;
 }
 
-/// <summary>Which of kind 28's candidate lists an answer carried (<see cref="TrackCues.Candidates"/>).</summary>
+/// <summary>Which of kind 28's fields an answer carried (<see cref="TrackCues.Candidates"/>): the candidate lists (3, 4) and
+/// the chosen cues (1, 2).</summary>
 [Flags]
-public enum CueCandidates : ushort { None = 0, Start = 1 << 0, End = 1 << 1 }
+public enum CueCandidates : ushort { None = 0, Start = 1 << 0, End = 1 << 1, StartCue = 1 << 2, EndCue = 1 << 3 }
+
+/// <summary>One of kind 28's candidates as <see cref="Edges.TrackCueCandidates"/> holds it, in answer order: ms in bits 0..30,
+/// bit 31 set for an end candidate (field 4), clear for a start candidate (field 3).</summary>
+public static class CueCandidate
+{
+    public const uint EndBit = 0x8000_0000u, MsMask = 0x7FFF_FFFFu;
+    /// <summary>The most candidates kept per track (the reference set's longest answer has 41).</summary>
+    public const int Max = 256;
+    public static uint Ms(uint packed) => packed & MsMask;
+    public static bool IsEnd(uint packed) => (packed & EndBit) != 0;
+}
+
+/// <summary>Kind 218 (vocal activity) as <see cref="Edges.TrackVocals"/> holds it: 64 frames per entry, one byte each (the
+/// wire's value, a vocal probability in percent; the beatmatched Auto reads byte / 255). Entry 0 is the header: the frame
+/// rate (frames per second, f1 / f4 as a float) in bytes 0..3 and the frame count in bytes 4..7; the frames follow from entry
+/// 1, the last entry zero-padded. About 1.1 bytes per frame (70 fps: 19 KB for a 4-minute track); not persisted.</summary>
+[System.Runtime.CompilerServices.InlineArray(Frames)]
+public struct VocalBlock
+{
+    public const int Frames = 64;
+    byte _frame;
+
+    /// <summary>The frames and their rate out of a stored run (empty when the run holds none).</summary>
+    public static ReadOnlySpan<byte> Read(ReadOnlySpan<VocalBlock> run, out float fps)
+    {
+        fps = 0f;
+        if (run.Length < 2) return default;
+        var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(run);
+        fps = System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(bytes);
+        int frames = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(bytes[4..]);
+        return frames <= 0 || fps <= 0 ? default : bytes.Slice(Frames, Math.Min(frames, bytes.Length - Frames));
+    }
+
+    /// <summary>The entries a run of <paramref name="frames"/> frames takes (the header included).</summary>
+    public static int Entries(int frames) => frames <= 0 ? 0 : 1 + (frames + Frames - 1) / Frames;
+}
 
 /// <summary>One stored (edited) transition: the decoded recipe, its raw bytes for a verbatim carry on a later write,
 /// and the server-minted <c>spotify:transition:…</c> uri.</summary>

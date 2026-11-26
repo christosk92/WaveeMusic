@@ -3,8 +3,10 @@
 // One mixed playlist for --fake and the inspector, shaped like a captured mixed list (report §3.1, §3.3): owned by
 // the account, the mix lens applied, ten mixable rows whose last pair runs into a LOCAL file (not-mixable, reason
 // entity-kind), seven stored recipes (Rise, a beatmatched Slam with an EQ override carrying fields this build does not know,
-// preset 19 at 2 bars, Wave at 4 bars, a "no transition", a Fade and a Dissolve), synthetic kind-217 grids from each
-// track's seeded tempo and kind-28 cue points. Every value is made up here. Route: pl:spotify:playlist:plmix.
+// preset 19 at 2 bars, Wave at 4 bars, a "no transition", a Fade and a Dissolve), and per track made-up answers of the four
+// kinds the beatmatched Auto reads (217 grid from the seeded tempo, 28 cues and candidate lists, 218 vocal activity, 6
+// descriptor concepts), run through the decoders' own readers into the edge tables. Every value is made up here.
+// Route: pl:spotify:playlist:plmix.
 
 using System.Globalization;
 
@@ -123,46 +125,22 @@ public static partial class Entities
             try
             {
                 Spotify.Api.PlaylistAnswer(body, MixWireUri, s);
-                // Kind 28 answers for the two mixable rows (the same tracks as plmix's rows 0 and 1) through the real decoder:
-                // candidate lists in confidence order, as the wire sorts them, whose smallest start and largest end candidate are the
-                // ones s_mixCandidates seeds, so the decode lands what the seed holds.
+                // Kind 217, 28, 218 and 6 answers for the two mixable rows (the same tracks as plmix's rows 0 and 1) through the real
+                // staged decoders (Spotify.Decode.Extension) and the commit: the same made-up bodies the seed reads, so the decode
+                // lands what the seed holds (the dump's beats, cues, candidate lists, vocals and genres of those rows).
                 for (int k = 0; k < 2; k++)
                 {
-                    var t = new global::Wavee.Track(SlotOf(EntityKind.Track, TrackUri(s_mixPool[k])));
-                    var (firstStart, endGap) = s_mixCandidates[k];
-                    uint lastEnd = (uint)Math.Max(0, t.DurationMs - endGap);
-                    Spotify.Decode.Cuepoints(CuepointsBody((uint)firstStart, lastEnd, t.Tempo / 10f, (uint)t.DurationMs),
-                        System.Text.Encoding.UTF8.GetBytes(TrackUri(s_mixPool[k])), s);
+                    int slot = SlotOf(EntityKind.Track, TrackUri(s_mixPool[k]));
+                    var uri = System.Text.Encoding.UTF8.GetBytes(TrackUri(s_mixPool[k]));
+                    var bodies = AnalysisBodies(slot, k);
+                    Spotify.Decode.Extension(Spotify.Decode.Ext.MixBeats, uri, bodies.Beats, s);
+                    Spotify.Decode.Extension(Spotify.Decode.Ext.Cuepoints, uri, bodies.Cues, s);
+                    Spotify.Decode.Extension(Spotify.Decode.Ext.MixVocals, uri, bodies.Vocals, s);
+                    Spotify.Decode.Extension(Spotify.Decode.Ext.TrackDescriptor, uri, bodies.Descriptors, s);
                 }
                 Commit(s);
             }
             finally { Staging.Return(s); }
-        }
-
-        /// <summary>A made-up kind 28 <c>Cuepoints</c> answer: start and end cue, three start and three end candidates.</summary>
-        static byte[] CuepointsBody(uint firstStart, uint lastEnd, float bpm, uint durationMs)
-        {
-            var buffer = new byte[512];
-            var w = new Spotify.Decode.ProtoWriter(buffer);
-            Cue(ref w, 1, firstStart + 8_000, bpm, 0.61);
-            Cue(ref w, 2, lastEnd - 12_000, bpm, 0.55);
-            Cue(ref w, 3, firstStart + 8_000, bpm, 0.61);
-            Cue(ref w, 3, Math.Min(durationMs / 2, firstStart + 40_000), bpm, 0.18);
-            Cue(ref w, 3, firstStart, bpm, 0.12);
-            Cue(ref w, 4, lastEnd - 12_000, bpm, 0.55);
-            Cue(ref w, 4, lastEnd, bpm, 0.21);
-            Cue(ref w, 4, lastEnd - 30_000, bpm, 0.07);
-            return buffer.AsSpan(0, w.Length).ToArray();
-
-            static void Cue(ref Spotify.Decode.ProtoWriter w, int field, uint ms, float bpm, double confidence)
-            {
-                int m = w.Open(field);
-                if (ms != 0) w.UAlways(1, ms);
-                w.F32(2, bpm);
-                w.UAlways(3, 1);
-                w.F64(4, confidence);
-                w.Close(m);
-            }
         }
 
         static byte[] MixWireBody()
@@ -385,26 +363,125 @@ public static partial class Entities
             (20, 1_100), (260, 4_700), (480, 30), (40, 2_200), (10, 3_300), (590, 20), (1_170, 6_100), (90, 2_600), (-1, -1), (370, 900),
         ];
 
-        /// <summary>A constant grid at the track's seeded tempo (4/4, the first downbeat 180 ms in), its analysis id, and
-        /// cue points: the start cue on the second bar for every third row (so some pairs enter mid-file), the end cue
-        /// 16 s before the end, and the candidates of <see cref="s_mixCandidates"/>.</summary>
-        static void SeedAnalysis(int trackSlot, int k)
+        /// <summary>Made-up kind 217, 28, 218 and 6 answers (extension payloads) for pool row <paramref name="k"/>:
+        /// <list type="bullet">
+        /// <item>217: a constant 4/4 grid at the track's seeded tempo, the first downbeat 180 ms in, every confidence 0.9.</item>
+        /// <item>28: the start cue on the second bar for every third row (so some pairs enter mid-file), else at 0 ms (field 1
+        /// present, its ms absent); the end cue 16 s before the end; start candidates (answer order) the cue or later, 30 s on,
+        /// and <see cref="s_mixCandidates"/>'s smallest last; end candidates the cue, the largest, 30 s before it. Row 8 has no
+        /// candidate lists.</item>
+        /// <item>218: 70 fps, singing (0.6 to 0.85) from 20 s in to 25 s before the end, an 8 s break at the middle, quiet (0.15)
+        /// elsewhere, so a window inside the intro or the outro scores r2 = 1 and one over the verses less.</item>
+        /// <item>6: rows 8 and 9 carry a long-window genre (both: the long relation, so the last pair favours long windows), rows
+        /// 0, 3 and 6 a short-window one, the rest none.</item>
+        /// </list></summary>
+        static (byte[] Beats, byte[] Cues, byte[] Vocals, byte[] Descriptors) AnalysisBodies(int trackSlot, int k)
         {
             var t = new global::Wavee.Track(trackSlot);
             long dur = t.DurationMs;
             double bpm = t.Tempo > 0 ? t.Tempo / 10.0 : 120.0;
             double period = 60_000.0 / bpm;
             int count = (int)Math.Min(BeatGrid.MaxBeats, Math.Max(0, (dur - 180) / period));
-            var beats = new uint[count];
+            var buffer = new byte[Math.Max(64 * 1024, count * 24 + (int)(dur * 70 / 1000) + 1024)];
+
+            var w = new Spotify.Decode.ProtoWriter(buffer);
+            w.UAlways(1, 4);
             for (int i = 0; i < count; i++)
-                beats[i] = (uint)(180 + i * period + 0.5) | (i % 4 == 0 ? BeatGrid.DownbeatBit : 0u);
+            {
+                uint ms = (uint)(180 + i * period + 0.5);
+                int beat = w.Open(2);
+                w.F32(1, ms * 0.001f);
+                w.UAlways(3, (ulong)(i % 4 + 1));
+                w.F32(4, 0.9f);
+                if (i % 4 == 0) w.F32(5, 1f);
+                w.Close(beat);
+            }
+            w.Utf8Always(3, System.Text.Encoding.ASCII.GetBytes(FakeBeatsId(k)));
+            byte[] beats = buffer.AsSpan(0, w.Length).ToArray();
+
+            uint start = k % 3 == 1 ? (uint)(180 + 4 * period + 0.5) : 0u;
+            uint end = (uint)Math.Max(0, dur - 16_000);
+            var (firstStart, endGap) = s_mixCandidates[k % s_mixCandidates.Length];
+            w = new Spotify.Decode.ProtoWriter(buffer);
+            Cue(ref w, 1, start, (float)bpm, 0.61);
+            Cue(ref w, 2, end, (float)bpm, 0.55);
+            if (firstStart >= 0)
+            {
+                Cue(ref w, 3, Math.Max(start, (uint)firstStart), (float)bpm, 0.61);
+                Cue(ref w, 3, (uint)firstStart + 30_000, (float)bpm, 0.18);
+                Cue(ref w, 3, (uint)firstStart, (float)bpm, 0.12);
+            }
+            if (endGap >= 0)
+            {
+                uint lastEnd = (uint)Math.Max(0, dur - endGap);
+                Cue(ref w, 4, end, (float)bpm, 0.55);
+                Cue(ref w, 4, lastEnd, (float)bpm, 0.21);
+                Cue(ref w, 4, (uint)Math.Max(0, (long)lastEnd - 30_000), (float)bpm, 0.07);
+            }
+            byte[] cues = buffer.AsSpan(0, w.Length).ToArray();
+
+            int frames = (int)((dur * 70 + 999) / 1000);
+            var activity = new byte[frames];
+            for (int i = 0; i < frames; i++)
+            {
+                double sec = i / 70.0, mid = dur / 2000.0;
+                bool sings = sec >= 20 && sec < dur / 1000.0 - 25 && Math.Abs(sec - mid) >= 4;
+                activity[i] = (byte)(sings ? 60 + (i / 35 + k) % 26 : 15);
+            }
+            w = new Spotify.Decode.ProtoWriter(buffer);
+            w.F32(1, 22_050f);
+            w.UAlways(2, 1);
+            w.UAlways(4, 315);
+            w.Utf8Always(5, activity);
+            byte[] vocals = buffer.AsSpan(0, w.Length).ToArray();
+
+            bool longGenre = k is 8 or 9, shortGenre = !longGenre && k % 3 == 0;
+            w = new Spotify.Decode.ProtoWriter(buffer);
+            Descriptor(ref w, "night drive", 0.5f, "spotify:concept:0000000000000000000000", "Night Drive");
+            if (longGenre) Descriptor(ref w, "techno", 0.4f, Playback.MixPlanner.LongGenres[1], "Techno");
+            if (shortGenre) Descriptor(ref w, "pop", 0.4f, Playback.MixPlanner.ShortGenres[0], "Pop");
+            byte[] descriptors = buffer.AsSpan(0, w.Length).ToArray();
+            return (beats, cues, vocals, descriptors);
+
+            static void Cue(ref Spotify.Decode.ProtoWriter w, int field, uint ms, float bpm, double confidence)
+            {
+                int m = w.Open(field);
+                if (ms != 0) w.UAlways(1, ms);
+                w.F32(2, bpm);
+                w.UAlways(3, 1);
+                w.F64(4, confidence);
+                w.Close(m);
+            }
+
+            static void Descriptor(ref Spotify.Decode.ProtoWriter w, string text, float weight, string concept, string display)
+            {
+                int d = w.Open(1);
+                w.StrAlways(1, text);
+                w.F32(2, weight);
+                w.StrAlways(4, concept);
+                w.StrAlways(5, display);
+                w.Close(d);
+            }
+        }
+
+        /// <summary>Pool row <paramref name="k"/>'s analysis (<see cref="AnalysisBodies"/>) through the decoders' own readers
+        /// (Spotify.Decode.ReadMixBeats, ReadCuepoints, ReadVocals, ReadMixGenres) into the edge tables the planner reads. The
+        /// chips stay the seed's own (LandTags): only the genre facts of kind 6 land here.</summary>
+        static void SeedAnalysis(int trackSlot, int k)
+        {
             var edges = Current.Edges;
-            edges.TrackBeats.Replace(trackSlot, new int[count], beats, EdgeState.Complete, count);
+            var bodies = AnalysisBodies(trackSlot, k);
+            var beats = new uint[BeatGrid.MaxBeats];
+            int n = Spotify.Decode.ReadMixBeats(bodies.Beats, beats, out _);
+            edges.TrackBeats.Replace(trackSlot, new int[n], beats.AsSpan(0, n), EdgeState.Complete, n);
             MixData.SetBeatsId(trackSlot, FakeBeatsId(k));
             // A kind-237 envelope when the row has none (the editor's waveform lanes): made up, a ramp in, sections that swell on the bar and
             // a fade out, so the lanes and their beat ticks read as a song.
+            var track = new global::Wavee.Track(trackSlot);
+            long dur = track.DurationMs;
             if (edges.TrackWaveform.Payload(trackSlot).IsEmpty && dur > 0)
             {
+                double period = 60_000.0 / (track.Tempo > 0 ? track.Tempo / 10.0 : 120.0);
                 int samples = (int)Math.Clamp(dur / WaveformBands.NominalHopMs, 64, WaveformBands.MaxSamples);
                 var wave = new WaveSample[samples];
                 for (int i = 0; i < samples; i++)
@@ -418,12 +495,14 @@ public static partial class Entities
                 }
                 edges.TrackWaveform.Replace(trackSlot, new int[samples], wave, EdgeState.Complete, samples);
             }
-            uint start = k % 3 == 1 ? (uint)(180 + 4 * period + 0.5) : 0u;
-            uint end = (uint)Math.Max(0, dur - 16_000);
-            var (firstStart, endGap) = s_mixCandidates[k % s_mixCandidates.Length];
-            var has = (firstStart >= 0 ? CueCandidates.Start : 0) | (endGap >= 0 ? CueCandidates.End : 0);
-            var cue = new[] { new TrackCues(start, end, t.Tempo, has, (uint)Math.Max(0, firstStart), (uint)Math.Max(0, dur - Math.Max(0, endGap))) };
-            edges.TrackCues.Replace(trackSlot, new int[1], cue, EdgeState.Complete, 1);
+            Span<uint> candidates = stackalloc uint[CueCandidate.Max];
+            int c = Spotify.Decode.ReadCuepoints(bodies.Cues, out var cue, candidates);
+            edges.TrackCues.Replace(trackSlot, new int[1], new ReadOnlySpan<TrackCues>(in cue), EdgeState.Complete, 1);
+            edges.TrackCueCandidates.Replace(trackSlot, new int[c], candidates[..c], EdgeState.Complete, c);
+            var vocals = Spotify.Decode.ReadVocals(bodies.Vocals);
+            edges.TrackVocals.Replace(trackSlot, new int[vocals.Length], vocals, EdgeState.Complete, vocals.Length);
+            var genres = Spotify.Decode.ReadMixGenres(bodies.Descriptors);
+            edges.TrackMixGenres.Replace(trackSlot, new int[1], new ReadOnlySpan<Playback.MixGenres>(in genres), EdgeState.Complete, 1);
         }
     }
 }
