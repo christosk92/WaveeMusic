@@ -101,7 +101,7 @@ public static partial class Diagnostics
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
             Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Dj, Timecode, Drop, LocalScan, LocalIndex, Decode, Friends,
-            MixStyles, DjTts, Quit,   // Quit stays last: the spec table is sized by it
+            MixStyles, DjTts, Lesson, Quit,   // Quit stays last: the spec table is sized by it
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -719,6 +719,10 @@ public static partial class Diagnostics
                         Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
                         Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
             },
+            new(Verb.Lesson, "lesson", "#48 Mix lesson (Build a transition together, the learn-mix route): its state (the step, the values, the targets reached, the listens heard, what plays, the playhead) and its audio (each take: its view, rendered or not, its length, start and peak, how long it took, why it failed); wait= first blocks until the takes in flight are rendered (wall ms), so a headless play sounds on the next frames", "lesson wait=5000")
+            {
+                Args = [IntArg("wait", "ms to wait (wall time) for the takes in flight (0: none)", "0", 0, 60_000)],
+            },
             new(Verb.MixStyles, "mixstyles", "#48 Mix style table: a preset's resolved style ids and every lane's out and in curve at a bar count, in the Connect metadata spelling; or check= the generators against the official client's own tables in a folder outside the repo (max deviation per lane, style and bar count over the 1025-point engine table, and a total)", "mixstyles preset=17 bars=4")
             {
                 Positional = ["preset"],
@@ -943,7 +947,7 @@ public static partial class Diagnostics
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
             "djtts" => Verb.DjTts,
             "quit" or "exit" => Verb.Quit,
-            "mixstyles" => Verb.MixStyles,
+            "mixstyles" => Verb.MixStyles, "lesson" => Verb.Lesson,
             "friends" => Verb.Friends,
             _ => Verb.None,
         };

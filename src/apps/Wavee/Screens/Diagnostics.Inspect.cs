@@ -459,6 +459,8 @@ public static partial class Diagnostics
                     return Timecode(id, name, a);   // the tap is read off the playback statics: no mount
                 case Inspect.Verb.MixStyles:
                     return MixStylesVerb(id, name, a);   // the style table and the reference check: no mount
+                case Inspect.Verb.Lesson:
+                    return LessonVerb(id, name, a);   // the lesson's statics and its takes: no mount
                 case Inspect.Verb.DjTts:
                     return DjTtsVerb(id, name, a);  // the TTS client's statics: no mount
             }
