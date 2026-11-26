@@ -5736,9 +5736,9 @@
     "duplicate": "Duplicate Mix",
     "duplicateFailed": "Couldn't duplicate this mix. Please try again.",
     "duplicateOffline": "You're offline. Duplicate the mix once you're back online.",
-    "upsellTitle": "Play and create mixed playlists with Premium",
-    "upsellBody": "Listen to mixed playlists with transitions or mix your very own, only on Premium.",
-    "upsellCta": "Explore Premium"
+    "upsellTitle": "Mix needs Spotify Premium",
+    "upsellBody": "Mixed playlists blend each song into the next. To play them or make your own, you need Spotify Premium.",
+    "upsellCta": "See Premium"
   },
   "localFiles": {
     "$commentPage": "#240 P2-page: localFiles.page is the Local Files route's page, \"On this PC\" (a collection: hero, pivots, shelves, wall, folders, insights). The sidebar label stays nav.localFiles. Quality labels (FLAC, MP3 320) are format names and are not translated.",

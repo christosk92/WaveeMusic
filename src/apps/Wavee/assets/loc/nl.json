@@ -1670,8 +1670,8 @@
     "duplicate": "Mix dupliceren",
     "duplicateFailed": "Deze mix kon niet worden gedupliceerd. Probeer het opnieuw.",
     "duplicateOffline": "Je bent offline. Dupliceer de mix zodra je weer online bent.",
-    "upsellTitle": "Speel en maak gemixte playlists met Premium",
-    "upsellBody": "Luister naar gemixte playlists met overgangen of mix je eigen playlists, alleen met Premium.",
-    "upsellCta": "Ontdek Premium"
+    "upsellTitle": "Mix vraagt om Spotify Premium",
+    "upsellBody": "Gemixte playlists laten elk nummer overlopen in het volgende. Om ze af te spelen of zelf te maken, heb je Spotify Premium nodig.",
+    "upsellCta": "Bekijk Premium"
   }
 }

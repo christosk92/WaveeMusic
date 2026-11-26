@@ -1667,8 +1667,8 @@
     "duplicate": "믹스 복제",
     "duplicateFailed": "이 믹스를 복제하지 못했습니다. 다시 시도하세요.",
     "duplicateOffline": "오프라인 상태입니다. 다시 온라인이 되면 믹스를 복제하세요.",
-    "upsellTitle": "Premium으로 믹스 플레이리스트를 재생하고 만드세요",
-    "upsellBody": "전환이 있는 믹스 플레이리스트를 듣거나 나만의 믹스를 만드세요. Premium 전용입니다.",
-    "upsellCta": "Premium 알아보기"
+    "upsellTitle": "믹스에는 Spotify Premium이 필요합니다",
+    "upsellBody": "믹스 플레이리스트는 곡과 곡을 자연스럽게 이어 줍니다. 재생하거나 직접 만들려면 Spotify Premium이 필요합니다.",
+    "upsellCta": "Premium 보기"
   }
 }
