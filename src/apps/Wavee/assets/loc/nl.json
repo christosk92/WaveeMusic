@@ -1567,7 +1567,7 @@
       "surge": "Het nummer vervaagt in galm terwijl het volgende infadet.",
       "afterglow": "Een vloeiende crossfade met een galmstaart.",
       "internal": "Een overgang die Spotify voor Auto gebruikt: {name}.",
-      "none": "Dit paar speelt als een gewone nummerwissel."
+      "none": "Dit paar gaat direct over in het volgende nummer, zonder crossfade."
     },
     "internal": {
       "bassSwapFilterOut": "Baswissel, filter uit",

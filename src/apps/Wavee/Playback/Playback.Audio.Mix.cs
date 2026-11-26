@@ -105,11 +105,12 @@ public static partial class Playback
             if (reprepare) { Log.Info("audio", "[mix] in-point changed; preparing the next row again"); Prepare(nextRow, next); }
         }
 
-        /// <summary>The fade the BASE hand-off uses for a pair the planner did not mix: the user's Crossfade, except a pair Spotify
-        /// saved as "no transition" (<see cref="MixWhyNot.NoTransition"/>, planned only inside a mixed playlist with Mix on), which
-        /// is a hard, gapless change: a mixed list carries <c>automix.ignore_setting=true</c>, the user's crossfade does not apply
-        /// inside it. A local "No mix" (<see cref="MixWhyNot.PairOptOut"/>) keeps the user's Crossfade ("a normal track change"). Pure.</summary>
-        public static int BaseFadeMs(in MixTiming plan, int userFadeMs) => plan.WhyNot == MixWhyNot.NoTransition ? 0 : userFadeMs;
+        /// <summary>The fade the BASE hand-off uses for a pair the planner did not mix: the user's Crossfade, except a pair set to play
+        /// without a transition inside a mixed playlist with Mix on, which is a hard, gapless change (a mixed list carries
+        /// <c>automix.ignore_setting=true</c>: the user's crossfade does not apply inside it): Spotify's saved "no transition"
+        /// (<see cref="MixWhyNot.NoTransition"/>) and Wavee's own "Don't mix into the next song" on this PC
+        /// (<see cref="MixWhyNot.PairOptOut"/>, the local NoMix record), alike. Pure.</summary>
+        public static int BaseFadeMs(in MixTiming plan, int userFadeMs) => plan.WhyNot is MixWhyNot.NoTransition or MixWhyNot.PairOptOut ? 0 : userFadeMs;
 
         /// <summary>The tick's fade selector: <see cref="BaseFadeMs"/> for the deck's planned pair, the user's fade when the plan is
         /// another pair's or the prepared slot holds a row the plan is not about.</summary>

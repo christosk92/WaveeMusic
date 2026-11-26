@@ -1,7 +1,8 @@
 // ── Entities/Mix.Menu.cs — #48 Mix, the row menu's "Don't mix into the next song" (plan §4: the smallest complete cut) ────
 //
 // One toggle in a track row's menu, inside a playlist Spotify has mixed: the pair (this row → the row after it in the
-// playlist's order) plays as a plain track change. Where it is saved is the transition editor's rule (Mix.Editor.cs): on a list the user
+// playlist's order) changes straight to the next song, gapless and without the user's Crossfade (Audio.BaseFadeMs), as Spotify's "No
+// transition" does. Where it is saved is the transition editor's rule (Mix.Editor.cs): on a list the user
 // may write, Spotify's "No transition" (`set-transition` with the "none" recipe; running it again resets the pair to Auto);
 // elsewhere the local NoMix record on this PC (running it again removes the record, so Spotify's version plays again). The
 // planner honours both (Playback.Mix.cs), and the Transitions view and the seams draw the pair as a break. Checked while the

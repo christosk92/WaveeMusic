@@ -5633,7 +5633,7 @@
       "surge": "The song washes out into reverb as the next one fades in.",
       "afterglow": "A smooth crossfade with a reverb tail.",
       "internal": "A transition Spotify uses for Auto: {name}.",
-      "none": "This pair plays as a normal track change."
+      "none": "This pair goes straight into the next song, with no crossfade."
     },
     "internal": {
       "bassSwapFilterOut": "Bass swap, filter out",
