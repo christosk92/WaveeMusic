@@ -93,8 +93,11 @@ public static partial class Spotify
             ListKind.Show => new Route(Verb.Get, ApiHost.Spclient, "/playlist/v2/show/" + Escaped(id), RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
             ListKind.Rootlist => new Route(Verb.Get, ApiHost.Spclient,
                 "/playlist/v2/user/" + Escaped(id) + "/rootlist" + ListDecorations + "&length=120", RecentsHeaders, RequestKind.RootlistRead, "CAU=", Zstd: true),
+            // #48 Mix: a list Spotify has mixed is read through the mix lens (MixData's set, kept by the commit), so its
+            // items carry the stored transitions and the per-item mixability.
             _ => new Route(Verb.Get, ApiHost.Spclient,
-                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations, RecentsHeaders, RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
+                "/playlist/v2/playlist/" + Escaped(id) + ListDecorations,
+                RecentsHeaders | (MixData.ReadsWithLens(id) ? HeaderSet.MixLens : HeaderSet.None), RequestKind.PlaylistRead, "CAwQAQ==", Zstd: true),
         };
 
         /// <summary>The revision-gated /diff read of a list. <paramref name="revision"/> is the wire spelling
@@ -190,8 +193,8 @@ public static partial class Spotify
 
             if (route.Transport == RouteTransport.Metadata)
             {
-                ReadOnlySpan<int> one = [route.Extension];
-                MetadataFor(batch, one, s, ref outcome);
+                Span<int> kinds = stackalloc int[4];
+                MetadataFor(batch, kinds[..FetchRoutes.EdgeKinds(edge, offset, kinds)], s, ref outcome);
                 return;
             }
 
@@ -258,6 +261,21 @@ public static partial class Spotify
         static ListRead ReadList(ListKind kind, string id, string? revision, ListRow[]? baseline, ref FetchOutcome outcome)
         {
             if (revision is not { Length: > 0 }) return new ListRead(FullRead(kind, id, ref outcome));
+            // #48 Mix: a signal changes a mixed list's items without moving the revision and causes no push (protocol §3.4), so
+            // its identity is (revision, mix lens etag) (MixIdentity): the /diff answer names the etag it holds now in f22, and
+            // the held list stands only when the revision is unchanged AND the etag is the one held. Anything else is the full
+            // read through the lens (no held etag, a moved etag, ops, contents, a diff that names no mix lens).
+            if (kind == ListKind.Playlist && MixData.ReadsWithLens(id))
+            {
+                string? heldEtag = MixData.HeldEtag(id);
+                if (heldEtag is null) return new ListRead(FullRead(kind, id, ref outcome));
+                Result probe = Send(WithPushReason(ListDiffRoute(kind, id, revision), kind, id), [], CancellationToken.None);
+                bool stands = MixListStands(probe.Ok, probe.Bytes, revision, baseline, heldEtag, out string? answerEtag);
+                Log.Info("library", "mix.identity etag held=" + heldEtag + " answer=" + (answerEtag ?? "-") + " status=" + probe.Status
+                                    + " verdict=" + (stands ? "stands" : "full-read"));
+                if (stands) { outcome.Note(in probe); return default; }
+                return new ListRead(FullRead(kind, id, ref outcome));
+            }
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             Result diff = Send(WithPushReason(ListDiffRoute(kind, id, revision), kind, id), [], CancellationToken.None);
             ListReplay.Outcome decided = diff.Ok || diff.NotModified
@@ -290,6 +308,17 @@ public static partial class Spotify
             }
             LogReplay(kind, in decided, started);
             return read;
+        }
+
+        /// <summary>A mixed list's revalidation (MixIdentity): does the held list stand against this /diff answer? The revision half
+        /// is the replay arm's own verdict (Unchanged), the etag half the answer's f22 against <paramref name="heldEtag"/>. PURE: the
+        /// inspector's `mix coldstart` runs the same check on the fake server's answer.</summary>
+        public static bool MixListStands(bool ok, ReadOnlySpan<byte> diff, string revision, ListRow[]? baseline, string heldEtag,
+            out string? answerEtag)
+        {
+            answerEtag = ok ? Decode.MixLensEtag(diff) : null;
+            bool unchanged = ok && ListReplay.Decide(false, diff, revision, baseline).Verdict == ListReplay.Verdict.Unchanged;
+            return MixIdentity.Decide(unchanged, heldEtag, answerEtag) == MixIdentity.Verdict.Stands;
         }
 
         /// <summary>The list's full read: its bytes, or null when it failed (noted) or answered nothing.</summary>
@@ -575,8 +604,13 @@ public static partial class Spotify
         }
 
         public static Result PlaylistSignals(string playlistId, byte[] body, CancellationToken ct)
+            => PlaylistSignals(playlistId, SignalRoute.Edit, body, ct);
+
+        /// <summary>One <c>/signals</c> POST on a <see cref="SignalRoute"/> (#48 Mix: the lens header and sync-reason the write
+        /// travels with).</summary>
+        public static Result PlaylistSignals(string playlistId, SignalRoute route, byte[] body, CancellationToken ct)
         {
-            var args = new RequestArgs { Id = playlistId, Body = body };
+            var args = new RequestArgs { Id = playlistId, Body = body, Number = (long)route };
             return Unwrapped(Send(RequestKind.PlaylistSignals, args, ct));
         }
 

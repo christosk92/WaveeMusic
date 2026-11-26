@@ -17,7 +17,7 @@
 //   requireowner kind=Safe|Us|Nobody|Foreign [timeout=ms]   wait for that owner; ABORT the run if it never comes. Safe = Us,
 //                                       Nobody or the allowed device: never drive a run while someone else's device plays
 //   owner                               log the owner, the active device and the deck's video facts
-//   queue uri=spotify:track:X           add one track to the queue (after the deck)
+//   queue uri=spotify:track:X           add one track to the queue (after the deck); a local file path or wavee:local:file: imports it first
 //   signal to=video|audio [raw=1]       a controller's video switch for the owner (raw: the `signal` POST straight to it)
 //   takeover                            "Play here": pull playback to this device
 //   licdelay ms=N                       DEBUG BUILDS ONLY: hold every PlayReady licence answer N ms after its POST returns (0 = off),
@@ -25,7 +25,8 @@
 //   waitkind kind=Video|Audio [timeout=ms]   wait for the deck's mode (local host, or the owner's track_player)
 //   remoteplay uri=X [video=1]          a single-track play straight to the foreign owner (video=1: the song-videos play)
 //   waitowner kind=Us|Nobody|Foreign [timeout=ms]   wait for that owner (no abort)
-//   play uri=spotify:track:X [video=1] [fromMs=N]   play the track as its own context (what a row click does); video=1 plays it as a video
+//   play uri=spotify:track:X [video=1] [fromMs=N]   play the track as its own context (what a row click does); video=1 plays it as a video;
+//                                       a local file path or wavee:local:file: plays as a one-row Local Files context
 //   click key=K [nth=N] [timeout=ms]    a click on the Nth presented node keyed K (waits until it is shown)
 //   clickprefix prefix=P [nth=N]        same, first node whose key starts with P
 //   keypress vk=27                      a key down/up pair on the window input queue (27 = Escape, 70 = F)
@@ -372,7 +373,7 @@ public static partial class Diagnostics
                         {
                             string target = OnUi(static () => Playback.Snap() is { Own.Kind: Playback.Owner.Foreign } st ? Playback.Devices.IdOf(st.Own.Device) : "");
                             if (target.Length == 0) return "no foreign owner";
-                            bool sent = Spotify.Connect.Signal(target, on ? Spotify.Decode.VideoSignal.ToVideo : Spotify.Decode.VideoSignal.ToAudio, CancellationToken.None);
+                            bool sent = Spotify.Connect.Signal(target, on ? Spotify.Decode.PlayerSignal.ToVideo : Spotify.Decode.PlayerSignal.ToAudio, CancellationToken.None);
                             return "raw signal " + (on ? "switch-to-video" : "switch-to-audio") + " sent=" + sent;
                         }
                         OnUi(() => { Playback.SwitchVideo(on); return true; });
@@ -458,6 +459,8 @@ public static partial class Diagnostics
                         string uri = Arg(a, "uri");
                         return OnUi(() =>
                         {
+                            // A local file (path or wavee:local:file:) is imported as a Local Files row first, as a drop does.
+                            if (Headless.IsLocalFileArg(uri)) { if (!HeadlessHost.LocalRow(uri, out EntityRef local, out _)) return false; Queue.Enqueue(local); return true; }
                             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
                             Queue.Enqueue(Entities.Ref(id));
                             return true;
@@ -474,6 +477,14 @@ public static partial class Diagnostics
                         // ensure asks the row's Video group with its identity, so the bar's toggle lights with no help from here.
                         if (!video) return OnUi(() =>
                         {
+                            if (Headless.IsLocalFileArg(uri))
+                            {
+                                // A local file plays as a one-row Local Files context: the drop path's shape.
+                                if (!HeadlessHost.LocalRow(uri, out EntityRef local, out _)) return false;
+                                ReadOnlySpan<EntityRef> rows = [local];
+                                Playback.PlayRows(rows, 0, Playlist.LocalFiles.Id);
+                                return true;
+                            }
                             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
                             Playback.PlayContext(id, default, fromMs > 0 ? fromMs : -1);
                             return true;

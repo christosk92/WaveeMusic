@@ -1444,6 +1444,8 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
             int fact = Fact;
             if (fact >= 0 && !S.Sections.FactSubtitle[fact].IsEmpty) return HomeCardText.PlainText(Resolve(S.Sections.FactSubtitle[fact]));
             int slot = Target.Slot;
+            // The DJ's card says what its DJ says (home.card.dj.transcript_text), when its list's row carries the words (AI DJ).
+            if (ListSlot >= 0 && !S.Playlists.DjTranscript[slot].IsEmpty && IsDj) return HomeCardText.PlainText(Resolve(S.Playlists.DjTranscript[slot]));
             StringId id = Target.Kind switch
             {
                 EntityKind.Playlist or EntityKind.Collection => !S.Playlists.Description[slot].IsEmpty
@@ -1613,8 +1615,16 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
     /// the same rule <see cref="Track.Rules"/> applies).</summary>
     public bool IsPlayable => (FlagsOf() & HomeCardFlags.Unplayable) == 0;
 
-    /// <summary>The DJ card, read off its lexicon set at decode (<see cref="HomeCardFlags.Dj"/>).</summary>
-    public bool IsDj => (FlagsOf() & HomeCardFlags.Dj) != 0;
+    /// <summary>The DJ card, read off its lexicon set at decode (<see cref="HomeCardFlags.Dj"/>), or a card whose list is known to be the DJ
+    /// (<see cref="Playlist.IsDj"/>: its attributes said so in another answer).</summary>
+    public bool IsDj => (FlagsOf() & HomeCardFlags.Dj) != 0
+        || (ListSlot >= 0 && (S.Playlists.Flags[ListSlot] & (uint)PlaylistFlags.YourDj) != 0);
+
+    /// <summary>The DJ card's own colours (<c>home.card.*</c>: its background, the three "jellyfish" colours, its text colour; plan-dj §1.1),
+    /// empty for any other card or a DJ card that stated none.</summary>
+    public DjCardColors DjColors => ListSlot >= 0 ? S.Playlists.DjColors[ListSlot] : default;
+    /// <summary>The playlist row a live playlist card names, or -1.</summary>
+    int ListSlot => !IsBlank && Live && Target.Kind == EntityKind.Playlist && Target.Slot >= 0 && Target.Slot < S.Playlists.Count ? Target.Slot : -1;
 
     /// <summary>An album the wire marks as a pre-release (a pre-save).</summary>
     public bool IsPreRelease => (FlagsOf() & HomeCardFlags.PreRelease) != 0;

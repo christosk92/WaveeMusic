@@ -364,7 +364,9 @@ public static class ThemeOptionsSection
             Tier = option.Visibility == OptionVisibility.Developer ? SettingsTier.Developer : SettingsTier.Common,
             Caption = option.DescriptionKey is { } caption ? _ => caption : static _ => null,
             Value = value, Writer = writer,
-            Enabled = enabled ? static _ => SettingsEnablement.On : static _ => SettingsEnablement.Off(null),
+            Enabled = !enabled ? static _ => SettingsEnablement.Off(null)
+                : option.SetByColours == ColourOverride.None ? static _ => SettingsEnablement.On
+                : _ => Colours.ColourChoice.Overrides(option.SetByColours) ? SettingsEnablement.Off(Strings.Settings.Appearance.ColoursSetBy) : SettingsEnablement.On,
             SilentWhenDisabled = !enabled, Confirm = confirm,
             Visible = option.Visibility == OptionVisibility.Developer ? static f => f.DeveloperMode : static _ => true,
         };

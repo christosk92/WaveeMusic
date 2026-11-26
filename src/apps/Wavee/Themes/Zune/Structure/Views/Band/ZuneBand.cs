@@ -234,7 +234,12 @@ internal sealed class ZuneBand : Component
                 (hooks.MoveFocusVisual ?? hooks.RestoreFocus)?.Invoke(lead);
         }, DepKey.From(orderKey, carousel ? 1 : 0, (int)tiers.Window, 0));
 
-        var row1Kids = new List<Element>(2) { pivotRun };
+        // The library activity word (#240 UX S1): Zune's chip, at the end of the run, before the pins; its slot is reserved (see ZuneBandActivity).
+        var row1Kids = new List<Element>(3)
+        {
+            pivotRun,
+            Embed.Comp(new ZuneBandActivity.Props(rec, _restInk!), static () => new ZuneBandActivity()) with { Key = ZuneActivityRules.SlotKey + ":host" },
+        };
         if (pins.Count > 0 || pinArmed) row1Kids.Add(PinsCached(pins, rec, pinDrop, pinArmed, overlay));
 
         var row1 = new BoxEl
@@ -611,7 +616,7 @@ internal sealed class ZuneBand : Component
             Key = ZuneBandRules.Row2Key, Direction = 0, AlignItems = FlexAlign.Center, Height = rec.Row2H, Shrink = 0f, MinWidth = 0f, ZStack = true,
             // The row is whole or gone: it fades and slides out before the band's height eases away and fades in after it settles, so the clip
             // never cuts it half way (the artist fidelity lane); inside, the page-synced swap layers cross-fade the views and actions.
-            Enter = Design.Reduced ? default : ZuneBandRules.Row2Enter, Exit = Design.Reduced ? default : ZuneBandRules.Row2Exit,
+            Enter = Design.Reduced ? null : ZuneBandRules.Row2Enter, Exit = Design.Reduced ? null : ZuneBandRules.Row2Exit,
             Children =
             [
                 new BoxEl

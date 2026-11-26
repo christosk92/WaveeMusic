@@ -244,8 +244,11 @@ public static partial class Entities
             var dm6 = MockPlaylist(s, "spotify:playlist:37i9dQZF1E37Twn3WxoAWE", "Daily Mix 6",
                 "https://pickasso.spotifycdn.com/image/ab67c0de0000deef/dt/v1/img/daily/6/ab6761610000e5eb1787f6596afa03df2d44af87/en-GB", 50, PlaylistFormat.DailyMix,
                 description: "YOON MIRAE, 10CM, Isaac Hong and more");
+            // The DJ (AI DJ: it shows like any list, owner 2026-11-25) is the fake library's DJ list (Entities.Fake.Dj.cs: its card words and
+            // colours ride its row), so its card plays the fake lexicon session; it leads the section (SectionChooser.ToZone).
+            var dj = new StagedId(s.AddText(Utf8(LibrarySeed.DjUri)));
             StageSectionIds(s, "spotify:section:wavee-mockup-made-for-you", "Made for you", SectionKind.HomeGeneric,
-                [dw, dm1, dm3, dm4, dm5, dm6], total: 6, nextOffset: SectionPaging.Complete);
+                [dj, dw, dm1, dm3, dm4, dm5, dm6], total: 7, nextOffset: SectionPaging.Complete);
 
             // -- "It's New Music Friday!" -- wide editorial, header images >= 2/3 (WideEditorial's own rule) --
             var releaseRadar = MockPlaylist(s, "spotify:playlist:37i9dQZEVXbp4UblnlhiEI", "Release Radar",

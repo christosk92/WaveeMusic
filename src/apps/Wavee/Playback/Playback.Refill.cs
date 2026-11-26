@@ -61,12 +61,15 @@ public static partial class Playback
         /// <summary>The verdict for a deck at <paramref name="cursor"/>. Nothing while an ask is out, before the host has
         /// said whether the context pages (<paramref name="pagesKnown"/>), under repeat-track, or off the queue. Autoplay is
         /// asked (and paged) only with repeat OFF and the setting on: under repeat-context the run wraps, and an autoplay
-        /// tail fetched there would only wait to be played by mistake (#215; librespot connect/src/state/tracks.rs:298-310).</summary>
+        /// tail fetched there would only wait to be played by mistake (#215; librespot connect/src/state/tracks.rs:298-310).
+        /// <para>A lexicon session (the DJ, <paramref name="djPagesAhead"/> &gt;= 0: the loaded pages after the playing one) pages by
+        /// its own rule (plan-dj §1.2): its next page whenever fewer than <see cref="Dj.MinPagesAhead"/> wait, and never autoplay.</para></summary>
         public static RefillKind Decide(ReadOnlySpan<QueueEdge> rows, int cursor, AutoplayPhase phase, bool pagesKnown,
-            bool morePages, bool autoplayPages, Spotify.Decode.RepeatMode repeat, bool autoplayEnabled = true)
+            bool morePages, bool autoplayPages, Spotify.Decode.RepeatMode repeat, bool autoplayEnabled = true, int djPagesAhead = -1)
         {
             if (phase != AutoplayPhase.None || !pagesKnown || repeat == Spotify.Decode.RepeatMode.Track) return RefillKind.None;
             if ((uint)cursor >= (uint)rows.Length) return RefillKind.None;
+            if (djPagesAhead >= 0) return morePages && djPagesAhead < Dj.MinPagesAhead ? RefillKind.PageContext : RefillKind.None;
             if (morePages)
             {
                 Run(rows, cursor, QueueProvider.Context, out int total, out int ahead);
@@ -91,7 +94,7 @@ public static partial class Playback
     {
         if (!Queue.LocalQueueWritable(s.Own.Kind) || !s.HasCurrent || s.Context.IsEmpty || s.Cursor.IsNone || Entities.Current is null) return;
         switch (Refill.Decide(Queue.Rows, s.Cursor.Index, s.Autoplay, s.PagesKnown, s.MorePages, s.AutoplayPages, s.Repeat,
-                Platform.Settings.Get(Platform.Keys.AutoplayEnabled)))
+                Platform.Settings.Get(Platform.Keys.AutoplayEnabled), Dj.PagesAhead(s.Context, Queue.Rows, s.Cursor.Index)))
         {
             case RefillKind.PageContext:
                 s.Autoplay = AutoplayPhase.Requested;

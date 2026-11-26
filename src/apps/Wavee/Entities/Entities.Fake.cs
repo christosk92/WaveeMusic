@@ -151,6 +151,8 @@ public static partial class Entities
         SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
         SeedProfileSurfaces(now0);    // profile pages: Entities.Fake.Profile.cs (the four users' social facts + shelves)
         SeedCanvasSurfaces(now0);     // Spotify Canvas: Entities.Fake.Canvas.cs (which tracks loop a canvas, which have none)
+        SeedLocalLinkSurfaces(now0);  // "Your files and Spotify": Entities.Fake.LocalLink.cs (the Spotify songs a local "Savin' Me" matches)
+        SeedFriendSurfaces(now0);     // friend activity: Entities.Fake.Friends.cs (the two friends no other surface names)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -194,6 +196,8 @@ public static partial class Entities
     static partial void SeedHomeSurfaces(long now0);
     static partial void SeedProfileSurfaces(long now0);
     static partial void SeedCanvasSurfaces(long now0);
+    static partial void SeedLocalLinkSurfaces(long now0);
+    static partial void SeedFriendSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {
@@ -227,6 +231,23 @@ public static partial class Entities
             row.Flags |= (uint)TrackFlags.Unavailable;
             row.AvailableAt = 0;
             s.Tracks.Settle();
+            Commit(s);
+        }
+        finally { Staging.Return(s); }
+    }
+
+    /// <summary>The inspector's <c>transport do=metadata</c>: a CAPTURED catalog answer (the official client's, or Wavee's own) committed
+    /// through the real decoder, exactly as the wire's answer would land: an extended-metadata response body
+    /// (<see cref="Spotify.Decode.ExtendedMetadata"/>), or a Pathfinder JSON answer (<see cref="Spotify.Decode.Export"/>, e.g. a
+    /// <c>fetchPlaylist</c>). The fake catalog then holds the payload's tracks with their real verdicts.</summary>
+    internal static void CommitMetadata(ReadOnlySpan<byte> response)
+    {
+        if (Current is null) return;
+        var s = Staging.Rent();
+        try
+        {
+            if (response.Length > 0 && response[0] == (byte)'{') Spotify.Decode.Export(response, s);
+            else Spotify.Decode.ExtendedMetadata(response, s);
             Commit(s);
         }
         finally { Staging.Return(s); }
@@ -287,12 +308,16 @@ public static partial class Entities
 
     /// <summary>The demo's Spotify Connect devices (<c>Playback.UseFakeConnect</c>, the inspector's <c>mount connect=nearby</c>): a TV, a speaker
     /// and a phone on the same network, each at its own volume (0..65535, the wire scale). The phone keeps its volume to itself, as a
-    /// real iPhone does (capability 13, <c>disable_volume</c>): while it plays, every volume rail is disabled.</summary>
+    /// real iPhone does (capability 13, <c>disable_volume</c>): while it plays, every volume rail is disabled. It plays lossless to its
+    /// headphones, as the owner's iPhone stated it on 2026-11-25 (hifi, best_matching, target hifi, hi-fi on; Bluetooth "AirPods Max").</summary>
     internal static Playback.FakeConnectDevice[] FakeConnect() =>
     [
         new("fake:connect:tv", "Living room TV", Spotify.Decode.DeviceKind.Tv, 26214),
         new("fake:connect:speaker", "Kitchen speaker", Spotify.Decode.DeviceKind.Speaker, 39321),
-        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875, VolumeFixed: true),
+        new("fake:connect:phone", "Alex’s iPhone", Spotify.Decode.DeviceKind.Phone, 45875, VolumeFixed: true,
+            Quality: new(Spotify.Decode.BitrateLevel.Hifi, Spotify.Decode.BitrateStrategy.BestMatching, Spotify.Decode.BitrateLevel.Hifi, true,
+                Spotify.Decode.HiFiStatus.On, Spotify.Decode.BitrateLevel.Hifi, 1),
+            OutputName: "AirPods Max", OutputType: 3),
     ];
 
     static string AlbumUri(int i) => "spotify:album:al" + Wrap(i, AlbumCount);

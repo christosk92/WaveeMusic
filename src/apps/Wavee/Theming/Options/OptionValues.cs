@@ -2,7 +2,7 @@
 //
 // A style or structure is a function of its option values. The values are handed to it as an `OptionValues` snapshot so
 // the function stays pure and can be memoized on `Stamp`: two snapshots with the same content have the same stamp, so
-// `IStyleLayer.Definition(values, osAccent)` returns the same instance for the same (stamp, accent).
+// `IStyleLayer.Definition(values, inputs)` returns the same instance for the same (stamp, inputs).
 
 using System.Globalization;
 using System.Text;

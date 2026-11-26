@@ -17,7 +17,7 @@
 //   erase over a DComp visual beneath it), so everything drawn BEFORE it is erased where it overlaps and everything
 //   drawn AFTER it covers the picture. Those layers are pass-through, so the mini player still takes its drag.
 //
-//   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
+//   column = 17 zero-size chord boxes · [chrome row] · content region · [player dock]
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
 //              OR the fullscreen stage (FrameModel.ChromeMounted): out of layout, paint and hit-test, subtree inactive
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
@@ -211,6 +211,10 @@ public static partial class Shell
     static readonly KeyAccelerator SettingsChord = new(OemCommaVk, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
+    // Ctrl+Left / Ctrl+Right skip tracks (Spotify's chord). A focused text editor takes them first (word jump), since
+    // accelerators only match after focused routing declines the key; the reducer folds the skip restrictions.
+    static readonly KeyAccelerator PrevTrackChord = new(Keys.Left, KeyModifiers.Ctrl);
+    static readonly KeyAccelerator NextTrackChord = new(Keys.Right, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
     static readonly KeyAccelerator ZoomInChord = new(Keys.OemPlus, KeyModifiers.Ctrl);
     static readonly KeyAccelerator ZoomInShiftChord = new(Keys.OemPlus, KeyModifiers.Ctrl | KeyModifiers.Shift);
@@ -224,7 +228,7 @@ public static partial class Shell
     static BoxEl Chord(KeyAccelerator chord, Action onFire)
         => new() { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false, Accelerator = chord, OnClick = onFire };
 
-    /// <summary>The fifteen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
+    /// <summary>The seventeen chord boxes the frame's column mounts first, in this order. Behaviour the shell owns (what a chord
     /// DOES is <see cref="FrameVerbs"/>), built once; the structure's frame places them (<c>ShellFrameProps.Chords</c>).</summary>
     static readonly IReadOnlyList<Element> s_chords =
     [
@@ -234,6 +238,8 @@ public static partial class Shell
         Chord(SettingsChord, static () => FrameVerbs.Shared.OpenSettings()),
         Chord(BackChord, static () => FrameVerbs.Shared.GoBack()),
         Chord(ForwardChord, static () => FrameVerbs.Shared.GoForward()),
+        Chord(PrevTrackChord, static () => Playback.Previous("ctrl-left")),
+        Chord(NextTrackChord, static () => Playback.Next("ctrl-right")),
         Chord(FullscreenChord, static () => FrameVerbs.Shared.ToggleFullscreen()),
         Chord(ZoomInChord, static () => FrameVerbs.Shared.Zoom(+1)),
         Chord(ZoomInShiftChord, static () => FrameVerbs.Shared.Zoom(+1)),
@@ -250,15 +256,6 @@ public static partial class Shell
     [CoreHost]
     sealed class FrameRoot : Component
     {
-        readonly DropTargetSpec _fileDrop = new([DropKinds.Files],
-            OnEnter: static _ => FileDropOver.Value = true,
-            OnLeave: static _ => FileDropOver.Value = false,
-            OnDrop: static s =>
-            {
-                FileDropOver.Value = false;
-                if (s.Payload is FileDropData { Count: > 0 } files) OnFilesDropped?.Invoke(files.Paths);
-            });
-
         readonly Signal<float> _sidebarFade = new(1f);
         readonly Signal<float> _railFade = new(1f);
         readonly Signal<bool> _sidebarDragging = new(false);
@@ -477,6 +474,9 @@ public static partial class Shell
             // ── the published derived facts ──
             UseSignalEffect(static () =>
                 Auth.SetIfChanged(FoldAuth(Spotify.Status.Value, Spotify.Fault.Value, Platform.Args.Fake || Platform.HasStoredCredential())));   // --fake presents its seeded account as signed in (G-065)
+            // The friends feed reloads on a push only while someone can see the panel: minimised, hidden or covered, it owes
+            // one load for when the window is seen again (#277).
+            UseSignalEffect(static () => Spotify.Friends.OnWindowHidden(s_hooks?.WindowOccluded?.Value ?? false));
             UseSignalEffect(() => _pageStageHosts.SetIfChanged(
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
             UseSignalEffect(() => PublishPanelTier(ShellPolicy.Tracked.Panel.For(tiers.Window), vp.Value.Width));
@@ -576,7 +576,7 @@ public static partial class Shell
                 var track = new Track(cur.Slot);
                 string title = track.Title;
                 if (title.Length == 0) return;
-                string artist = Entities.Strings.Resolve(track.ArtistLineId);
+                string artist = track.CreditLine;
                 Announcer.SayThrottled(artist.Length == 0 ? title : title + ", " + artist);
             });
 
@@ -627,7 +627,7 @@ public static partial class Shell
             DockedPanes = RailWiring.DockedPanes,
             Chords = s_chords,
             OnKeyDown = OnShellKey,
-            FileDrop = _fileDrop,
+            FileDrop = DropAnywhere.Window,   // drop anywhere (#240 §3.15): the catch-all under every precise target
             OnSidebarColumnRealized = static h => s_sidebarColumn = h,
             OnContentRegionRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnContentRegionBounds = static _ => PublishScrimClip(),
@@ -646,7 +646,7 @@ public static partial class Shell
             VideoPipLayer = static () => Video.PipLayer(),
             VideoFullscreenLayer = static () => Video.FullscreenLayer(),
             Overlays = static () => Overlays(),
-            FileDropCue = new FileDropProps { Over = FileDropOver },
+            FileDropCue = DropAnywhere.Props,
             CommandPalette = s_paletteProps,
             CoverScrim = s_coverScrimProps,
             DragChip = s_dragChipProps,
@@ -786,6 +786,8 @@ public static partial class Shell
                     e.Handled = true;
                     break;
             }
+            // Nothing else took it: a step the page opened in place (a detail over its list) steps out (Shell.PageBack.cs).
+            if (!e.Handled && PageStepBack()) e.Handled = true;
             return;
         }
         if (e.KeyCode == Keys.Space && FrameRules.SpaceTogglesPlayback(false, FocusedIsTextEditor()))
@@ -816,16 +818,30 @@ public static partial class Shell
             Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered);
     }
 
+    /// <summary>Re-read the content region's rect now (a drag arming the drop panel: layout is settled then, while the bounds event can
+    /// fire before the root has its size).</summary>
+    internal static void RefreshContentRegion() => PublishScrimClip();
+
     static void PublishScrimClip()
     {
         if (s_scene is not { } scene || s_contentRegion.IsNull || !scene.IsLive(s_contentRegion)) return;
         RectF r = scene.AbsoluteRect(s_contentRegion);
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
+        // The drop panel centres on the page, not the window (board 22): the content region less a docked sidebar on its left, as an
+        // offset from the window's centre.
+        RectF root = scene.AbsoluteRect(scene.Root);
+        float left = r.X;
+        if (!s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn) && scene.AbsoluteRect(s_sidebarColumn) is { IsEmpty: false } side
+            && side.X <= r.X + 1f && side.X + side.W < r.X + r.W)
+            left = Math.Max(left, side.X + side.W);
+        var centre = r.IsEmpty || root.IsEmpty ? default
+            : new Point2((left + r.X + r.W) / 2f - (root.X + root.W / 2f), r.Y + r.H / 2f - (root.Y + root.H / 2f));
+        if (DropAnywhere.CentreOffset.Peek() != centre) DropAnywhere.CentreOffset.Value = centre;
     }
 
     // ── the small frame views' props (T4c) ──────────────────────────────────────────────────────────────────────────────
     //
-    // The file-drop cue (`Shell.FileDrop`, bound to `FileDropOver`), the setup wizard's cover scrim (`Shell.CoverScrim`), the drag
+    // The drop panel (`Shell.FileDrop`, its state and targets `DropAnywhere.Props`), the setup wizard's cover scrim (`Shell.CoverScrim`), the drag
     // chip layer (`Shell.DragChip`) and the frame-rate overlay (`Shell.Fps`) are the structure's pictures
     // (`Themes\Classic\Structure\Views\FrameBits\ClassicFrameBits.cs`); these are the decisions they bind to. Cached statics, so
     // an equal record skips the template.

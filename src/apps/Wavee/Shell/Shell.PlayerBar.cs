@@ -419,10 +419,13 @@ public static partial class Shell
         /// <summary>The bar's error TITLE, one loc key per <see cref="Playback.Fault"/> reason (G-212): 0.2.9 printed
         /// the same "Can't play this track" whatever went wrong, though the model always knew which. <c>None</c> never
         /// reaches the bar (the title only renders in <see cref="PlayerState.Error"/>) and folds to the generic
-        /// sentence rather than throwing on a call made out of sequence.</summary>
-        public static string FaultTitleKey(Playback.Fault fault) => fault switch
+        /// sentence rather than throwing on a call made out of sequence. An Unavailable fault on a row the catalog ruled with a
+        /// NAMED reason (<paramref name="named"/>: region-locked, Premium only) states that reason, as the row does.</summary>
+        public static string FaultTitleKey(Playback.Fault fault, Track.UnavailableWhy named = Track.UnavailableWhy.None) => fault switch
         {
             Playback.Fault.Network => Strings.Player.Fault.Network,
+            Playback.Fault.Unavailable when named is Track.UnavailableWhy.Region or Track.UnavailableWhy.Premium
+                => Track.WithheldLongKey(named),
             Playback.Fault.Unavailable => Strings.Player.Fault.Unavailable,
             Playback.Fault.DrmRequired => Strings.Player.Fault.DrmRequired,
             Playback.Fault.DecodeFailed => Strings.Player.Fault.DecodeFailed,

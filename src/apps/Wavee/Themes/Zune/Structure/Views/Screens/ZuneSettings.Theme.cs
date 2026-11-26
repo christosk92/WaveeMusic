@@ -253,7 +253,12 @@ internal static partial class ZuneSettings
             }
 
             case SettingsRowKind.Picker:
-                return Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId };
+                // A disabled colour option (its colour set by the user's colour set, #184) keeps its squares and their place, dimmed and inert.
+                return new BoxEl
+                {
+                    Opacity = live ? 1f : Z.DisabledOpacity, HitTestVisible = live, IsEnabled = live,
+                    Children = [Embed.Comp(() => new ColorOption(g)) with { Key = "zs:opt:color:" + g.QualifiedId }],
+                };
 
             case SettingsRowKind.Slider:
                 return k.Slide(g.QualifiedId, new ZuneSlide(g.Min, g.Max, g.Step,

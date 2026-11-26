@@ -100,7 +100,8 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Dj, Timecode, Drop, LocalScan, LocalIndex, Decode, Friends,
+            MixStyles, DjTts, Quit,   // Quit stays last: the spec table is sized by it
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -182,6 +183,7 @@ public static partial class Diagnostics
             Arg("census", ArgType.Bool, "a slow frame's row names the components that made it slow", "false"),
             Arg("flights", ArgType.Bool, "each row carries the connected navigation flights (a card's cover flying into its page), the summary their take-off, landing and hand-off", "false"),
             Arg("curves", ArgType.Bool, "each watched key's motion curve (x, y, w, h, opacity per frame, a sparkline) and its steps, reversals, stalls and snaps (motionFindings)", "false"),
+            Arg("realtime", ArgType.Bool, "pace the frames to the wall clock (16 ms each), so the audio pump's announces and downloads keep their proportions to the frames (a DJ voice ending into its track)", "false"),
             Arg("baseline", ArgType.Bool, "judge the first traced frame against the watched nodes as they stood before it (on for state)", "state"),
             Arg("jump", ArgType.Float, "a presented move over this many DIP in one frame under a track is a jump", "2"),
             Arg("snap", ArgType.Float, "a change over this many DIP in one frame with no track is a snap", "0.5"),
@@ -346,7 +348,7 @@ public static partial class Diagnostics
 
         /// <summary>The words `state kind=` takes: the ones Shell.SetInspectState (Shell.UI.cs) switches on, which answers false for any
         /// other (the verb then names these). Declared before <see cref="Specs"/>, which reads it.</summary>
-        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-reanswer", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "none"];
+        public static readonly string[] StateKinds = ["empty", "nomatch", "error", "offline", "offline-rows", "loading", "cold-list", "cold-head", "cold-rows", "cold-warm", "cold-faces", "cold-book", "cold-book-chapters", "cold-book-facts", "regen", "regen-edit", "rescope", "rescope-land", "cold-credits", "credits-land", "home-refresh", "home-reanswer", "home-cold", "home-land", "home-following", "home-previews", "daylist-generic", "daylist-land", "head", "head-land", "ai", "runtime", "hdcp", "music-folders", "local-peek", "spotify-match", "linked-video", "none"];
 
         /// <summary>Every verb, in the order `help` lists them.</summary>
         public static readonly VerbSpec[] Specs =
@@ -521,12 +523,14 @@ public static partial class Diagnostics
                     Arg("words", ArgType.Bool, "with kind=ai ai=timed: the playing track's lyrics also take word timing (each line's words share its span; the store upgrade a cached result takes), so the lyrics surfaces draw it word by word (a line-synced fake: mount lyrics=line); the next mount empties the lyrics store", "false"),
                     Arg("runtime", ArgType.Enum, "with kind=runtime: the Playback settings' runtime card's staged status (no runtime installed or loaded; the next mount puts the boot's back); problem: the error bar with the diagnostics doors and Retry setup, setup: the not-set-up bar, ready: the facts", "problem", string.Join("|", InspectSession.RuntimeCases)),
                     Arg("issue", ArgType.Enum, "with kind=runtime runtime=problem: the typed reason the bar names", "wrongarch", string.Join("|", InspectSession.RuntimeIssues)),
+                    Arg("value", ArgType.Enum, "with kind=music-folders: the local library seeded in memory (no disk, no thread, no setting): none (no folder), scanning (two folders, the first mid-scan), ready (both scanned: an album, loose and unplayable files, a missing one, a cloud-only one), offline (both folders unreachable, their entries kept), changed (ready plus a background change just restated: +4 added, 1 moved), missing (ready with three missing songs and no other unplayable file), listing (the first scan's first second: two folders, nothing read yet), paused (scanning held by battery saver), noaccess (ready, but one music folder refuses this user and a subfolder of the other could not be read), checking (ready plus a network share just added, its reachability being asked off the UI thread), network-online|network-waking|network-slow|network-signin|network-offline (ready plus a NAS share, \\\\nas\\share\\flac, last walked 12 min ago, in that state; slow walks it), folder (path= as the one music folder, walked and read by the real scanner into the in-memory index, synchronously: #240's real-file matching), startup (path= as the one music folder of the in-memory settings, then the app's own start-up, LocalLibrary.Use, over the scratch profile's index file on its own threads: the load, the start-up scan and the restate land over the next frames; once per process, before any other value; state kind=rescope after it is the login's scope switch); with kind=spotify-match (\"Your files and Spotify\"): off (matching off), offer (matching off, the offer on On this PC's Home), matching (the fake catalogue's albums as files, half matched, the chip counting), review (all matched, the review open), focus (the review opened on one untagged song, as Spotify match… opens it), accepted (Exact and Strong accepted, the review closed), versions (phase 2: two copies of Savin' Me both linked to the fake Savin' Me, the copy renamed Savin' Me (hardstyle remix) and set to play by default), versions-spotify (the same, no default chosen), link (the index as it is, e.g. after music-folders value=startup: each file linked to the fake song of its title closest in length, a file named ...remix... set to play by default); with kind=local-peek (what \"Find music on this PC\" counted, no disk; after music-folders value=none): counting (Music and Downloads still counted), landed (Music 1,204 songs with 238 cloud-only, Downloads 37 songs and 12 videos), empty (Downloads holds no song), capped (Music stopped at the 50,000-entry cap), none (no folder to offer); with kind=linked-video (a Spotify track's video version, Shell/Video.LinkedVideos.cs): attach (uri= path=: the file joins the library, linked as the track's video, as the menu's Link a video file and the row's .mp4 drop do), seed-legacy (uri= path=: an old-style attachment in the old store, as an older build left it), migrate (the start-up move of the old store into links), unlink (uri=), default (uri=: Play by default picks the track's video version), list (the reply only)", "ready", "none|scanning|ready|offline|changed|missing|listing|paused|noaccess|checking|network-online|network-waking|network-slow|network-signin|network-offline|folder|startup|counting|landed|empty|capped|off|offer|matching|review|focus|accepted|versions|versions-spotify|link|attach|seed-legacy|migrate|unlink|default|list"),
+                    Arg("path", ArgType.String, "with kind=music-folders value=folder or startup: the folder of real music files to scan (the app's own index file is never touched); with kind=linked-video: the video file"),
                     Arg("hdcp", ArgType.Enum, "with kind=hdcp: the video's screen as the HDCP guard would judge it (no real screen): blocked = protection did not take there (the song plays, every video surface shows the protected-video warning), clear = the window moved to a screen that carries HDCP (the block lifts, the row goes back to its video); the next mount puts the boot's guard back", "blocked", "blocked|clear")], s_settleArgs),
             },
             new(Verb.Dialog, "dialog", "Open the crash prompt (crash, hang), Report a problem (report) or the artist gallery's lightbox over bundled photographs (lightbox) over the current page; key esc closes it", "dialog kind=report")
             {
                 Positional = ["kind"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("kind", ArgType.Enum, "the dialog", null, "crash|hang|report|lightbox")], s_settleArgs),
+                Args = Join([Arg("kind", ArgType.Enum, "the dialog (rename: the Rename dialog on the spotify-match versions fixture's copy)", null, "crash|hang|report|lightbox|rename")], s_settleArgs),
             },
             new(Verb.Skeleton, "skeleton", "Compare a page's loading skeleton with the page loaded: the pending fixture (it never loads) against the loaded uri, every shown key's top and height and every Skel.Region's height, in DIP; firstMoved is the jump a person sees when the data lands", "skeleton loaded=spotify:artist:ar3")
             {
@@ -591,6 +595,63 @@ public static partial class Diagnostics
                 Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
                         Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
             },
+            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, the mix-state signal template, each row's mixable bits, set-transition template, not-mixable reason, beat grid, cue points and stored recipe), a raw recipe decoded, or (show=roundtrip) every stored recipe decoded and encoded again, byte-compared, unchanged and with one field changed", "mix roundtrip uri=spotify:playlist:plmix")
+            {
+                Positional = ["show", "uri"],
+                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, the recipe round trip, the curve value map (EQ dB, cutoff Hz) and the automation steps it yields, (decode, --fake) a made-up lens read of spotify:playlist:plmixwire run through the real playlist decoder and commit, then its Mix data, (cancel) a Fade join cancelled inside its overlap, each voice pulled alone through the engine's mixer, the gain per ms now and as it was, (render) the tables MixRender builds for the engine against the mixstyles curves of the same styles and bars (every planned pair of the playlist, every preset 1-22 at bars 0-32), max deviation, (speed, --fake, mounted) the playlist's beatmatched pair played offline through the engine as the pump arms it (B's rate plan, its glide back to 1 read on the 200 ms tick) and each published step through the reducer into the PUT (playback_speed, f9 and the track metadata), (writes, --fake, mounted) every Mix write sent to the fake server with each request's method, path, headers and body (fields and hex), (fake) the fake server's state, or switch it with fake=, (requests) the requests it recorded since the last writes or fake=clear, (migrate, --fake, mounted) a session start's \"Listen without Mix\" step: the per-PC list (seed= puts entries in it first) sent as account opt-outs, the one log line, the key after, (coldstart, --fake, mounted) the playlist's Mix half as the list write keeps it, the Mix data forgotten as at a launch, the blob staged back as the disk read does (no lens read owed), then the cache identity against the fake server's /diff with the etag held and with it moved, (reorder, --fake, mounted, #48 M8) Smart reorder: the harmonize read, Spotify's order against the list's, the keyed-move write and the list after it, every request, (duplicate, --fake, mounted, #48 M8) Duplicate Mix with the playlist read as someone else's: the duplicate call, the copy read, filed, its Mix turned on and opened", "dump", "dump|roundtrip|semantics|decode|cancel|render|speed|writes|fake|requests|migrate|coldstart|preview|remote|reorder|duplicate"),
+                        Arg("seed", ArgType.String, "show=migrate: put these playlist ids (comma list, quoted) in the per-PC \"listen without Mix\" list first, as a build before M2 left it"),
+                        Arg("fake", ArgType.Enum, "show=fake: take the fake server offline (no session: nothing is sent), make it refuse every request (503), put it back, or clear its request log", "ok", "ok|offline|fail|clear"),
+                        Arg("owner", ArgType.Bool, "show=fake: the fake mixed playlist reads as the user's own (true) or as a followed playlist of someone else's (false)"),
+                        Arg("tier", ArgType.Enum, "show=fake (#48 M8): the account reads as Free (the Premium upsell where Mix would be) or Premium", "premium", "premium|free"),
+                        Arg("apply", ArgType.Bool, "show=reorder: write Spotify's order after reading it (false: the read and the proposal only)"),
+                        Arg("undo", ArgType.Bool, "show=reorder: then write the previous order back, as the toast's Undo does"),
+                        Arg("override", ArgType.Bool, "show=duplicate: send the first stored pair's recipe as an unsaved edit (the editor's Duplicate)"),
+                        Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
+                        Arg("from", ArgType.Int, "show=speed: the pair (row from to from + 1) to play (default: the list's first beatmatched pair); show=preview: the pair's first row (default 0)"),
+                        Arg("to", ArgType.Int, "show=preview: the pair's second row (default from + 1)"),
+                        Arg("do", ArgType.Enum, "show=preview (#48 M5 Hear it): run (start, step frames until it restored: the deck samples and the timeline), start, stop, status, wait (max= frames held to the wall clock, then status), envelope (the automix-preview signal body this editor sends the device that owns playback, decoded back), mark (the deck and queue now, before a preview started elsewhere: the editor's Hear it clicked) or verify (restoredExactly / queueRestored against the mark, once it stopped)", "status", "run|start|stop|status|wait|envelope|mark|verify"),
+                        Arg("preset", ArgType.Int, "show=preview: an unsaved edit, the pair's recipe with this preset id"),
+                        Arg("resume", ArgType.Bool, "show=preview do=stop: restore playing (true) or paused (false); default as it was"),
+                        Arg("loop", ArgType.Bool, "show=preview do=start: loop the pair until stopped"),
+                        Arg("every", ArgType.Int, "show=preview do=run: frames between deck samples", "60"),
+                        Arg("max", ArgType.Int, "show=preview do=run: the most frames to run (do=wait: the frames to wait)"),
+                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead (with show=roundtrip: round-trip it too)"),
+                        Arg("at", ArgType.Float, "show=cancel: where in the overlap the cancel lands (0..1)", "0.4"),
+                        Arg("change", ArgType.Enum, "show=roundtrip: the one field changed in the second encode (overlap +1 ms, durationBars +1, the EQ override set to 15 or 7)", "overlap", "overlap|bars|eq"),
+                        Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
+                        Arg("curves", ArgType.Int, "print the Connect track metadata the publisher writes for this preset id (Playback.Mix.FadeMeta), at bars= with volume= eq= filter= fx= overrides"),
+                        Arg("bars", ArgType.Int, "curves=: the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0"),
+                        Arg("window", ArgType.Int, "curves=: A's window, ms (audio.fade_out_duration)", "2890"),
+                        Arg("inWindow", ArgType.Int, "curves=: B's window, ms (audio.fade_in_duration; default the window)"),
+                        Arg("volume", ArgType.Int, "curves=: a volume style override (recipe 2.3)"),
+                        Arg("eq", ArgType.Int, "curves=: an EQ style override (recipe 2.4)"),
+                        Arg("filter", ArgType.Int, "curves=: a filter style override (recipe 2.5)"),
+                        Arg("fx", ArgType.Int, "curves=: an effect style override (recipe 2.12)"),
+                        Arg("autocheck", ArgType.Path, "Spotify's Auto against the official client's own answers: a folder outside the repo holding auto-pairs*.json (the client's Auto per adjacent pair) *inputs*.json (kind 28 cue candidates and kind 10 durations per track uri) and wire*.json (each track's raw kind 217, 28, 218 and 6 payloads, base64, for the live line: Wavee's own decoders); each pair's inputs run through the real planner (MixPlanner.Plan), the matches counted, every miss listed")],
+            },
+            new(Verb.Dj, "dj", "AI DJ: the DJ list's attributes; the lexicon session playing it (uri, url, expiry, dj/infinite, the three restrictions, pages fetched with their segments, the next page's url, the lookahead) and the DJ book per queue row (page, segment, jump target, narration slots, subtitle, decision id), the context's toggle locks and the user's held shuffle/repeat, beside the deck and queue; `narration` (D2): the planned narration rows (slot, the track each belongs to, the clip key, the clip's state and length), the prefetch log, the deck's timeline (item, start, end, length), the caption and what is current; do=answers decodes the --fake lexicon service's session and pages; do=play starts the list as a click does; do=jump presses Let DJ pick (cursor before and after, the rows skipped into history, the lexicon answers it caused); do=starve on=true|false makes the --fake service answer no more pages; do=expire ends the session's validity; do=run plays on in real time (16 ms frames) for ms= of the frame clock, or until=change the deck moves; do=transfer asks a transfer to the first other Connect device; `seams` / `joins` (D3, D3b): the talk-over and radio plan of every seam from the deck (kind, timing, its events on A's clock, the curves) and the joins the pump scheduled (A's position at B's start and at the announce); do=seams samples= adds each side's gain sampled over its window", "dj do=play")
+            {
+                Positional = ["do"],
+                Args = Join([Arg("do", ArgType.Enum, "what to do; jump = press Let DJ pick; starve on= = no more fake pages; run = play on in real time; transfer without file= = a transfer to the first other "
+                                 + "Connect device (refused during a narration); the Connect half (D4): envelope = the play body a start of uri= sends another "
+                                 + "device, cluster = fold the ClusterUpdates of file= (base64 per line) as a dealer push and read the mirror, transfer file= = a "
+                                 + "transfer of the DJ in uri= into Wavee from file= (a transfer command body), restore = the launch restore of a DJ "
+                                 + "deck on track=, bodies = the lexicon decode of the fake session as identity, gzip and zstd bodies; telemetry (D5) = "
+                                 + "on=true arms a tap on the play report's events (on=false drops it), without on= the tapped RawCoreStream and "
+                                 + "RawCoreStreamSegment payloads decoded field by field (all=true lists every event by name)", "status",
+                                 "status|answers|play|jump|seams|starve|expire|run|telemetry|" + InspectSession.DjConnectVerbs),
+                             Arg("uri", ArgType.String, "the DJ list (default: the fake one)"),
+                             Arg("on", ArgType.String, "do=starve: true (no more pages) or false; do=telemetry: true arms the tap, false drops it"),
+                             Arg("all", ArgType.String, "do=telemetry: true lists every tapped event (the rest by name and size)"),
+                             Arg("pages", ArgType.Int, "do=answers: how many pages to decode after the session (default 3)"),
+                             Arg("ms", ArgType.Int, "do=run: how much of the frame clock to play (default 1000, at most 600000); do=restore: the deck's position (default 30000)"),
+                             Arg("until", ArgType.Enum, "do=run: stop early when the deck moves", "ms", "ms|change"),
+                             Arg("file", ArgType.String, "do=cluster / do=transfer: the file to feed"),
+                             Arg("track", ArgType.String, "do=restore: the deck's track uri"),
+                             Arg("samples", ArgType.Int, "do=seams: sample each side's gain every this many ms over its window (default 250)"),
+                             Arg("n", ArgType.Int, "do=seams: how many seams from the deck on (default 12)"),
+                             Arg("try", ArgType.Bool, "do=cluster: then ask for shuffle, repeat and play-here, and read back that nothing changed")], s_settleArgs),
+            },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
                 Positional = ["id", "value"],
@@ -606,6 +667,18 @@ public static partial class Diagnostics
                              IntArg("limit", "results to list", "8", 1, 30),
                              Arg("model", ArgType.String, "the registry page's model (contract 1.116): the category list, the open category and arrival, the home's facts, this category's body (a slug; empty: the open one), with q= the box's results"),
                              Arg("press", ArgType.Enum, "the page box's key handler: down|up move the highlight through the results, enter opens the highlighted dial, esc clears then leaves", null, "down|up|enter|esc")], s_settleArgs),
+            },
+            new(Verb.Drop, "drop", "Read a local file's format, tags, length and cover location with the tag readers (#240) and import it into Local files as a drop does (import=false: the read alone); the reply is every field read and the row's face; then settle. With os=: play one step of an OS drag (files, folders, links, text) through the engine's external-drop seam at x,y, as the OLE target forwards a real one (#240 §3.15 drop anywhere): the reply is the effect, the drag's plan (kind, zones, chip, refusal) and the drop panel's state", "drop os=enter paths=C:/music/a.flac|C:/music/b.flac x=900 y=500")
+            {
+                Positional = ["path"],
+                Args = Join([Arg("path", ArgType.String, "the file to read"),
+                             Arg("import", ArgType.Bool, "false: read the file and stage nothing", "true"),
+                             Arg("os", ArgType.Enum, "an OS drag step: enter (with the payload), over, leave or drop", null, "enter|over|leave|drop"),
+                             Arg("paths", ArgType.String, "with os=: the dragged files and folders, '|'-joined (the engine hands them on enter); * offers files with an empty list (an engine that reads them only at drop)"),
+                             Arg("uris", ArgType.String, "with os=: the dragged links, '|'-joined (UniformResourceLocatorW / text/uri-list)"),
+                             Arg("text", ArgType.String, "with os=: the dragged text (CF_UNICODETEXT)"),
+                             Arg("x", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)"),
+                             Arg("y", ArgType.Float, "with os=: the pointer, window DIP (default: the window's centre)")], s_settleArgs),
             },
             new(Verb.Hint, "hint", "The in-app hints (settings rework phase 3): list every hint with its budget and verdict, force one's trigger true for one mount (show), forget every hint's budget and the use facts (reset), or read and load the persisted blob (state)", "hint show id=ai-lyrics")
             {
@@ -630,10 +703,36 @@ public static partial class Diagnostics
             new(Verb.Transport, "transport", "Drive the playback sequencer as the transport and the queue verbs do (next, prev, a natural end, shuffle, repeat, add/playnext, a track ruled unavailable) and read back the deck, the modes, the queue rows and the panel's up-next list; then settle", "transport do=next")
             {
                 Positional = ["do", "value"], NeedsMount = true, Acts = true,
-                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64; nothing is sent)", "status", "status|next|prev|end|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate"),
+                Args = Join([Arg("do", ArgType.Enum, "status, next, prev, end (the track ran out), pause, resume, seek (ms=), shuffle (value=on|off), repeat (value=off|all|one), add / playnext (uri=), clear (the user queue), dead (uri=: the catalog rules it unavailable), duration (ms=: the decoder reports the playing row's real length, a same-row duration change), audiobook (uri=: the catalogue classifies a show as a book), putstate (the connect-state PUT body the deck would send now, base64, and its playback_quality read back; nothing is sent), cluster (file=: captured connect-state cluster pushes, one base64 ClusterUpdate per line, through the real decoder: `decoded`, per frame the active device's playback_quality and the device picker's words and the Lossless badge for it; nothing is folded), remotequality (value=hifi|hifi24|veryhigh|high|normal|none: --fake's active Connect device states that playback_quality, as a push re-stating it would), telemetry (the playing row's RawCoreStream and closing segment as the registration would report them, base64; nothing is sent), inbound (file=: a controller's play/transfer command body, decoded and handed to the host as the dealer glue does), metadata (file=: a captured extended-metadata response body committed through the real decoder, market= the session market it decodes under; replies every TRACK_V4 entity's row verdict, reason and ladder verdict)", "status", "status|next|prev|end|pause|resume|seek|shuffle|repeat|add|playnext|clear|dead|duration|audiobook|putstate|cluster|remotequality|telemetry|inbound|metadata"),
                              Arg("value", ArgType.String, "shuffle on|off, repeat off|all|one"),
                              Arg("uri", ArgType.String, "a spotify:track: uri for add, playnext and dead; a spotify:show: uri for audiobook"),
-                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0")], s_settleArgs),
+                             Arg("ms", ArgType.Int, "the seek target (seek), the new length (duration)", "0"),
+                             Arg("file", ArgType.String, "with do=inbound: the command body (JSON) to decode and hand to the host; with do=metadata: the extended-metadata response (protobuf)"),
+                             Arg("market", ArgType.String, "with do=metadata: the 2-letter market the payload decodes under (empty: none, every gate admits)")], s_settleArgs),
+            },
+            new(Verb.Timecode, "timecode", "Read the playback timeline tap and the LTC output (#154), or set a timecode dial: the master track, its audible position, rate, flags and epoch as Playback.Timeline composes them, and the engine anchor with its publisher counters; samples= takes a series every= ms apart (run as frames when mounted: the headless endpoint is paced by the frame clock)", "timecode do=status samples=5 every=200")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "status, or set (key=, value=: the Settings rows' own verbs)", "status", "status|set"),
+                        IntArg("samples", "readings to take, every= ms apart (one reply, a `series` array when more than one)", "1", 1, 2000),
+                        IntArg("every", "ms between readings", "200", 0, 60_000),
+                        Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
+                        Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
+            },
+            new(Verb.MixStyles, "mixstyles", "#48 Mix style table: a preset's resolved style ids and every lane's out and in curve at a bar count, in the Connect metadata spelling; or check= the generators against the official client's own tables in a folder outside the repo (max deviation per lane, style and bar count over the 1025-point engine table, and a total)", "mixstyles preset=17 bars=4")
+            {
+                Positional = ["preset"],
+                Args = [IntArg("preset", "the preset id (1 Fade, 2 Blend, 3 Rise, 4 Melt, 11 Slam, 17 Wave, 20 Dissolve, 21 Surge, 22 Afterglow; 5-19 internal; 0 No transition; another id renders as Fade)", "1", -1, 1000),
+                        IntArg("bars", "the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0", 0, 1000),
+                        Arg("bpm", ArgType.Float, "A's tempo, for the echo and delay time", "120") with { Min = 1, Max = 400 },
+                        IntArg("volume", "a volume style override (recipe 2.3)", null, -1, 127),
+                        IntArg("eq", "an EQ style override (recipe 2.4)", null, -1, 127),
+                        IntArg("filter", "a filter style override (recipe 2.5)", null, -1, 127),
+                        IntArg("fx", "an effect style override (recipe 2.12)", null, -1, 127),
+                        IntArg("looping", "a looping style override (recipe 2.16)", null, -1, 127),
+                        Arg("check", ArgType.Path, "a folder with the client's tables (volume.json, eq.json, filterfx.json, fx.json, presets.json, looping.json, limits.json): compare every generator with them"),
+                        Arg("tol", ArgType.Float, "with check: the deviation that counts as an exception", "0.000001", requires: "check"),
+                        Arg("rows", ArgType.Bool, "with check: list every curve's deviation", "true", requires: "check")],
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
@@ -733,6 +832,87 @@ public static partial class Diagnostics
                              Arg("scale", ArgType.Float, "with film: each cell's scale of the frame", "0.5"),
                              Arg("crop", ArgType.Key, "with film: cells show only this node's drawn rect")], s_settleArgs),
             },
+            new(Verb.Friends, "friends", "Read the friend-activity run, or land a friend's change the way the dealer pushes it (hm://listening-activity/, the captured shape) through the real decoder and commit: that row is replaced in place and the run re-sorts playing first, then newest. With a mount the reply settles (trace= sees the change)", "friends push=sam-okafor track=spotify:track:tr7 playing=true")
+            {
+                Acts = true,
+                Args = Join([Arg("push", ArgType.String, "the friend whose activity changed: a bare username (christos, sam-okafor, alex-rivers, mia-solace, jun-park) or spotify:user:<id>"),
+                             Arg("track", ArgType.String, "with push: the spotify:track: uri the push names"),
+                             Arg("playing", ArgType.Bool, "with push: isPlaying (false is a pause: same track, same start)", "true"),
+                             IntArg("agoMs", "with push: the activity started this long ago", "0", 0, 1_000_000_000),
+                             Arg("context", ArgType.String, "with push: the contextUri (a spotify:playlist: one lands as the row's context)"),
+                             Arg("raw", ArgType.Path, "land this frame file as received instead (a captured push)")], s_settleArgs),
+            },
+            new(Verb.Nudge, "nudge", "Read or drive the rate/star nudge: the decision with every check, the ledger, the card. Load a fixture, pin a fact, fake the Store, fire a track boundary; expect= turns a mismatch into ok:false", "nudge fixture=eligible channel=store")
+            {
+                Acts = true,
+                Args =
+                [
+                    Arg("fixture", ArgType.Enum, "a named ledger, clock and channel (docs/guide/agent-inspect.md); loading one also resets every pin", null,
+                        "fresh|day3|eligible|short-days|short-hours|asked-60|asked-130|asked-130-quiet|capped|rated|starred|opted-out|troubled|troubled-old|milestone-99|milestone-100|existing|existing-lapsed|existing-later|existing-capped"),
+                    Arg("channel", ArgType.Enum, "the install source", null, "store|github|source"),
+                    Arg("session", ArgType.Enum, "this launch", null, "ordinary|after-update"),
+                    Arg("window", ArgType.Enum, "the window fact: a headless window is never the active one, so it is pinned (default front)", null, "front|behind|minimized|tray"),
+                    Arg("policy", ArgType.Enum, "the thresholds: default (milestones on) or plain (no milestone)", null, "default|plain"),
+                    Arg("starsCache", ArgType.String, "the cached star count: 86@-2h, 86@-8d, none"),
+                    Arg("stars", ArgType.String, "the star fetch's next answer: a count, or fail"),
+                    Arg("refresh", ArgType.Bool, "run RefreshStarsIfDue now (it runs at boot in the app); needs a mount"),
+                    Arg("clock", ArgType.String, "calendar time as an offset from the seed date: +130d, -2d, +6h, reset"),
+                    Arg("trouble", ArgType.String, "a fault at: now, -8d, none"),
+                    IntArg("sessionAge", "minutes since this launch (the launch ask's hold in the update session)", null, 0, 100000),
+                    Arg("store", ArgType.Enum, "the Store dialog's next answer (default succeeded)", null, "succeeded|canceled|network|error|unavailable"),
+                    Arg("link", ArgType.Enum, "whether opening a URL or URI works (default ok)", null, "ok|fail"),
+                    Arg("fire", ArgType.Bool, "a track boundary now, through RateNudge.OnTrackBoundary (the playback effect's own entry); needs a mount"),
+                    Arg("tick", ArgType.Bool, "run the once-a-second check now; needs a mount"),
+                    Arg("raw", ArgType.String, "write this raw ledger string to settings (with reload=true: the corrupt-value path)"),
+                    Arg("reload", ArgType.Bool, "re-read the ledger from settings: the persistence round trip"),
+                    Arg("expect", ArgType.String, "show:rate:1 | show:star:2 | show:rate:1:launch | quiet:<Rule> | closed (comma list): ok:false on a mismatch"),
+                    Arg("expectLedger", ArgType.String, "comma list of ledger fields that must match, e.g. asks=1,last=NotNow,enabled=true"),
+                    Arg("expectLaunched", ArgType.String, "a prefix the last launched URL must start with, or none"),
+                    Arg("expectCard", ArgType.Enum, "the card on screen; needs a mount", null, "shown|hidden"),
+                ],
+            },
+            new(Verb.LocalScan, "localscan", "Run the local-files scanner (#240) on a folder, read-only, against a private in-memory index: a cold scan, warm rescans and the start-up (journal) path, with the summary numbers; the app's index is not touched", "localscan path=D:/Music runs=3")
+            {
+                Positional = ["path"],
+                Args = [Arg("path", ArgType.String, "the folder of music to scan (read-only)"),
+                        IntArg("runs", "warm rescans (best and median reported)", "3", 1, 20)],
+            },
+            new(Verb.Decode, "decode", "Decode a local file with the decoder its content picks (#240: WAV and AIFF PCM included), as playback opens it, into a raw float32 stereo file (no device, no mount): the layout, the label, the exact length and gapless frames, the decoded frame count, the applied gain; seekMs= first seeks there", "decode path=C:/music/a.wav out=C:/scratch/a.f32 rate=44100")
+            {
+                Positional = ["path"],
+                Args = [Arg("path", ArgType.String, "the local file to decode"),
+                        Arg("out", ArgType.String, "where to write the decoded float32 little-endian stereo frames (none: count only)"),
+                        IntArg("rate", "the mix rate to decode into (0 = the file's own rate: no resampling)", "0", 0, 768000),
+                        IntArg("seekMs", "seek here first (the decoder's own seek), -1 = no seek", "-1", -1, 86400000),
+                        IntArg("ms", "decode at most this much (0 = to the end)", "0", 0, 86400000)],
+            },
+            new(Verb.LocalIndex, "localindex", "List the app's local index (#240): every entry's LocalId, music folder id, relative path and state, every folder record and the hidden set, filtered by a relative path prefix; read-only", "localindex prefix=Artist")
+            {
+                Positional = ["prefix"],
+                Args = [Arg("prefix", ArgType.String, "the start of the relative paths to list (\"\" lists all)"),
+                        Arg("rename", ArgType.Int, "first rename this LocalId in Wavee (LocalLink.Rename, as the drawer does)"),
+                        Arg("title", ArgType.String, "with rename: the new title"),
+                        Arg("compact", ArgType.Bool, "write the index's bin now (compact the log into it)", "false"),
+                        Arg("mark", ArgType.Int, "set the LocalId high-water mark kept outside the bin, as a previous run left it (before state kind=music-folders value=startup)")],
+            },
+            new(Verb.DjTts, "djtts", "The AI DJ's text-to-speech client (Spotify.DjTts; --fake answers in process): fulfil prints the request body (hex and fields), what the transport received, the 303 and its Location and that it was not followed; ensure starts a clip (fixture=, ssml=, manifest= or seconds= with n=) and waits for it; cache lists the clips and counters; play opens a clip through SourceRoute.Tts and decodes it with the MP3 decoder paced at 1x (format, exact length, the gain folded against the formula, the position series, the first audio against the download's end); gain tabulates every normalization mode; reset forgets the session", "djtts play fixture=intro")
+            {
+                Positional = ["do"],
+                Args = [Arg("do", ArgType.Enum, "fulfil, ensure, cache, play, gain or reset", "cache", "fulfil|fulfill|ensure|cache|play|gain|reset"),
+                        Arg("fixture", ArgType.Enum, "a fake clip: welcome (3.4 s), jump (4.9 s), intro (24.5 s, streamed with no length), flaky (the fulfil fails once), broken (fails twice), cdnflaky (the CDN refuses its first GET)", null, "welcome|jump|intro|flaky|broken|cdnflaky"),
+                        Arg("ssml", ArgType.String, "the narration's SSML (instead of a fixture)"),
+                        Arg("manifest", ArgType.String, "a narration item's media.manifest, base64: its body (field 1.1.4) is sent verbatim"),
+                        Arg("via", ArgType.Enum, "with do=fulfil: build the body from the narration keys, or wrap a reordered body in a manifest and send that", "keys", "keys|manifest"),
+                        Arg("key", ArgType.String, "with do=play: the clip's key (32 hex)"),
+                        Arg("seconds", ArgType.Float, "with do=ensure: distinct clips of this length (a break in the SSML), n= of them"),
+                        IntArg("n", "with seconds=: how many clips", "1", 1, 200),
+                        IntArg("wait", "with do=ensure: wait up to this many ms for the clips (and the spill) to settle", "0", 0, 600_000),
+                        Arg("pace", ArgType.Bool, "with do=play: decode at 1x (false: as fast as the bytes allow)", "true"),
+                        IntArg("rate", "with do=play: the mix rate to decode into", "44100", 8_000, 768_000),
+                        IntArg("ms", "with do=play: decode at most this much (0 = to the end)", "0", 0, 86_400_000),
+                        IntArg("every", "with do=play: ms of position between series samples", "1000", 50, 60_000),
+                        Arg("disk", ArgType.Bool, "with do=reset: also delete the spill folder", "false")],
+            },
             new(Verb.Quit, "quit", "Unmount and end the server", "quit") { Aliases = ["exit"] },
         ];
 
@@ -758,10 +938,13 @@ public static partial class Diagnostics
             "reset" => Verb.Reset, "click" => Verb.Click, "hover" => Verb.Hover, "key" => Verb.Key, "type" => Verb.Type,
             "transport" => Verb.Transport, "scroll" => Verb.Scroll, "play" => Verb.Play, "option" => Verb.Option, "theme" => Verb.Theme, "find" => Verb.Find,
             "dump" => Verb.Dump, "render" => Verb.Render, "tiers" => Verb.Tiers, "lint" => Verb.Lint, "crossing" => Verb.Crossing, "trace" => Verb.Trace, "state" => Verb.State, "dialog" => Verb.Dialog,
-            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
+            "views" => Verb.Views, "skeleton" => Verb.Skeleton, "crossings" => Verb.Crossings, "setting" => Verb.Setting, "mix" => Verb.Mix, "dj" => Verb.Dj, "settings" => Verb.Settings, "hint" => Verb.Hint, "recent" => Verb.Recent, "drag" => Verb.Drag, "window" => Verb.Window,
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
-            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages,
+            "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
+            "djtts" => Verb.DjTts,
             "quit" or "exit" => Verb.Quit,
+            "mixstyles" => Verb.MixStyles,
+            "friends" => Verb.Friends,
             _ => Verb.None,
         };
 

@@ -79,6 +79,8 @@ public static partial class Spotify
             AudioAttributes = 222,
             /// <summary>The three-band waveform (G-044, <c>Edges.TrackWaveform</c>).</summary>
             Waveforms = 237,
+            /// <summary>#48 Mix (Spotify.Decode.Mix.cs): cue points, beats, vocal activity; mix state, auto lens, mixability trait.</summary>
+            Cuepoints = 28, MixBeats = 217, MixVocals = 218, AutoLens = 170, MixState = 225, MixabilityTrait = 235,
         }
 
         /// <summary>THE protobuf parser for this app's read path: a cursor over one frame, a field-number switch, and
@@ -96,6 +98,10 @@ public static partial class Spotify
             public int Wire;
 
             public ProtoReader(ReadOnlySpan<byte> bytes) { _b = bytes; _p = 0; Field = 0; Wire = 0; }
+
+            /// <summary>The byte offset of the cursor: before <see cref="Next"/> it is where the next field's tag starts, after
+            /// the field's value is read or skipped it is where that field ends (a byte-exact patcher copies the span between).</summary>
+            public readonly int Position => _p;
 
             /// <summary>Advance to the next tag. False at the end of the frame, and false — permanently — on anything
             /// malformed, so a caller's <c>while (r.Next())</c> is also its error handling.</summary>
@@ -492,6 +498,87 @@ public static partial class Spotify
             return id;
         }
 
+        /// <summary>What a TRACK_V4's <c>restriction[]</c> says, folded: how many, whether any carries a country list, and the
+        /// catalogues they name (<c>catalogue</c> enum = 1, <c>catalogue_str</c> = 5; SUBSCRIPTION / "premium" is the paid
+        /// one). A country list that rules the market out clears the caller's <c>ownAdmitted</c>
+        /// (<see cref="Audio.CountryAllowed"/>: an empty allowed list admits, as the ladder reads it).</summary>
+        struct RestrictionGates
+        {
+            public int Count;
+            public bool Country, Paid, Other;
+
+            public void Add(ProtoReader r, string market, ref bool admitted)
+            {
+                Count++;
+                while (r.Next())
+                {
+                    switch (r.Field)
+                    {
+                        case 1:                                        // catalogue (enum, packed or not)
+                            if (r.Wire == 2)
+                            {
+                                // packed: a run of varints
+                                int value = 0, shift = 0;
+                                foreach (byte b in r.Bytes())
+                                {
+                                    value |= (b & 0x7F) << shift;
+                                    shift += 7;
+                                    if ((b & 0x80) != 0) continue;
+                                    Catalogue(value);
+                                    value = 0;
+                                    shift = 0;
+                                }
+                            }
+                            else Catalogue(r.Int32());
+                            break;
+                        case 2:
+                        case 3:
+                            {
+                                Country = true;
+                                string list = System.Text.Encoding.ASCII.GetString(r.Bytes());
+                                if (!Audio.CountryAllowed(list, market, forbiddenList: r.Field == 3)) admitted = false;
+                                break;
+                            }
+                        case 5:
+                            if (Is(r.Bytes(), "premium")) Paid = true; else Other = true;
+                            break;
+                        default: r.Skip(); break;
+                    }
+                }
+            }
+
+            void Catalogue(int value)
+            {
+                if (value == 1) Paid = true; else Other = true;   // Restriction.Catalogue.SUBSCRIPTION
+            }
+        }
+
+        /// <summary>Does an <c>AudioFile</c> (TRACK_V4 <c>file</c> = 12, an alternative's too) name a file id?</summary>
+        static bool HasFileId(ProtoReader file)
+        {
+            while (file.Next())
+            {
+                if (file.Field == 1) return !file.Bytes().IsEmpty;
+                file.Skip();
+            }
+            return false;
+        }
+
+        /// <summary>Does one <c>alternative</c> (a relink target, itself a <c>metadata.Track</c>) play in
+        /// <paramref name="market"/>: a file of its own, and no country list that rules the market out?</summary>
+        static bool AlternativePlays(ProtoReader alternative, string market)
+        {
+            bool files = false, admitted = true;
+            var gates = default(RestrictionGates);
+            while (alternative.Next())
+            {
+                if (alternative.Field == 12) files |= HasFileId(alternative.Message());
+                else if (alternative.Field == 11) gates.Add(alternative.Message(), market, ref admitted);
+                else alternative.Skip();
+            }
+            return files && admitted;
+        }
+
         // ── 4. the V4 metadata decoders ──────────────────────────────────────────────────────────────────────────────
 
         /// <summary>`metadata.Track` (extension kind 10) → one <see cref="StagedTrack"/> at
@@ -526,6 +613,11 @@ public static partial class Spotify
             var artists = s.Run(Relation.TrackArtists);
             long earliestLive = 0;
             bool sawIsrc = false;
+            // The playability inputs (`Spotify.Audio.WithheldFor`): the payload's own files, its restrictions and its
+            // alternatives. The market is the session's (`Api.Market`, empty until the welcome: an empty market admits).
+            string market = Api.Market;
+            bool ownFiles = false, ownAdmitted = true, alternativePlays = false, ownVideo = false;
+            var gates = default(RestrictionGates);
             s.ClearCredit();
 
             while (r.Next())
@@ -560,6 +652,9 @@ public static partial class Spotify
                             sawIsrc = true;
                             break;
                         }
+                    case 11: gates.Add(r.Message(), market, ref ownAdmitted); break;   // restriction
+                    case 12: ownFiles |= HasFileId(r.Message()); break;                 // file
+                    case 13: alternativePlays |= AlternativePlays(r.Message(), market); break;   // alternative
                     case 17: earliestLive = (long)r.Varint(); break;
                     case 24:                                           // original_audio { uuid = 1 }
                         // THE KEY TO THE FORMAT LADDER, and the only payload that carries it (FLAC plan §5.2): the
@@ -576,6 +671,7 @@ public static partial class Spotify
                         // THE MANIFEST ID (G-056): the FIRST rendition's gid, as the lowercase hex
                         // `/manifests/v9/json/sources/{id}` is addressed by. Present on a self-contained music-video
                         // track; a linked-uri track has none and resolves through its counterpart (TrackTable.VideoGid).
+                        ownVideo = true;
                         if (row.VideoGid.IsEmpty) row.VideoGid = Hex(s, r.Message().Bytes(1));
                         else r.Skip();
                         break;
@@ -591,6 +687,14 @@ public static partial class Spotify
                 row.AvailableAt = AtMost(earliestLive);
                 row.Flags |= (uint)TrackFlags.Unavailable;
             }
+            // The second statement TrackV4 makes, and the one the official client greys rows by: no file this market
+            // admits, no alternative that plays here, a restriction saying so (`Spotify.Audio.WithheldFor`). It is
+            // TERMINAL — the reason bit makes the row `Track.Unplayable` though it keeps its release date — but only for a
+            // row that is OUT: an announced track has no files yet either, and its pending date is the truer statement.
+            var withheld = Audio.WithheldFor(ownFiles, ownAdmitted, alternativePlays, ownVideo, gates.Count > 0,
+                gates.Country, Audio.PaidCatalogueOnly(gates.Paid, gates.Other));
+            if (withheld != Audio.Withheld.None && earliestLive <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                row.Flags |= (uint)(TrackFlags.Unavailable | global::Wavee.Track.WithheldFlag(withheld));
             row.ArtistLine = s.TakeCredit();
 
             // A payload that named NO original audio has no audio entity behind it, and therefore no format ladder —
@@ -1291,6 +1395,10 @@ public static partial class Spotify
                 case Ext.RecommendedPlaylists: RecommendedPlaylists(payload, entityUri, s); break;
                 case Ext.AudioAssociations: AudioAssociations(payload, entityUri, s); break;
                 case Ext.Waveforms: Waveform(payload, entityUri, s); break;
+                case Ext.MixBeats: MixBeats(payload, entityUri, s); break;
+                case Ext.Cuepoints: Cuepoints(payload, entityUri, s); break;
+                case Ext.MixVocals: MixVocals(payload, entityUri, s); break;
+                case Ext.MixState or Ext.AutoLens or Ext.MixabilityTrait: PlaylistMixKind(kind, payload, entityUri, s); break;
                 default: break;
             }
         }
@@ -1514,6 +1622,7 @@ public static partial class Spotify
 
             tags.EndEvenIfEmpty(in id, tags.Count);
             s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.Tags);
+            MixGenres(proto, in id, s);   // #48: every descriptor's concept, for the beatmatched Auto (Spotify.Decode.Mix.cs)
         }
 
         /// <summary>Kind 185 (`OnPlatformReputationTrait`) → <see cref="TrackFields.PlayCount"/>: field 3, varint.
@@ -1583,7 +1692,7 @@ public static partial class Spotify
         /// (ch 02 GAP-6's second image per track). Ported from `VideoProjector.ParseAssoc`.
         ///
         /// <para>A payload with no association is a real NEGATIVE and still writes the group: the row then knows
-        /// there is no video and the film lane stops asking. The `VideoOverride` bit is untouched here — the commit
+        /// there is no video and the film lane stops asking. The `LinkedVideo` bit is untouched here — the commit
         /// keeps a user-attached mp4 alive across a catalogue answer that carries none (ch 01 GAP 7).</para></summary>
         public static void VideoAssociations(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
@@ -1937,6 +2046,7 @@ public static partial class Spotify
                     if (a.Field == 1) edge.Aux = UserUri(s, a.Bytes());       // added_by (a username, not a uri)
                     else if (a.Field == 2) edge.At = Instant((long)a.Varint()); // timestamp: ms (recents) or s — Instant reads both
                     else if (a.Field == 11) Chart(a.Message(), ref edge);
+                    else if (a.Field == 14) { edge.B0 |= PlaylistItemFlags.Mixable; a.Skip(); }   // #48: set-transition = editable
                     else if (a.Field == 12) edge.Text = Hex(s, a.Bytes());    // item_id — the reconciler key
                     else a.Skip();
                 }
@@ -1947,7 +2057,8 @@ public static partial class Spotify
             {
                 attribute.Fields(1, 2, out var key, out var value);
                 if (key.IsEmpty) return;
-                if (Is(key, "status")) edge.B1 = ChartStatus(value);
+                if (Is(key, "not-mixable")) { if (Is(value, "true")) edge.B0 |= PlaylistItemFlags.NotMixable; }   // #48
+                else if (Is(key, "status")) edge.B1 = ChartStatus(value);
                 else if (Is(key, "current_pos")) edge.U0 = Clamp(Number(value));
                 else if (Is(key, "previous_pos")) edge.U1 = Clamp(Number(value));
 

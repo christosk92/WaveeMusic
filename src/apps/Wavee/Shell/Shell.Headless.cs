@@ -103,6 +103,7 @@ public static partial class Shell
             // here the published position ran at a different rate from the frames, so the caption stepped back a line now and then (audit FU2 item 7). A
             // headless host only: its time IS the frames it runs.
             Playback.FrameNowMs = static () => FrameTime.NowMs;
+            Wavee.Theming.Colours.ColourChoice.Seed(Platform.Settings);   // the colour sets before the seed installs the definition (#184)
             Appearance.Seed(options.Theme);   // a fixed kind: no OS read, the token-default accent
             LoadDocuments();
             // Between mounts there is no host to post into. A post from the UI thread still runs inline (as the boot default

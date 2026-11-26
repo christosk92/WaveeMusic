@@ -34,6 +34,12 @@ public static partial class Platform
 {
     public static partial class Keys
     {
+        // ── the rate/star nudge (docs/plans/wavee/rate-nudge-implementation.md §3) ──
+        /// <summary>The rate/star nudge's ledger (RateNudge.Encode). One string: a write is atomic. Empty = never read yet.</summary>
+        public static readonly SettingKey<string> RateNudgeLedger = new("app.rateNudge.ledger", "");
+        /// <summary>The cached GitHub star count (RateNudge.EncodeStars, `count|ms`). A cache: losing it costs one request.</summary>
+        public static readonly SettingKey<string> RateNudgeStars = new("app.rateNudge.stars", "");
+
         // ── the fullscreen stage (docs/plans/wavee/fullscreen-flagship-implementation.md §2.11) — all written through Prefs.Stage ──
         /// <summary>Stage.Mode as an int (0 Lyrics · 1 Visualizer · 2 Queue · 3 Artist); unknown ⇒ Lyrics.</summary>
         public static readonly SettingKey<int> StageMode = new("stage.mode", 0);
@@ -576,6 +582,10 @@ public static partial class WaveeLogSessions
 
 // ── 8. WaveeVersionInfo (G-198) ──────────────────────────────────────────────────────────────────────────────────────
 
+/// <summary>How this install got here: the Store, a packaged GitHub build, or a source build. Feedback's install source and
+/// the rate/star nudge both read it.</summary>
+public enum InstallChannel : byte { Store, Sideload, Source }
+
 /// <summary>Everything the app knows about its own build, parsed once from the assembly metadata `Wavee.csproj` stamps.
 /// Pure: the caller hands in the already-read pairs (`Platform.Version` in Platform.Host.cs does the read). Ported from
 /// 0.2.9's `Wavee.Core.Versioning.WaveeVersionInfo`, verbatim in behaviour.</summary>
@@ -603,6 +613,9 @@ public sealed record WaveeVersionInfo(
 
     /// <summary>A build Windows never installed: no quad, or an explicit dev channel. It never sees an update prompt.</summary>
     public bool IsDev => Channel == "dev" || Quad.Length == 0;
+
+    /// <summary>Store build; a packaged non-dev build (the GitHub .msix / .appinstaller); anything else is a source build.</summary>
+    public InstallChannel ChannelFor(bool isPackaged) => IsStore ? InstallChannel.Store : isPackaged && !IsDev ? InstallChannel.Sideload : InstallChannel.Source;
 
     /// <summary>Whether this build can actually deliver a crash report (#165): the ingest URL, the ingest key AND the
     /// quad must all be stamped. Any one missing and the Worker refuses the report (no URL: nowhere to send; no key:

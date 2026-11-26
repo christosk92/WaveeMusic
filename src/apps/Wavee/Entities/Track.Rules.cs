@@ -648,32 +648,103 @@ public readonly partial struct Track
         => availabilityKnown && unavailable && !(availableAt != 0 && availableAt <= nowUnixSeconds);
 
     /// <inheritdoc cref="NotYetOutOf"/>
+    /// <remarks>A row carrying a WITHHELD reason (<see cref="TrackFlags.WithheldMask"/>) is never not-yet-out: it is
+    /// <see cref="Unplayable()"/>, and the two predicates never both answer true.</remarks>
     public bool NotYetOut(long nowUnixSeconds)
-        => NotYetOutOf(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt,
-                       nowUnixSeconds);
+        => (FlagBits & (uint)TrackFlags.WithheldMask) == 0
+           && NotYetOutOf(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt,
+                          nowUnixSeconds);
 
-    /// <summary>Ruled unavailable with NO release instant: the catalog said this row does not exist for this account (a
-    /// terminal per-entity envelope verdict — withdrawn, region-locked, gone), and no date will ever heal it. The greyed
-    /// row, the play gate and <c>PlayableOnly</c> treat it exactly like <see cref="NotYetOutOf"/>; the duration cell
-    /// states "Unavailable" where a pending row states WHEN. An UNRULED row is never unplayable (a stray flag is not a
-    /// verdict), and a ruled row WITH an instant is not-yet-out or out — never this.</summary>
-    public static bool Unplayable(bool availabilityKnown, bool unavailable, int availableAt)
-        => availabilityKnown && unavailable && availableAt == 0;
+    /// <summary>Ruled unavailable for good: the catalog said this row does not play for this account and market, and no
+    /// date will heal it — either a terminal per-entity envelope verdict with NO release instant (withdrawn, gone), or a
+    /// verdict that NAMES its reason (<paramref name="withheld"/>: region-locked, Premium only, restricted), which keeps its
+    /// release date for the facts strip. The greyed row, the play gate and <c>PlayableOnly</c> treat it exactly like
+    /// <see cref="NotYetOutOf"/>; the row states its reason (<see cref="UnplayableReason"/>) where a pending row states
+    /// WHEN. An UNRULED row is never unplayable (a stray flag is not a verdict), and a ruled row with an instant and no
+    /// reason is not-yet-out or out — never this.</summary>
+    public static bool Unplayable(bool availabilityKnown, bool unavailable, int availableAt, bool withheld = false)
+        => availabilityKnown && unavailable && (availableAt == 0 || withheld);
 
-    /// <inheritdoc cref="Unplayable(bool,bool,int)"/>
+    /// <inheritdoc cref="Unplayable(bool,bool,int,bool)"/>
     public bool Unplayable()
-        => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt);
+        => Unplayable(Knows(TrackFields.Availability), (FlagBits & (uint)TrackFlags.Unavailable) != 0, AvailableAt,
+                      (FlagBits & (uint)TrackFlags.WithheldMask) != 0);
+
+    /// <summary>Why an <see cref="Unplayable()"/> row does not play: <see cref="UnavailableWhy.Region"/> ("Not available in
+    /// your country"), <see cref="UnavailableWhy.Premium"/> ("Premium only"), else <see cref="UnavailableWhy.Gone"/> (the
+    /// catalog gave no reason it could state). <see cref="UnavailableWhy.None"/> for a row that plays or is only pending.</summary>
+    public UnavailableWhy UnplayableReason()
+        => !Unplayable() ? UnavailableWhy.None : WithheldReasonOf(FlagBits);
+
+    /// <summary>The reason bits of a ruled-unavailable row's flags, as one value (the region gate first: it is the one the
+    /// official client names). PURE.</summary>
+    public static UnavailableWhy WithheldReasonOf(uint flags)
+        => (flags & (uint)TrackFlags.RegionLocked) != 0 ? UnavailableWhy.Region
+         : (flags & (uint)TrackFlags.PremiumOnly) != 0 ? UnavailableWhy.Premium
+         : UnavailableWhy.Gone;
+
+    /// <summary>Why a ruled row will not play (<see cref="UnplayableReason"/>).</summary>
+    public enum UnavailableWhy : byte { None = 0, Gone, Region, Premium }
+
+    /// <summary>A reason's SHORT form, the lead of a withheld row's credit line: "Not available in your country", "Premium
+    /// only", "Unavailable". Loc keys, resolved by the caller.</summary>
+    public static string WithheldShortKey(UnavailableWhy why) => why switch
+    {
+        UnavailableWhy.Region => Strings.Detail.TrackFacts.Region,
+        UnavailableWhy.Premium => Strings.Detail.TrackFacts.Premium,
+        _ => Strings.Detail.TrackFacts.UnavailableShort,
+    };
+
+    /// <summary>A reason's LONG form, the time lane's tooltip and the play attempt's toast: "This song isn’t available in your
+    /// country", "This song needs Spotify Premium", "This song isn’t available to play". Loc keys.</summary>
+    public static string WithheldLongKey(UnavailableWhy why) => why switch
+    {
+        UnavailableWhy.Region => Strings.Detail.TrackFacts.RegionReason,
+        UnavailableWhy.Premium => Strings.Detail.TrackFacts.PremiumReason,
+        _ => Strings.Detail.TrackFacts.UnavailableReason,
+    };
+
+    /// <summary>The flag bit that states a <see cref="Spotify.Audio.Withheld"/> verdict (0 for none). PURE.</summary>
+    public static TrackFlags WithheldFlag(Spotify.Audio.Withheld why) => why switch
+    {
+        Spotify.Audio.Withheld.Region => TrackFlags.RegionLocked,
+        Spotify.Audio.Withheld.Premium => TrackFlags.PremiumOnly,
+        Spotify.Audio.Withheld.Gone => TrackFlags.Withdrawn,
+        _ => TrackFlags.None,
+    };
 
     /// <summary>A playlist's <c>spotify:local:</c> item (<c>Track.LocalUri.cs</c>): its face is its uri's, and Wavee has no file to play it from. A local
     /// item's id is always TEXT-form, so the form is tested first: a gid's <see cref="EntityId.Text"/> builds a new string, and the duration lane and the
     /// artist runs ask this per row (Entities.cs: never per row per frame).</summary>
     public bool IsLocalItem => IsValid && Uri.Id.Form == EntityForm.Text && LocalTrackUri.Is(Uri.Text);
 
-    /// <summary>The artist a local item's uri names, or "" for any other row.</summary>
-    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : "";
+    /// <summary>The artist a local item's uri names, or a local file's artist tag (<see cref="Playlist.LocalNamesOf"/>), or "" for any
+    /// other row.</summary>
+    public string LocalArtist => IsLocalItem ? LocalTrackUri.NamesOf(Uri.Text).Artist : IsLocal ? Playlist.LocalNamesOf(Uri.Text).Artist : "";
 
-    /// <summary>How many artists the row draws: its billed artists, or the one a local item's uri names.</summary>
-    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : LocalArtist.Length > 0 ? 1 : 0;
+    /// <summary>A local row (a <c>wavee:local:file:</c> track, or a playlist's <c>spotify:local:</c> item, matched or not): its credit is a
+    /// name, never an artist row.</summary>
+    public bool IsLocalRow => IsLocal || IsLocalItem;
+
+    /// <summary>THE credit a local row SHOWS: its tagged or uri-named artist, or "Unknown artist" when it names none; "" for any other row.
+    /// For a file in the music folders the name comes from its face (<c>LocalLibrary.Restate</c>), which applies <see cref="LocalNames.Display"/>
+    /// first: an untagged "Artist - Title" file shows "Title" by "Artist" (the split changes the title too, so it is made where the face is,
+    /// title and artist together), and an accepted "Your files and Spotify" match shows Spotify's names. Only what is still unnamed after that
+    /// falls back here.
+    /// Display only: the stored artist stays empty, because a <c>spotify:local:</c> uri, its match (<c>LocalMatch</c>) and the Connect and
+    /// telemetry bodies (<c>Spotify.Egress</c>) need the real, empty name; they read <see cref="LocalArtist"/> or the names map, never this.
+    /// Not a link (there is no artist page behind it).</summary>
+    public string LocalCredit => !IsLocalRow ? "" : LocalArtist is { Length: > 0 } named ? named : Loc.Get(Strings.Track.UnknownArtist);
+
+    /// <summary>How many artists the row draws: its billed artists, or the one credit a local row shows (<see cref="LocalCredit"/>).</summary>
+    public int DisplayArtistCount => ArtistSlots.Length is > 0 and var n ? n : IsLocalRow ? 1 : 0;
+
+    /// <summary>The flat credit line a surface that draws one string shows (the queue, the video tab, the announce, menus): the commit-time
+    /// <see cref="ArtistLineId"/>, else a local row's <see cref="LocalCredit"/>. Resolves a string: never per row per frame.</summary>
+    public string CreditLine => Entities.Strings.Resolve(ArtistLineId) is { Length: > 0 } line ? line : LocalCredit;
+
+    /// <summary>The first credited artist's name, else a local row's <see cref="LocalCredit"/>: the OS media card and the tray show one name.</summary>
+    public string FirstCreditName => ArtistSlots is { Length: > 0 } slots ? new Artist(slots[0]).Name : LocalCredit;
 
     /// <summary>Does this row show the versions chevron (<see cref="TableRules.HasVersionsOf"/>)? Subscribes the versions
     /// relation's own <c>Changed</c>, so a bound read re-resolves when a drawer's fetch lands an alternate; the video
@@ -683,9 +754,16 @@ public readonly partial struct Track
         if (!IsValid) return false;
         var versions = Entities.Current.Edges.TrackVersions;
         _ = versions.Changed.Value;
+        // "Your files and Spotify": a file whose match was accepted has its Spotify version to show, and that Spotify song its files.
+        int linked = IsLocal ? (LocalLink.HasLink(Uri.Text) ? 1 : 0) : LocalLink.FilesFor(Uri.Text).Count;
         return TableRules.HasVersionsOf(Uri.Kind == EntityKind.Track, HasVideo, VideoCounterpart.IsValid,
-                                        versions.Targets(Slot).Length);
+                                        versions.Targets(Slot).Length + linked);
     }
+
+    /// <summary>"Your files and Spotify": a Spotify song a file in the music folders is linked to (an accepted match), read backwards. Its row
+    /// wears the file mark at rest (distinct from the "on this PC" ring, which is Spotify's own audio cached). Tracked: reads
+    /// <see cref="LocalLink.Version"/>.</summary>
+    public bool HasLinkedFile => IsValid && !IsLocal && LocalLink.FilesFor(Uri.Text).Count > 0;
 
     // ══ 5b. FOR DISPLAY — the relink redirection ═════════════════════════════════════════════════════════════════════
 
@@ -1027,18 +1105,31 @@ public readonly partial struct Track
     }
 
     /// <summary>The rows <see cref="FilterFlags.PlayableOnly"/> would hide, counted by why: the "Hide them" bar's numbers (boards C-Unavailable /
-    /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable with no release instant (<see cref="Track.Unplayable()"/>: withdrawn,
-    /// region-locked, gone, "isn’t available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead
-    /// ("isn’t out yet"). A row is counted once, under the first that holds.</summary>
-    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0)
+    /// C-Unavailable-Compact). <paramref name="NotAvailable"/>: ruled unavailable for this market (<see cref="Track.UnavailableWhy.Region"/>, "isn’t
+    /// available in your country"); <paramref name="NotYetOut"/>: ruled unavailable until a release instant still ahead ("isn’t out yet");
+    /// <paramref name="Premium"/>: only the paid catalogue carries it ("needs Premium"); <paramref name="Gone"/>: ruled unplayable with no reason the
+    /// catalog named (withdrawn, an entity it no longer resolves: "is unavailable"). A row is counted once, under the first that holds.</summary>
+    public readonly record struct UnavailableTally(int NotAvailable = 0, int NotYetOut = 0, int LocalFiles = 0, int Missing = 0, int Format = 0, int Offline = 0,
+                                                   int Premium = 0, int Gone = 0)
     {
         /// <summary>Every row the filter would hide.</summary>
-        public int Total => NotAvailable + NotYetOut + LocalFiles;
+        public int Total => NotAvailable + NotYetOut + LocalFiles + Missing + Format + Offline + Premium + Gone;
+
+        /// <summary>This tally with one more indexed local file that cannot be played, by its cause (#240 S6: missing, a format Wavee cannot play
+        /// yet, its drive away). Its reasons are local, never "isn’t available in your country".</summary>
+        public UnavailableTally WithLocal(LocalFilesList.Cause cause) => cause switch
+        {
+            LocalFilesList.Cause.Missing => this with { Missing = Missing + 1 },
+            LocalFilesList.Cause.Offline => this with { Offline = Offline + 1 },
+            _ => this with { Format = Format + 1 },
+        };
 
         /// <summary>This tally with one more row of the given verdict (a playable or unruled row adds nothing). A playlist's local file
         /// (<paramref name="local"/>) is its own reason ("are local files"), never "isn’t available in your country".</summary>
-        public UnavailableTally With(bool notYetOut, bool unplayable, bool local = false)
+        public UnavailableTally With(bool notYetOut, bool unplayable, bool local = false, UnavailableWhy why = UnavailableWhy.Region)
             => local ? this with { LocalFiles = LocalFiles + 1 }
+             : unplayable && why == UnavailableWhy.Premium ? this with { Premium = Premium + 1 }
+             : unplayable && why == UnavailableWhy.Gone ? this with { Gone = Gone + 1 }
              : unplayable ? this with { NotAvailable = NotAvailable + 1 }
              : notYetOut ? this with { NotYetOut = NotYetOut + 1 }
              : this;
@@ -1184,6 +1275,8 @@ public readonly partial struct Track
     {
         Plays, Bpm, Key, Added, Duration, Album, Released, AddedBy, Isrc, Descriptors,
         Explicit, Video, LocalFile, Unavailable,
+        /// <summary>The audio's verdict WITH its reason: <see cref="Unavailable"/>'s twins, so the strip names the cause.</summary>
+        RegionLocked, PremiumOnly,
     }
 
     /// <summary>How a fact renders. <see cref="Pending"/> is the ONE em dash — "asked, not answered yet" — for the two
@@ -1239,7 +1332,8 @@ public readonly partial struct Track
         bool Local = false,
         bool AvailabilityKnown = false,
         bool Unavailable = false,
-        bool NotYetOut = false)
+        bool NotYetOut = false,
+        UnavailableWhy Reason = UnavailableWhy.None)
     {
         /// <summary>One handle's facts. The key and camelot labels go through the exact <see cref="Format"/> tables and
         /// read as absent until <c>Knows(Audio)</c>; <c>AddedByRaw</c> is the caller's (<c>with</c>) — membership is an edge.</summary>
@@ -1272,12 +1366,14 @@ public readonly partial struct Track
                 Explicit: t.IsExplicit,
                 Local: t.IsLocal,
                 AvailabilityKnown: ruled,
-                // The RULED verdict bit — `Unplayable` (no instant) and a pending release (instant ahead) both read true
-                // here; `NotYetOut` is what separates them for the strip (a date beside "Unavailable" is a contradiction).
+                // The TERMINAL verdict (`Unplayable`), not the raw bit: TRACK_V4 rules every row with its release instant
+                // (the bit plus a date that heals once passed), so the bit alone stamped "Audio unavailable" on every
+                // released song's strip. `NotYetOut` is the pending case, which states WHEN instead.
                 // It is a verdict about THE AUDIO. It is not, and never was, a statement about the row's music video —
                 // which is why the strip's label names its subject ("Audio unavailable"); see `Facts.For`'s flag run.
-                Unavailable: ruled && !t.IsPlayable,
-                NotYetOut: t.NotYetOut(nowUnixSeconds));
+                Unavailable: ruled && t.Unplayable(),
+                NotYetOut: t.NotYetOut(nowUnixSeconds),
+                Reason: t.UnplayableReason());
         }
     }
 
@@ -1364,8 +1460,14 @@ public readonly partial struct Track
             // which is the contradiction the guard above exists to prevent — so the fix is the LABEL:
             // `detail.trackFacts.unavailable` reads "Audio unavailable", not "Unavailable".
             // `AlbumVideoSectionTests` pins the independence so a future refactor cannot fuse them back.
+            // A NAMED reason states itself ("Not available in your country", "Premium only"); an unnamed one stays "Audio unavailable".
             if (!notYetOut && input.AvailabilityKnown && input.Unavailable)
-                facts.Add(new Fact(FactKind.Unavailable, FactForm.Flag, ""));
+                facts.Add(new Fact(input.Reason switch
+                {
+                    UnavailableWhy.Region => FactKind.RegionLocked,
+                    UnavailableWhy.Premium => FactKind.PremiumOnly,
+                    _ => FactKind.Unavailable,
+                }, FactForm.Flag, ""));
 
             return facts;
         }
@@ -1405,6 +1507,8 @@ public readonly partial struct Track
             FactKind.Explicit => Strings.Detail.TrackFacts.Explicit,
             FactKind.Video => Strings.Detail.TrackFacts.Video,
             FactKind.LocalFile => Strings.Detail.TrackFacts.LocalFile,
+            FactKind.RegionLocked => Strings.Detail.TrackFacts.Region,
+            FactKind.PremiumOnly => Strings.Detail.TrackFacts.Premium,
             _ => Strings.Detail.TrackFacts.Unavailable,
         };
 

@@ -266,7 +266,11 @@ public static partial class Spotify
         /// <see cref="Overflow"/> for why the two ends choose differently.</summary>
         public static void Enqueue(string eventName, byte[] payload)
         {
+            Tapped(eventName, payload);
             if (Egress.NamesWaveeUri(payload)) { Log.Warn("spotify", "gabo event " + eventName + " named a non-Spotify uri; not sent"); return; }
+            // `--fake` (the demo seed, the inspector) has no account: nothing is journaled or sent. Before #240 no fake play reached here (a
+            // fake track is not a Spotify id); a playlist's spotify:local: item is one.
+            if (Platform.Args.Fake) { Log.Info("spotify", "telemetry.fake event=" + eventName + " bytes=" + payload.Length + " not sent"); return; }
             if (Volatile.Read(ref s_booted) == 0) Boot();
             Interlocked.Increment(ref s_sequence);
             long sequence = NextEventSequence(eventName);
@@ -275,6 +279,36 @@ public static partial class Spotify
             JournalGabo(account, envelope);
             if (!GaboQueue.TryAdd(new GaboWork(envelope, account)))
                 Log.Warn("spotify", "gabo worker queue full; durable event retained");
+        }
+
+        // ── the inspector's tap (what would be sent, as sent; never on unless the inspector arms it) ──
+
+        static List<(string Name, byte[] Payload)>? s_tap;
+        static readonly object s_tapLock = new();
+        const int TapCap = 256;
+
+        /// <summary>The inspector (`dj do=telemetry`): keep a copy of every event handed to <see cref="Enqueue"/> (the newest
+        /// <see cref="TapCap"/>), or stop and forget them. Off in every real run.</summary>
+        public static void Tap(bool on)
+        {
+            lock (s_tapLock) s_tap = on ? new List<(string, byte[])>(64) : null;
+        }
+
+        /// <summary>The events the tap holds, oldest first (a copy).</summary>
+        public static (string Name, byte[] Payload)[] TapNow()
+        {
+            lock (s_tapLock) return s_tap?.ToArray() ?? [];
+        }
+
+        static void Tapped(string eventName, byte[] payload)
+        {
+            if (Volatile.Read(ref s_tap) is null) return;
+            lock (s_tapLock)
+            {
+                if (s_tap is not { } tap) return;
+                if (tap.Count >= TapCap) tap.RemoveAt(0);
+                tap.Add((eventName, payload));
+            }
         }
 
         /// <summary>Ask for a flush now — the app is closing, or the user signed out.</summary>
@@ -421,6 +455,12 @@ public static partial class Spotify
         {
             public PlaybackIds Ids;
             public string ContentUri, PlayContext, Provider, ReasonStart, SourceStart, AudioFormatName;
+            /// <summary>The open segment's reason-start once a resume or a seek opened it (<c>playbtn</c>); null while the first segment runs,
+            /// which starts with <see cref="ReasonStart"/>. The RawCoreStream keeps <see cref="ReasonStart"/>: why the stream started.</summary>
+            public string? SegmentReasonStart;
+            /// <summary>A local file's real <c>spotify:local:…</c> uri (RawCoreStream field 41), "" for any other play. While it is set,
+            /// <see cref="ContentUri"/> is the blanked <see cref="LocalContentUriBlank"/> on every event of the registration.</summary>
+            public string? LocalContentUri;
             /// <summary>The player session the stream STARTED in, as the text put-state publishes it ("" for video or none) —
             /// captured at <see cref="Started"/>, so a later new session does not rewrite it.</summary>
             public string? PlayerSessionId;
@@ -430,22 +470,57 @@ public static partial class Spotify
             public bool Open, SegmentActive;
             public double PlaybackSpeed;
             public long SegmentStartTick;
+            /// <summary>AI DJ (plan-dj §2.9): the recommendation's decision id (a narration's <c>dj~…</c>, a DJ track's <c>ssp~…</c>) and its
+            /// <c>custom_reporting_attribution</c> (<c>&lt;segment&gt;:&lt;page&gt;:&lt;slot&gt;:0</c>), "" for any other play
+            /// (<see cref="Attribute"/>).</summary>
+            public string? DecisionId, Attribution;
+            /// <summary>AI DJ joins (plan-dj §1.6, §1.7, §2.9): the ms this play sounded together with another (<c>ms_played_overlapping</c>, 16,
+            /// and the official client's 67: a narration over its track, a radio track and its neighbour), and the ms of a narration this track
+            /// played under (<c>ms_narration_overlapping</c>, 46). Written through <see cref="Overlapped"/> from the pump's joins
+            /// (Playback.Dj.Telemetry.cs, NoteDjOverlap); 0 for a play no DJ join touched.</summary>
+            public int OverlapMs, NarrationOverlapMs;
+        }
+
+        /// <summary>AI DJ: stamp an open registration with the DJ's decision id and reporting attribution (plan-dj §2.9). The open-time
+        /// events are already out (they carry neither); the closing RawCoreStream names both.</summary>
+        public static void Attribute(ref Registration r, string decisionId, string attribution)
+        {
+            r.DecisionId = decisionId;
+            r.Attribution = attribution;
+        }
+
+        /// <summary>AI DJ joins (plan-dj §1.6, §1.7): this play sounded <paramref name="overMs"/> together with another (a narration over a
+        /// track, a radio track with its neighbour), or this track played <paramref name="underNarrationMs"/> under a narration. Summed, so a
+        /// play joined at both ends reports both.</summary>
+        public static void Overlapped(ref Registration r, int overMs = 0, int underNarrationMs = 0)
+        {
+            r.OverlapMs += Math.Max(0, overMs);
+            r.NarrationOverlapMs += Math.Max(0, underNarrationMs);
         }
 
         static bool s_firstPlayInSession = true;
 
+        /// <summary>What a local file's play names as its <c>content_uri</c>: the four parts blanked (capture report 3.8, 4.1). The real uri
+        /// rides <c>local_content_uri</c>.</summary>
+        public const string LocalContentUriBlank = "spotify:local::::";
+
         /// <summary>A track started. Emits the five open-time events the desktop client sends before the first
-        /// sample is heard, and returns the registration the caller keeps until the track ends.</summary>
+        /// sample is heard, and returns the registration the caller keeps until the track ends. <paramref name="localContentUri"/>: a
+        /// local file's <c>spotify:local:…</c> uri (#240 E7): every event of the registration then names
+        /// <see cref="LocalContentUriBlank"/> as its content, and the RawCoreStream carries the real uri in <c>local_content_uri</c>, as the
+        /// official client reports a local play (capture report 3.8).</summary>
         public static Registration Started(in PlaybackIds ids, string contentUri, string contextUri, string provider,
             string reasonStart, byte[]? mediaId, int bitrateKbps, string audioFormatName,
-            long durationMs, long positionMs, string playerSessionId)
+            long durationMs, long positionMs, string playerSessionId, string localContentUri = "")
         {
+            if (localContentUri.Length > 0) contentUri = LocalContentUriBlank;
             contextUri = Egress.Filter(contextUri);            // a Spotify track played from a local context names no context
             long now = NowMs();
             var registration = new Registration
             {
                 Ids = ids,
                 ContentUri = contentUri,
+                LocalContentUri = localContentUri,
                 PlayContext = contextUri.Length > 0 ? contextUri : contentUri,
                 Provider = provider.Length > 0 ? provider : "context",
                 ReasonStart = reasonStart.Length > 0 ? reasonStart : "clickrow",
@@ -505,11 +580,12 @@ public static partial class Spotify
             Session("pause", r.Ids.PlaybackId, "", 0);
         }
 
-        /// <summary>Resumed. The next segment's reason-start is the play button, not whatever started the track.</summary>
+        /// <summary>Resumed. The next segment's reason-start is the play button, not whatever started the track (the stream's own
+        /// reason-start stays).</summary>
         public static void Resumed(ref Registration r, long positionMs)
         {
             if (!r.Open) return;
-            r.ReasonStart = "playbtn";
+            r.SegmentReasonStart = "playbtn";
             r.SegmentStartMs = NowMs();
             r.SegmentStartTick = Stopwatch.GetTimestamp();
             r.SegmentActive = true;
@@ -524,7 +600,7 @@ public static partial class Spotify
             if (!r.Open) return;
             int landed = (int)Math.Min(toMs, int.MaxValue);
             CloseSegment(ref r, (int)Math.Min(fromMs, int.MaxValue), isPause: false, isLast: false, "seek");
-            r.ReasonStart = "playbtn";
+            r.SegmentReasonStart = "playbtn";
             r.SegmentStartMs = NowMs();
             r.SegmentStartTick = Stopwatch.GetTimestamp();
             r.SegmentActive = true;
@@ -591,13 +667,18 @@ public static partial class Spotify
                 AudioFormat = FormatName(in r),
                 PlayContext = r.PlayContext,
                 ContentUri = r.ContentUri,
+                LocalContentUri = r.LocalContentUri ?? "",
                 Provider = r.Provider,
                 Referrer = r.SourceStart,
                 CoreVersion = CoreVersion,
                 CoreBundle = "full",
                 IsAssumedPremium = isAssumedPremium,
                 PlaybackStack = PlaybackStack,
-                DecisionId = "",
+                DecisionId = r.DecisionId ?? "",
+                CustomReportingAttribution = r.Attribution ?? "",
+                MsPlayedOverlapping = r.OverlapMs,
+                MsOverlappingSecondary = r.OverlapMs,
+                MsNarrationOverlapping = r.NarrationOverlapMs,
                 PlayContextDecisionId = "",
                 StreamId = ByteString.CopyFrom(r.Ids.StreamId),
                 PlayerSessionId = r.PlayerSessionId ?? "",
@@ -633,7 +714,7 @@ public static partial class Spotify
                 StartPosition = r.SegmentStartPositionMs,
                 EndPosition = endPositionMs,
                 MsPlayed = played,
-                ReasonStart = r.ReasonStart,
+                ReasonStart = r.SegmentReasonStart ?? r.ReasonStart,
                 ReasonEnd = reasonEnd,
                 PlaybackSpeed = r.PlaybackSpeed > 0 ? r.PlaybackSpeed : 1.0,
                 StartTimestamp = r.SegmentStartMs,
@@ -679,6 +760,7 @@ public static partial class Spotify
         public static string ContextKind(string contextUri)
         {
             if (contextUri.Length == 0) return "unknown";
+            if (contextUri == Egress.LocalFilesUri) return "local_files";   // the official client's source for a Local Files play (report 3.8)
             int first = contextUri.IndexOf(':');
             if (first < 0) return "unknown";
             int second = contextUri.IndexOf(':', first + 1);
@@ -773,6 +855,11 @@ public static partial class Spotify
 
         static void QueueRevision(Rs.CreateResumePointRevisionRequest revision)
         {
+            if (Platform.Args.Fake)
+            {
+                Log.Info("spotify", "telemetry.fake revision entity=" + revision.EntityUri + " item=" + (revision.Revision?.Value?.ItemUri ?? "") + " not sent");
+                return;
+            }
             if (Volatile.Read(ref s_booted) == 0) Boot();
             lock (ResumeGate)
             {

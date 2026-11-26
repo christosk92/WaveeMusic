@@ -70,7 +70,7 @@ internal sealed class WinUiQueuePanelView : Component
     readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
-    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemAutoplay = -4;
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemAutoplay = -4, ItemMix = -5;
     /// <summary>The tail's estimate until its first measure (the divider, then the Autoplay and Crossfade rows: each a title over a one-line hint).</summary>
     const float TailEstimate = 128f;
     Func<QueueSlot, float>? _extentOf;
@@ -115,6 +115,8 @@ internal sealed class WinUiQueuePanelView : Component
         {
             float card = Q.NowH + Q.NowMargin.Top + Q.NowMargin.Bottom;
             _kinds[n] = ItemNow; _extents[n++] = card; lead += card;
+            // #48 Mix: "Mixing · Rise · 2.9 s" between the playing card and the next row, while the playing pair will mix.
+            if (props.MixLine.Length > 0) { _kinds[n] = ItemMix; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
         }
         for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
         if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -TailEstimate; }
@@ -142,6 +144,7 @@ internal sealed class WinUiQueuePanelView : Component
         {
             case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom));
             case ItemNow: return Inset(NowCard(props));
+            case ItemMix: return Inset(MixLine(props.MixLine));
             case ItemAutoplay: return Inset(BetweenSongs(props, autoplay, _setAutoplay!, crossfade, _setCrossfade!, _onCrossfadeRow, _crossfadeRow));
             case ItemVacancy:
                 return new BoxEl
@@ -152,7 +155,7 @@ internal sealed class WinUiQueuePanelView : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section));
+        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section, props.Queue.SegmentOf(slot)));
         if (slot.Kind == QueueSlotKind.More) return Inset(ShowMore(props, slot.Section));
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? Inset(lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index)))
@@ -263,6 +266,18 @@ internal sealed class WinUiQueuePanelView : Component
         ],
     };
 
+    /// <summary>The Mix line (#48): a short accent stroke and "Mixing · Rise · 2.9 s" in the caption ramp, the join it announces.</summary>
+    static Element MixLine(string text) => new BoxEl
+    {
+        Key = "qp:mix", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = Q.FromGap,
+        Padding = new Edges4(Q.NowPadding.Left, 0f, 0f, 0f), Enter = WinUiQueue.RowEnter,
+        Children =
+        [
+            new BoxEl { Width = Q.FromGap * 2f, Height = Q.MixStrokeH, Shrink = 0f, Corners = CornerRadius4.All(1f), Fill = Tok.AccentTextPrimary },
+            new TextEl(text) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        ],
+    };
+
     /// <summary>The now-playing card: keyed by the track, so a track change enters with a fade.</summary>
     static Element NowCard(QueuePanelProps props)
     {
@@ -297,10 +312,29 @@ internal sealed class WinUiQueuePanelView : Component
     }
 
     /// <summary>A section's header: the name (Body Strong), and at its end "Clear" (the queue) or "<n> more" (next up).</summary>
-    Element Header(QueuePanelProps props, QueueSection section)
+    /// <para>AI DJ: a segment's header (<paramref name="segment"/>) names the segment ("Vibes") and marks where "Let DJ pick" lands, in the accent
+    /// at the header's end, in the same row and height (the queue by segment, plan-dj §2.8).</para>
+    Element Header(QueuePanelProps props, QueueSection section, QueueSegment? segment = null)
     {
         var queue = props.Queue;
         float h = Q.Header(_window);
+        if (segment is { } seg)
+        {
+            string mark = QueueProps.SegmentMark(seg);
+            var segTitle = new TextEl(QueueProps.SegmentTitle(seg))
+            {
+                Size = Q.HeaderSize, LineHeight = Q.HeaderLine, Weight = Q.TitleWeight, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f, Shrink = 1f, Grow = 1f,
+            };
+            return new BoxEl
+            {
+                Key = "hdr:" + seg.Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Layout = LayoutTransition.Slide, BlocksDragArm = true,
+                Children = mark.Length > 0
+                    ? [segTitle, new TextEl(mark) { Size = Q.SmallSize, LineHeight = Q.SmallLine, Color = Tok.AccentTextPrimary, MaxLines = 1, Shrink = 0f }]
+                    : [segTitle],
+            };
+        }
         string title = Loc.Get(section switch
         {
             QueueSection.Queue => Strings.Player.NextInQueue,
@@ -362,7 +396,7 @@ internal sealed class WinUiQueuePanelView : Component
             [
                 new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeDividerDefault },
                 SwitchRow(Loc.Get(Strings.Player.Autoplay), Loc.Get(Strings.Player.AutoplayHint), null, autoplay, setAutoplay) with { Key = WinUiQueue.AutoplayKey + ":row" },
-                SwitchRow(Loc.Get(Strings.Player.Crossfade), Loc.Get(Strings.Player.CrossfadeHint), length, crossfade, setCrossfade)
+                SwitchRow(Loc.Get(Strings.Player.Crossfade), props.CrossfadeNote.Length > 0 ? props.CrossfadeNote : Loc.Get(Strings.Player.CrossfadeHint), length, crossfade, setCrossfade)
                     with { Key = WinUiQueue.CrossfadeKey, OnRealized = onCrossfadeRow },
                 Hints.Pointer(HintSurfaces.QueuePanel, crossfadeRow),   // out of layout: the tip floats at the row
             ],

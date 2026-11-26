@@ -36,7 +36,7 @@ using System.Globalization;
 using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
-using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
+using PlayerSignal = Wavee.Spotify.Decode.PlayerSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
@@ -104,10 +104,12 @@ public static partial class Playback
     /// up), when the document carried it; <c>null</c> for a point the reducer's state produced (<see cref="Of"/>) or a
     /// document written before rows were persisted — the HOST attaches rows, and <see cref="CursorIndex"/> indexes
     /// THEM when they are present. The array compares by reference, so a persisted point is compared through the
-    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para></summary>
+    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para>
+    /// <para><paramref name="ContextUrl"/> is the lexicon url a DJ deck plays from (plan-dj D4; null for every other context): the
+    /// restore resolves the session from it before the list's own attributes are read again.</para></summary>
     public readonly record struct RestorePoint(
         EntityId Track, EntityId Context, int CursorIndex, int PositionMs, int DurationMs, bool Shuffle, RepeatMode Repeat,
-        RestoreRow[]? Rows = null)
+        RestoreRow[]? Rows = null, string? ContextUrl = null)
     {
         public bool IsEmpty => Track.IsEmpty;
         /// <summary>The document carried the queue's rows, not just the deck.</summary>
@@ -115,10 +117,21 @@ public static partial class Playback
 
         /// <summary>The point a state persists. Empty unless the deck is OURS to restore: a foreign device's mirrored
         /// row (or the one it left behind) is not this device's session and must not come back as one.</summary>
+        /// <para>An AI DJ narration on the deck is never the point (its <c>wavee:tts:</c> clip is this session's): the point is the track
+        /// it belongs to, from its start, as Previous would land (<see cref="Dj.NarrationSkipTarget"/>); none when that row is gone.</para>
         public static RestorePoint Of(in State s, long nowMs)
-            => !s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)
-                ? default
-                : new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, s.Shuffle, s.Repeat);
+        {
+            if (!s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)) return default;
+            bool shuffle = s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle;   // the user's own modes
+            RepeatMode repeat = s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat;
+            if (!s.ClipCurrent) return new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, shuffle, repeat);
+            int track = Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward: false);
+            EntityRef row = track >= 0 ? Queue.RefAt(track) : default;
+            if (row.IsNone || !row.Id.IsPlayable || Dj.IsNarrationId(row.Id)) return default;
+            int duration = row.Kind == EntityKind.Track && Entities.Current is { } scope && (uint)row.Slot < (uint)scope.Tracks.Count
+                ? new Track(row.Slot).DurationMs : 0;
+            return new(row.Id, s.Context, track, 0, duration, shuffle, repeat);
+        }
     }
 
     // ── 3. the inbound load planner (G-071 host half, G-070) ───────────────────────────────────────────────────────
@@ -931,8 +944,47 @@ public static partial class Playback
         uint flags = t.Flags[row.Slot];
         bool local = (flags & (uint)TrackFlags.Local) != 0 || t.Id[row.Slot].Provider == EntityProvider.Local;
         // A self-contained music video has its own manifest id and may carry no association flag (the deck's facts read the same).
-        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty;
+        // …and a track a local video file is linked to as its version plays that file (Video.LocalVideos).
+        bool hasVideo = (flags & (uint)TrackFlags.VideoMask) != 0 || !t.VideoGid[row.Slot].IsEmpty || Video.LocalVideos.IsLinked(t.Id[row.Slot]);
         return MediaSwitch.KindOf(videoWanted && hasVideo, local);
+    }
+
+    /// <summary>Is <paramref name="row"/> a local VIDEO file (<see cref="TrackFlags.LocalVideoFile"/>: its own file has a picture)? Such a row
+    /// asks for its picture whatever the wish: <see cref="DeckKind"/> loads it on the video host and the deck turns the surface on for it
+    /// (<see cref="LocalVideoWish"/>). The user's "audio only" holds while the row plays (the wish then reads false); the next load of a
+    /// local video asks for its picture again.</summary>
+    public static bool IsLocalVideoRow(EntityRef row)
+    {
+        if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
+        TrackTable t = Entities.Current.Tracks;
+        if ((uint)row.Slot >= (uint)t.Count) return false;
+        // …and a Spotify track whose chosen default version is a video of mine ("Play by default": LocalLink.PlaysAsVideo).
+        return (t.Flags[row.Slot] & (uint)TrackFlags.LocalVideoFile) != 0 || LocalLink.PlaysAsVideo(t.Id[row.Slot]);
+    }
+
+    /// <summary>The kind a row goes on the deck in: <see cref="KindOfRow"/> under the wish the deck will hold for it. A local video file
+    /// is wanted as video (the deck turns the wish on as it lands); while the wish is on only for a local video
+    /// (<see cref="State.VideoByLocal"/>) any other row reads it off, as it will once it lands. Every load and every next-row arm reads this,
+    /// so a prepared splice never disagrees with the load that follows.</summary>
+    static PlayableKind DeckKind(in State s, EntityRef row)
+        => KindOfRow(row, IsLocalVideoRow(row) || (s.VideoWanted && !s.VideoByLocal));
+
+    /// <summary>A row the user chose or the queue reached is on the deck (a Claim or an Advance): a local video file turns the video mode on
+    /// for itself (the surface opens at the preferred placement, as a "watch" does) when nothing had it on; leaving local videos turns
+    /// it off again when they were what turned it on, so the songs after one play as they did before it. A wish the user set is never
+    /// touched.</summary>
+    static void LocalVideoWish(ref State s, ref Effects fx)
+    {
+        if (IsLocalVideoRow(s.Current))
+        {
+            if (s.VideoWanted || s.Kind != PlayableKind.Video) return;
+            VideoMode(ref s, ref fx, on: true);
+            s.VideoByLocal = true;
+        }
+        else if (s.VideoByLocal)
+        {
+            VideoMode(ref s, ref fx, on: false);
+        }
     }
 
     // ── 4b. which rows the deck may land on ────────────────────────────────────────────────────────────────────────
@@ -988,15 +1040,17 @@ public static partial class Playback
 
     /// <summary>Re-arm the pump's idea of the next row. Called on every load, on the endgame signal and whenever the
     /// queue, the shuffle or the repeat mode may have changed what comes next. Idempotent: the same row in the same arm
-    /// state emits nothing. A spliceable next row (audio after audio) is PREFETCHED until the endgame opens, then
-    /// PREPARED; a row that stops being next cancels the prepared slot.</summary>
+    /// state emits nothing. A spliceable next row (both sides on the audio host: Spotify audio or a local file,
+    /// <see cref="MediaSwitch.AllowCrossfade"/>) is PREFETCHED until the endgame opens, then PREPARED; a row that stops
+    /// being next cancels the prepared slot.</summary>
     static void ArmNext(ref State s, ref Effects fx)
     {
         QueueCursor nextCursor = QueueCursor.None;
         EntityRef next = s.RoutesLocal && s.HasCurrent && s.Phase is Phase.Loading or Phase.Playing or Phase.Paused
             ? NaturalNext(in s, out nextCursor)
             : default;
-        EntityId id = !next.IsNone && s.Kind == PlayableKind.Audio && GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) == PlayableKind.Audio
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
+        EntityId id = !next.IsNone && MediaSwitch.AllowCrossfade(s.Kind, nextKind)
             ? next.Id
             : default;
         // The row after the next one is warmed too, forward only (a wrap row's successor is never past the deck row).
@@ -1010,7 +1064,7 @@ public static partial class Playback
             if (at >= 0 && at != s.Cursor.Index)
             {
                 EntityRef row = Queue.RefAt(at);
-                if (GatedKind(in s, row, KindOfRow(row, s.VideoWanted)) == PlayableKind.Audio) { next2 = row; id2 = row.Id; }
+                if (MediaSwitch.AllowCrossfade(nextKind, GatedKind(in s, row, DeckKind(in s, row)))) { next2 = row; id2 = row.Id; }
             }
         }
         // A parked deck (a restore, a stop) warms what follows it but prepares nothing: there is no voice to join.
@@ -1045,6 +1099,7 @@ public static partial class Playback
         fx.PrepareNext = true;
         fx.NextRow = next;
         fx.NextId = id;
+        fx.NextKind = nextKind;
     }
 
     /// <summary>The pump dropped the join it had scheduled for the prepared row — a seek moved the playhead out from under the
@@ -1086,6 +1141,80 @@ public static partial class Playback
         if (s.AutoplayPages) { fx.AutoplayPage = true; fx.AutoplayPageContext = s.Context; return; }
         fx.Autoplay = true;
         fx.AutoplayContext = s.Context;
+    }
+
+    /// <summary>"Let DJ pick" (AI DJ, plan-dj §1.8, §2.6): the rest of the playing segment is skipped (its rows stay behind the cursor:
+    /// history, as a controller's named skip leaves them) and the next segment's first row, its <c>dj.jump_target</c>
+    /// (<see cref="Dj.NextJumpTarget"/>), plays. Then one page is fetched, as the official client fetches one after every jump (unless
+    /// the advance's own refill already asked for it). Refused, and the page asked for, while no later segment is loaded: the press
+    /// that follows the page lands. Only a deck this device plays (a remote DJ player's jump is a Connect signal, D4).
+    /// <para>The voice: the host laid the target's <c>narration.jump</c> clip right before it (<see cref="LayJumpClip"/>), and the deck lands on
+    /// that clip; <see cref="Effects.DjJump"/> still names the target. The talk-over into it is D3's.</para></summary>
+    static void DoDjJump(ref State s, in Input i, ref Effects fx)
+    {
+        // Another device plays a DJ (its cluster's locks say dj-disallow): "Let DJ pick" is the Connect signal `jump` to it (plan-dj §1.8).
+        if (s.Own.Kind == Owner.Foreign && s.HasCurrent && s.LiveLockReason == LockReason.Dj)
+        {
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)PlayerSignal.Jump, false);
+            return;
+        }
+        if (!s.RoutesLocal || !s.HasCurrent || Dj.Of(s.Context) is null) { fx.Refused = Refusal.NoJumpTarget; return; }
+        int target = Dj.NextJumpTarget(Queue.Rows, s.Cursor.Index);
+        if (target < 0)
+        {
+            fx.Refused = Refusal.NoJumpTarget;
+            if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+            return;
+        }
+        ulong targetItem = Queue.Rows[target].ItemId;
+        // The target's jump clip, laid right before it by the host (Playback.LayJumpClip), plays first; the target follows it (§1.8).
+        int land = target > 0 && Dj.NarrationOf(Queue.Rows[target - 1].ItemId) is { Slot: Dj.Slot.Jump } clip && clip.BelongsTo == targetItem
+            ? target - 1 : target;
+        Advance(ref s, in i, ref fx, forward: true, PlayReason.ForwardButton, jumpTo: land);
+        if (s.Cursor.Index != land) return;                // the walk refused it (a restriction) or stepped past a dead target
+        if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+        fx.DjJump = true;
+        fx.DjJumpTarget = targetItem;
+    }
+
+    /// <summary>The context about to play states its own toggle restrictions (AI DJ, plan-dj §2.5; <see cref="State.Locks"/>). Locks
+    /// that forbid shuffle or a repeat HOLD the user's own shuffle and repeat (once: a second locked context keeps the first hold) and
+    /// turn them off; a context that forbids nothing gives them back (<see cref="ReleaseLocks"/>). The host lays the queue in the order
+    /// this leaves (<c>StartContext</c>), so no reorder follows.</summary>
+    static void DoContextLocks(ref State s, in Input i, ref Effects fx)
+    {
+        var locks = (ToggleLock)(i.IntArg & 0xFF);
+        if (locks == ToggleLock.None) { if (ReleaseLocks(ref s)) Announce(ref s, ref fx, PublishReason.PlayerStateChanged); return; }
+        if (!s.Locks.Holding)
+        {
+            s.Locks.Holding = true;
+            s.Locks.HeldShuffle = s.Shuffle;
+            s.Locks.HeldRepeat = s.Repeat;
+        }
+        s.Locks.Context = i.Context;
+        s.Locks.Bits = locks;
+        s.Locks.Reason = (LockReason)((i.IntArg >> 8) & 0xFF);
+        if ((locks & ToggleLock.Shuffle) != 0) s.Shuffle = false;
+        if ((s.Repeat == RepeatMode.Context && (locks & ToggleLock.RepeatContext) != 0)
+            || (s.Repeat == RepeatMode.Track && (locks & ToggleLock.RepeatTrack) != 0)) s.Repeat = RepeatMode.Off;
+        Bump(ref s);
+        fx.Snapshot = true;
+    }
+
+    /// <summary>The playing context's restrictions end (another context plays): the user's own shuffle and repeat, held while they
+    /// applied, come back. True when anything was held.</summary>
+    static bool ReleaseLocks(ref State s)
+    {
+        if (!s.Locks.Holding && s.Locks.Bits == ToggleLock.None) return false;
+        bool held = s.Locks.Holding;
+        if (held)
+        {
+            s.Shuffle = s.Locks.HeldShuffle;
+            s.Repeat = s.Locks.HeldRepeat;
+        }
+        s.Locks = default;
+        Bump(ref s);
+        return held;
     }
 
     /// <summary>A new context on the deck: every "more rows" fact belongs to the old one.</summary>
@@ -1134,6 +1263,7 @@ public static partial class Playback
         if (!i.Cursor.IsNone && Entities.Current is not null && Queue.RefAt(in i.Cursor) == s.Current) s.Cursor = i.Cursor;
         bool waiting = s.Autoplay == AutoplayPhase.Waiting;
         ResetRefill(ref s);
+        if (!i.Context.Equals(s.Locks.Context)) ReleaseLocks(ref s);
         s.Context = i.Context;
         if (waiting) Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
         else ArmNext(ref s, ref fx);
@@ -1208,7 +1338,8 @@ public static partial class Playback
         EntityRef next = NaturalNext(in s, out QueueCursor cursor);
         // The joined row is a repeat-context wrap: the rows after it become the next lap (Advance's rule).
         if (!next.IsNone && s.Repeat == RepeatMode.Context && cursor.Index <= s.Cursor.Index) fx.Lap = true;
-        if (next.IsNone || !next.Id.Equals(i.Id) || GatedKind(in s, next, KindOfRow(next, s.VideoWanted)) != PlayableKind.Audio)
+        PlayableKind nextKind = next.IsNone ? PlayableKind.Audio : GatedKind(in s, next, DeckKind(in s, next));
+        if (next.IsNone || !next.Id.Equals(i.Id) || !MediaSwitch.AllowCrossfade(s.Kind, nextKind))
         {
             // The listener hears a row the queue no longer puts next (an edit, a shuffle or a repeat change raced the
             // prepare). Hard-cut to the truth: the Load replaces the joined voice.
@@ -1220,7 +1351,7 @@ public static partial class Playback
         uint from = s.LoadEpoch;
         s.HasBeenPlayingForMs += Math.Max(0, i.NowMs - s.PosQpc);
         ReportEnd(ref s, ref fx, PlayReason.TrackDone, s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, next, i.Id, cursor, PlayableKind.Audio, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
+        PutOnDeck(ref s, in i, next, i.Id, cursor, nextKind, (int)Math.Clamp(i.LongArg, 0, int.MaxValue), paused: false);
         s.Phase = Phase.Playing;                          // audible already: this is not a load
         s.StartReason = PlayReason.TrackDone;
         Bump(ref s);
@@ -1255,6 +1386,7 @@ public static partial class Playback
         s.CurrentId = id;
         s.Kind = kind;
         s.Cursor = cursor;
+        s.TargetUnder = false;                            // AI DJ: a talk-over's target under the voice is that voice's fact
         s.Phase = paused ? Phase.Paused : Phase.Loading;
         s.Buffering = false;
         s.Error = Fault.None;
@@ -1279,6 +1411,7 @@ public static partial class Playback
     static void EmitLoad(ref State s, ref Effects fx, LoadOrigin why, bool paused, bool explicitPosition = false)
     {
         if (!explicitPosition && s.PosMs == 0 && why is LoadOrigin.Claim or LoadOrigin.Advance) s.PosMs = EpisodeStartOf(s.CurrentId);
+        if (why is LoadOrigin.Claim or LoadOrigin.Advance) LocalVideoWish(ref s, ref fx);
         Bump(ref s);
         s.LoadEpoch = s.Epoch;
         s.LoadWhy = why;
@@ -1356,13 +1489,13 @@ public static partial class Playback
     static void DoVideoPlacement(ref State s, in Input i, ref Effects fx)
     {
         bool wanted = (i.IntArg & 1) != 0, explicitSwitch = (i.IntArg & 2) != 0;
-        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; }   // a repeated "on" re-decides the row's kind (a lit badge's click)
+        if (s.VideoWanted != wanted) { s.VideoWanted = wanted; s.VideoRetries = 0; s.VideoByLocal = false; }   // a repeated "on" re-decides the row's kind (a lit badge's click); a changed wish is the user's
         if (!s.HasCurrent) return;
         if (!s.RoutesLocal)
         {
             if (s.Own.Kind != Owner.Foreign || !explicitSwitch || wanted == (s.Kind == PlayableKind.Video)) return;
             if (wanted && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; return; }
-            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? VideoSignal.ToVideo : VideoSignal.ToAudio), false);
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? PlayerSignal.ToVideo : PlayerSignal.ToAudio), false);
             return;
         }
         // On video already and still wanted: nothing to re-decide (a row whose association flag has not landed would read audio).
@@ -1397,13 +1530,14 @@ public static partial class Playback
         => kind == PlayableKind.Video && s.VideoScreenBlocked && ScreenGatesVideo(row) ? KindOfRow(row, videoWanted: false) : kind;
 
     /// <summary>Does a screen that cannot carry HDCP keep <paramref name="row"/> off its video? A catalogue music video is PlayReady-protected;
-    /// the user's own clip (<see cref="TrackFlags.VideoOverride"/>) and a podcast episode's video are not gated: they play on any screen.</summary>
+    /// the user's own clip (<see cref="TrackFlags.LinkedVideo"/>), a local video file (<see cref="TrackFlags.LocalVideoFile"/>) and a podcast
+    /// episode's video are not gated: they play on any screen.</summary>
     public static bool ScreenGatesVideo(EntityRef row)
     {
         if (row.IsNone || row.Kind != EntityKind.Track || Entities.Current is null) return false;
         TrackTable t = Entities.Current.Tracks;
         if ((uint)row.Slot >= (uint)t.Count) return false;
-        return (t.Flags[row.Slot] & (uint)TrackFlags.VideoOverride) == 0;
+        return (t.Flags[row.Slot] & (uint)(TrackFlags.LinkedVideo | TrackFlags.LocalVideoFile)) == 0;
     }
 
     /// <summary>A video load failed (<paramref name="retry"/>) or found no source at all (not a retry). A failing load spends
@@ -1419,7 +1553,7 @@ public static partial class Playback
             ReloadHost(ref s, in i, ref fx, PlayableKind.Video, LoadOrigin.VideoRecovery);
             return;
         }
-        if (retry) s.VideoWanted = false;
+        if (retry) { s.VideoWanted = false; s.VideoByLocal = false; }
         fx.VideoIntent = true;
         fx.VideoIntentOn = !retry;
         fx.VideoIntentWhy = fault == Fault.None ? Fault.Unavailable : fault;
@@ -1667,10 +1801,12 @@ public static partial class Playback
         public static SwitchAction Decide(PlayableKind current, PlayableKind next)
             => current == next ? SwitchAction.LoadOnCurrent : SwitchAction.SwapThenLoad;
 
-        /// <summary>Whether a crossfade / prepared-next transition is allowed across this boundary. Crossfade is an
-        /// AUDIO-only, same-kind capability; every cross-kind boundary and every video boundary is a HARD CUT.</summary>
+        /// <summary>Whether a prepared-next splice (crossfade or gapless join) is allowed across this boundary: both sides
+        /// play on the audio host, Spotify audio and local files alike (they share the mixer, and the prepare resamples the
+        /// next voice for the live mix rate; #240 §3.13). Every boundary that touches video is a hard cut. Whether the
+        /// outgoing track's LENGTH can carry a splice is the pump's question (an estimated local length never does).</summary>
         public static bool AllowCrossfade(PlayableKind from, PlayableKind to)
-            => from == to && from == PlayableKind.Audio;
+            => from != PlayableKind.Video && to != PlayableKind.Video;
 
         /// <summary>The Connect <c>track_player</c> metadata value: <c>"video"</c> for <see cref="PlayableKind.Video"/>,
         /// else <c>"audio"</c> (a local file plays through the audio host and therefore also reports audio).</summary>
@@ -1856,6 +1992,20 @@ public static partial class Playback
             long join = Math.Max(activeJoinFrame, sampleClockNow);
             long bound = sampleClockNow + MsToFrames(Math.Max(0L, remainingMs), rate) + rate / 10;
             return Math.Min(join, bound);
+        }
+
+        /// <summary>Where a crossfade starts and how long it runs, given the outgoing voice's end frame
+        /// (<paramref name="activeEnd"/>, already bounded by <see cref="ScheduleJoin"/>): it ENDS on that frame, so the
+        /// outgoing track's last sample is the fade's last frame and the two tracks overlap by exactly the fade. Never in the
+        /// past: a commit that comes too late for the whole fade starts now and shortens the fade to what is left, so the
+        /// fade-out still ends where the content does. Never longer than the incoming voice (<paramref name="incomingFrames"/>,
+        /// −1 when unknown). PURE.</summary>
+        public static (long Start, int Frames) ScheduleFade(long activeEnd, long sampleClockNow, int fadeFrames, long incomingFrames)
+        {
+            long start = Math.Max(activeEnd - fadeFrames, sampleClockNow);
+            long frames = Math.Max(1L, Math.Min(fadeFrames, activeEnd - start));
+            if (incomingFrames > 0) frames = Math.Min(frames, incomingFrames);
+            return (start, (int)frames);
         }
 
         /// <summary>A primed voice is only spliceable into a mixer running at the rate it was resampled for.</summary>

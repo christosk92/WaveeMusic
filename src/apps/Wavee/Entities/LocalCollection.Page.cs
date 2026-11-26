@@ -1,0 +1,401 @@
+// ── Entities/LocalCollection.Page.cs ───────────────────────────────────────────────────────────────────────────────
+// the Local Files route's page, "On this PC": the core host of the collection (#240 P2-page, boards 18-21)
+//
+// Role: UI (core host: hooks, the fold's trigger, the remembered pivot, the verbs; the active theme draws it)
+// Spec: C:\WAVEE\fgpu\handoff\request-plans\240-local-files-page-concept.md; 240-local-files-ux.md S1, S4, S10;
+//       240-local-playlist-files-implementation.md §3.10 (the Local Files list becomes the Songs pivot, unchanged); 240-p2-contract.md
+//
+// The `local` route (sidebar label "Local Files", unchanged) renders this page instead of the playlist page's local arm. The page:
+//   · asks `LocalCollection` for a fold whenever `LocalLibrary.Epoch` or `LocalArt.Epoch` moves (the fold runs off the UI thread);
+//   · remembers the last pivot (setting `local.page.pivot`), and keeps the album sort and the open detail for the session;
+//   · opens a detail over a pivot (`LocalOpened`: a folder from a folder tile, an album's folder from an album card) as page state, list -> detail:
+//     the tile's cover flies into the detail's header (`Shell.FlyInPage`, the route flight's seam) and Back (the breadcrumb, the title bar's Back,
+//     Esc: `Shell.SetPageBack`) steps out a folder at a time, the header flying home into its tile;
+//   · hands the theme the Songs pivot as the existing track table over the Local Files list (`wavee:local:playlist:all`), embedded,
+//     exactly the profile the playlist page's local arm used (no heart, no recommendations), settled locally like that arm did;
+//   · publishes row 2 (the pivots as views; Play, Shuffle and "Add music" as actions) for a band that draws it (Zune).
+// Play and Shuffle play the Local Files list; an album, an artist, a decade or a folder plays its own files, by the rows P2-data's
+// restate stages for them (`wavee:local:file:~<LocalId>`, `LocalLibrary.UriOf`). The empty list's onboarding (S4), the first scan's
+// line and its toast, and the "N new songs" pill (S5) are the Local Files list's own (`LocalFilesList`), hosted here unchanged.
+
+using System.Runtime.InteropServices;
+using FluentGpu.Controls;
+using FluentGpu.Dsl;
+using FluentGpu.Hooks;
+using FluentGpu.Localization;
+using FluentGpu.Signals;
+using Wavee.Theming.Contracts;
+using ViewSlots = FluentGpu.Theming.Slots;
+using P = Wavee.Strings.LocalFiles.Page;
+
+namespace Wavee;
+
+/// <summary>The "On this PC" page (see the file header).</summary>
+public static partial class LocalCollectionPage
+{
+    /// <summary>The last pivot, by name (home, albums, artists, songs, folders, insights).</summary>
+    static readonly SettingKey<string> s_pivotKey = new("local.page.pivot", "home");
+
+    /// <summary>Albums' and Artists' view and the grid's size (the library's codes: 0 compact list, 1 list, 2 compact grid, 3 grid; 0 small, 1 medium,
+    /// 2 large), and the Artists order (name, songs).</summary>
+    static readonly SettingKey<int> s_viewKey = new("local.page.view", 3), s_sizeKey = new("local.page.size", 1), s_artistSortKey = new("local.page.artist-sort", 0);
+
+    /// <summary>The Albums and Artists picks (a row's key), remembered as the library remembers its selection (`library.<kind>.selected`).</summary>
+    static readonly SettingKey<string> s_albumPick = new("local.page.selected.albums", ""), s_artistPick = new("local.page.selected.artists", "");
+
+    /// <summary>The <see cref="Shell.RouteKind.Local"/> page.</summary>
+    public static Element PageFor(in Shell.Route route)
+    {
+        string routeKey = Shell.NameOf(route);
+        return Embed.Comp(new PageProps(routeKey), static () => new Screen()) with { Key = "local-collection:" + routeKey };
+    }
+
+    sealed record PageProps(string RouteKey);
+
+    /// <summary>The playlist page's Local Files profile, unchanged: no heart, no recommendations, the drawer, and P2-data's empty body (S4) and the "N new
+    /// songs" pill (S5).</summary>
+    static readonly Track.TableProfile s_songsProfile = Track.TableProfile.From(Detail.Config.Playlist with { Heart = HeartMode.None, Recommendations = false, LocalRows = true })
+        with { Drawer = Track.DrawerSeam, EmptyBody = LocalFilesList.EmptyBody, ListOverlay = LocalFilesList.PillOverlay };
+
+    /// <summary>The Local Files onboarding body while there is no music folder (its `EmptyBody` answers it then), else null. Tracked.</summary>
+    // No music folder: the onboarding (S4, board frame 6). Folders whose scan found no song Wavee can play: the same picture, saying so, with Add music
+    // (never a Home of empty shelves).
+    static readonly Func<Element?> s_onboarding = static () =>
+    {
+        _ = LocalLibrary.Epoch.Value;
+        if (LocalFilesList.Onboarding) return LocalFilesList.EmptyBody();
+        var v = LocalCollection.View.Value;
+        return v.Version > 0 && v.AlbumCount == 0 && v.LooseSongs == 0 && v.Phase == LocalLibraryPhase.Ready && !LocalLibrary.FirstScanRunning ? LocalFilesList.NoSongsBody() : null;
+    };
+
+    static LocalPivot PivotOf(string name) => Enum.TryParse(name, ignoreCase: true, out LocalPivot p) ? p : LocalPivot.Home;
+
+    [CoreHost]
+    sealed class Screen : Component
+    {
+        readonly Signal<LocalPivot> _pivot = new(PivotOf(Platform.Settings.Get(s_pivotKey)));
+        readonly Signal<LocalAlbumSort> _sort = new(LocalAlbumSort.Added);
+        readonly Signal<LocalArtistSort> _artistSort = new((LocalArtistSort)Math.Clamp(Platform.Settings.Get(s_artistSortKey), 0, 1));
+        readonly Signal<int> _view = new(Math.Clamp(Platform.Settings.Get(s_viewKey), 0, 3)), _size = new(Math.Clamp(Platform.Settings.Get(s_sizeKey), 0, 2));
+        readonly Signal<string> _filter = new("");
+        readonly Signal<string> _albumPick = new(Platform.Settings.Get(s_albumPick)), _artistPick = new(Platform.Settings.Get(s_artistPick));
+        readonly Func<LocalPivot, string> _selected;
+        readonly Action<LocalPivot, string> _pick;
+        readonly Func<LocalPivot, string, Element> _pane;
+        readonly Action<LocalArtistSort> _setArtistSort;
+        readonly Action _saveView;
+        readonly Signal<LocalOpened?> _opened = new(null);
+        readonly Action<LocalPivot> _setPivot;
+        readonly Action<LocalAlbumSort> _setSort;
+        readonly Action<string> _openFolder;
+        readonly Func<bool> _back, _stepOpen;
+        readonly Func<Element> _songs;
+        readonly LocalCollectionVerbs _verbs;
+        readonly Action _refold, _settle, _publishChrome, _withdrawChrome, _watchScan;
+        bool _sawFirstScan;
+        PageChromeSink _sink = PageChromeSink.None;
+        IOverlayService? _overlay;
+        readonly FolderVerbs _folders;
+        // A renamed folder whose open detail follows it once the fold lists the new key (old key, new key).
+        (string From, string To)? _renamed;
+        readonly Action _followRename;
+        PageChromeRow? _chromeRow;
+        LocalCollectionPageProps? _props;
+        string _routeKey = "";
+
+        public Screen()
+        {
+            _setPivot = p =>
+            {
+                _pivot.Value = p;
+                Platform.Settings.Set(s_pivotKey, p.ToString().ToLowerInvariant());
+            };
+            _setSort = s => _sort.Value = s;
+            _setArtistSort = s =>
+            {
+                _artistSort.Value = s;
+                Platform.Settings.Set(s_artistSortKey, (int)s);
+            };
+            // The theme's view toggle writes the two signals; the choice is remembered as the library's own is.
+            _saveView = () =>
+            {
+                Platform.Settings.Set(s_viewKey, _view.Value);
+                Platform.Settings.Set(s_sizeKey, _size.Value);
+            };
+            _openFolder = key => OpenFolder(key);
+            _selected = p => p == LocalPivot.Artists ? _artistPick.Value : p == LocalPivot.Albums ? _albumPick.Value : "";
+            _pick = (p, key) =>
+            {
+                if (p == LocalPivot.Artists) { _artistPick.Value = key; Platform.Settings.Set(s_artistPick, key); }
+                else if (p == LocalPivot.Albums) { _albumPick.Value = key; Platform.Settings.Set(s_albumPick, key); }
+                else return;
+                if (_pivot.Peek() != p) _setPivot(p);
+            };
+            _pane = (p, key) => p == LocalPivot.Artists ? ArtistPane(key, _verbs!, _pick) : AlbumPane(key, _verbs!, _pick);
+            _back = Back;
+            _stepOpen = () => _opened.Value is { } o && o.From == _pivot.Value && o.Folder.Length > 0;
+            _songs = static () => Track.Table(new Track.TableArgs
+            {
+                Source = Track.TableSource.ForPlaylist(Playlist.LocalFiles), Profile = s_songsProfile, Embedded = true, PageWide = true, ScrollKey = "local-collection:songs",
+            });
+            _refold = static () =>
+            {
+                _ = LocalLibrary.Epoch.Value;
+                _ = LocalLibrary.Restated.Value;
+                _ = LocalArt.Epoch.Value;
+                LocalCollection.Request();
+            };
+            // The end of a first scan is toasted once (S4), as the Local Files list did.
+            _watchScan = () =>
+            {
+                bool now = LocalFilesList.FirstScanNow();
+                if (now) { _sawFirstScan = true; return; }
+                if (!_sawFirstScan) return;
+                _sawFirstScan = false;
+                LocalFilesList.SayScanned();
+            };
+            _settle = SettleLocalFiles;
+            _publishChrome = () => _sink.Publish(_chromeRow);
+            _withdrawChrome = () => _sink.Publish(null);
+            _verbs = new LocalCollectionVerbs
+            {
+                PlayAll = static () => PlayList(shuffle: false),
+                Shuffle = static () => PlayList(shuffle: true),
+                AddMusic = static () => InContextDoors.OpenSettings("storage.music.folders"),
+                PlayAlbum = static key => PlayFiles(LocalCollection.AlbumFiles(key), shuffle: false),
+                OpenAlbum = OpenAlbum,
+                ShuffleArtist = static key => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.IsArtist(e, key)), shuffle: true),
+                ShuffleDecade = static decade => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.InDecade(e, decade)), shuffle: true),
+                PlayFolder = static key => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.InFolder(e, key)), shuffle: false),
+                ShuffleFolder = static key => PlayFiles(LocalCollection.FilesWhere(e => LocalCollection.InFolder(e, key)), shuffle: true),
+                PlayFile = static id => PlayFiles([id], shuffle: false),
+            };
+            _folders = new FolderVerbs(() => _overlay, _openFolder, (from, to) => { _renamed = (from, to); _followRename!(); }, StepOutOf, _view, _verbs);
+            _followRename = FollowRename;
+        }
+
+        public override Element Render()
+        {
+            var p = UseProps<PageProps>();
+            _routeKey = p.RouteKey;
+            _overlay = UseContext(Overlay.Service);
+            UseEffect(_followRename);
+            UseEffect(_refold);
+            UseEffect(_settle, DepKey.Empty);
+            UseEffect(_watchScan);
+            UseEffect(_saveView);
+            // Back and Esc step out of an open detail first (Shell.PageBack.cs); withdrawn when the page unmounts.
+            UseEffect(() =>
+            {
+                string route = _routeKey;
+                Shell.SetPageBack(route, _stepOpen, _back);
+                return () => Shell.SetPageBack(route, null, null);
+            }, DepKey.Empty);
+
+            // Row 2 (a band draws it; Classic and WinUI draw their own head): the pivots as views, Play, Shuffle and Add music as actions.
+            _sink = UseContext(PageChromeSink.Context);
+            var pivot = _pivot.Value;
+            _chromeRow = ChromeOf(pivot);
+            UseEffect(_publishChrome, DepKey.From((int)pivot));
+            UseEffect(() => _withdrawChrome, DepKey.Empty);
+
+            _props ??= new LocalCollectionPageProps
+            {
+                View = LocalCollection.View,
+                Pivot = _pivot,
+                SetPivot = _setPivot,
+                Sort = _sort,
+                SetSort = _setSort,
+                ArtistSort = _artistSort,
+                SetArtistSort = _setArtistSort,
+                ListView = () => _view,
+                ListSize = () => _size,
+                Filter = () => _filter,
+                Selected = _selected,
+                Pick = _pick,
+                Pane = _pane,
+                Opened = _opened,
+                OpenFolder = _openFolder,
+                Songs = _songs,
+                Verbs = _verbs,
+                Onboarding = s_onboarding,
+                FirstScan = LocalFilesList.FirstScanNow,
+                ScanLine = LocalFilesList.ScanSlot,
+                Shelves = LocalHome.Shelves,
+                ShowShelf = LocalHome.Show,
+                MoveShelf = LocalHome.Move,
+                Drop = DropAnywhere.LocalFilesPage,
+                Link = LocalLinkPage.Props,
+                FolderMenus = _folders.Menus,
+                Title = Loc.Get(P.Title),
+                RouteKey = _routeKey,
+            };
+            return ViewSlots.View(ViewKeys.LocalCollectionPage, _props);
+        }
+
+        PageChromeRow ChromeOf(LocalPivot current)
+        {
+            var views = new PageView[6];
+            for (int i = 0; i < views.Length; i++)
+            {
+                var pv = (LocalPivot)i;
+                views[i] = new PageView(pv.ToString().ToLowerInvariant(), PivotLabel(pv), pv == current, _pivotGo[i] ??= () => _setPivot(pv));
+            }
+            return new PageChromeRow(views,
+            [
+                new PageAction("play", Loc.Get(P.PlayAll), _verbs.PlayAll, PageActionKind.Play),
+                new PageAction("shuffle", Loc.Get(P.Shuffle), _verbs.Shuffle, PageActionKind.Shuffle),
+                new PageAction("add", Loc.Get(P.AddMusic), _verbs.AddMusic),
+            ], Title: Loc.Get(P.Title));
+        }
+
+        readonly Action?[] _pivotGo = new Action?[6];
+
+        // ── the detail: list -> detail and back (LocalOpened) ──────────────────────────────────────────────────────────
+
+        /// <summary>The detail open over the pivot on screen, or null (a closed one keeps its record, Folder "", for the way back's motion).</summary>
+        LocalOpened? Shown => _opened.Peek() is { } o && o.From == _pivot.Peek() && o.Folder.Length > 0 ? o : null;
+
+        /// <summary>An album card: its folder opens as a detail over this pivot, the card's cover flying into the header.</summary>
+        void OpenAlbum(string key)
+        {
+            LocalAlbumCard? album = null;
+            foreach (var a in LocalCollection.View.Peek().Albums) if (a.Key == key) { album = a; break; }
+            if (album is null || album.FolderKey.Length == 0) return;
+            bool flown = Shell.FlyInPage(LocalOpened.AlbumTile(key), back: false);
+            _opened.Value = new LocalOpened(_pivot.Peek(), album.FolderKey, album.FolderKey, key, Back: false, flown);
+        }
+
+        /// <summary>A folder tile (a step in) or a breadcrumb (an ancestor: a step out; "" the pivot's list).</summary>
+        void OpenFolder(string key)
+        {
+            var view = LocalCollection.View.Peek();
+            var pivot = _pivot.Peek();
+            var open = Shown;
+            string at = open?.Folder ?? "";
+            if (key == at) return;
+            if (key.Length == 0) { Close(open); return; }
+            if (open is not null && IsAncestor(view, key, at))
+            {
+                // Out: the open folder's header flies home only to its own tile, which its parent shows.
+                if (open.Root.Length > 0 && !IsAncestor(view, open.Root, key) && key != open.Root) { Close(open); return; }
+                bool home = ParentOf(view, at) == key;
+                bool back = Shell.FlyInPage(home ? LocalOpened.FolderTile(at) : "", back: true);
+                _opened.Value = open with { Folder = key, Back = true, Flown = back, Keyed = null };
+                return;
+            }
+            // In: the tile's cover flies into the header of the folder it opens.
+            bool flown = Shell.FlyInPage(LocalOpened.FolderTile(key), back: false);
+            _opened.Value = open is not null
+                ? open with { Folder = key, Back = false, Flown = flown, Keyed = null }
+                : new LocalOpened(pivot, key, pivot == LocalPivot.Folders ? "" : key, "", Back: false, flown);
+        }
+
+        /// <summary>One step out: to the parent folder, or from the folder the detail was opened at back to the pivot's list. False: nothing open.</summary>
+        bool Back()
+        {
+            if (Shown is not { } open) return false;
+            var view = LocalCollection.View.Peek();
+            string parent = ParentOf(view, open.Folder);
+            if (open.Folder == open.Root || parent.Length == 0) { Close(open); return true; }
+            bool flown = Shell.FlyInPage(LocalOpened.FolderTile(open.Folder), back: true);
+            _opened.Value = open with { Folder = parent, Back = true, Flown = flown, Keyed = null };
+            return true;
+        }
+
+        /// <summary>Back to the pivot's list: the header flies home into the tile that opened it, when the list shows it.</summary>
+        void Close(LocalOpened? open)
+        {
+            if (open is null) return;
+            bool home = open.Folder == open.Root || ParentOf(LocalCollection.View.Peek(), open.Folder).Length == 0;
+            bool flown = Shell.FlyInPage(home ? open.HeaderTile : "", back: true);
+            _opened.Value = open with { Folder = "", Back = true, Flown = flown, Keyed = null };
+        }
+
+        /// <summary>A renamed folder's open detail (it, or a folder under it) follows the new key once the fold lists it; until then the detail keeps
+        /// the folder it shows. The view keeps its key (<see cref="LocalOpened.ViewKey"/>): its breadcrumb and header take the new name in place, with
+        /// no drill and no remount. Runs as an effect on every fold and once at the rename.</summary>
+        void FollowRename()
+        {
+            var view = LocalCollection.View.Value;
+            if (_renamed is not { } r || !view.Folders.ContainsKey(r.To)) return;
+            _renamed = null;
+            if (_opened.Peek() is not { } open || open.Folder.Length == 0) return;
+            string Moved(string k) => k == r.From ? r.To : k.StartsWith(r.From + "\\", StringComparison.Ordinal) ? r.To + k[r.From.Length..] : k;
+            string folder = Moved(open.Folder), root = Moved(open.Root);
+            if (folder != open.Folder || root != open.Root) _opened.Value = open with { Folder = folder, Root = root, Keyed = open.ViewKey };
+        }
+
+        /// <summary>A folder left the browser (hidden, recycled, its music folder removed): a detail open on it or under it steps out to its parent, or
+        /// back to the list.</summary>
+        void StepOutOf(string key)
+        {
+            if (Shown is not { } open) return;
+            if (open.Folder != key && !open.Folder.StartsWith(key + "\\", StringComparison.Ordinal)) return;
+            string parent = ParentOf(LocalCollection.View.Peek(), key);
+            if (parent.Length == 0) Close(open);
+            else OpenFolder(parent);
+        }
+
+        static string ParentOf(LocalCollectionView view, string key)
+            => view.Folders.TryGetValue(key, out var n) && n.ParentKey is { } parent ? parent : "";
+
+        /// <summary>Is <paramref name="ancestor"/> above <paramref name="key"/> in the folder tree?</summary>
+        static bool IsAncestor(LocalCollectionView view, string ancestor, string key)
+        {
+            for (string at = ParentOf(view, key); at.Length > 0; at = ParentOf(view, at))
+                if (at == ancestor) return true;
+            return false;
+        }
+    }
+
+    /// <summary>A pivot's word.</summary>
+    public static string PivotLabel(LocalPivot p) => p switch
+    {
+        LocalPivot.Albums => Loc.Get(P.PivotAlbums),
+        LocalPivot.Artists => Loc.Get(P.PivotArtists),
+        LocalPivot.Songs => Loc.Get(P.PivotSongs),
+        LocalPivot.Folders => Loc.Get(P.PivotFolders),
+        LocalPivot.Insights => Loc.Get(P.PivotInsights),
+        _ => Loc.Get(P.PivotHome),
+    };
+
+    /// <summary>The Local Files header and membership are settled locally (the playlist page's local arm did the same; P2-data's restate fills it).</summary>
+    static void SettleLocalFiles()
+    {
+        Playlist.EnsureLocalFilesHeader();
+        var local = Playlist.LocalFiles;
+        var e = Entities.Current.Edges.PlaylistTracks;
+        if (e.State(local.Slot) != EdgeState.Unknown) return;
+        e.Replace(local.Slot, ReadOnlySpan<int>.Empty, ReadOnlySpan<PlaylistTrackEdge>.Empty, EdgeState.Complete, 0);
+        Entities.Publish();
+    }
+
+    static void PlayList(bool shuffle)
+    {
+        var local = Playlist.LocalFiles;
+        if (!local.IsValid) return;
+        if (local.TrackSlots.Length == 0 || shuffle)
+        {
+            // The list has not been restated from the index yet, or Shuffle: play the files themselves (Shuffle in a random order,
+            // as every other shuffled verb here does; a posted shuffle toggle lands after the rows are laid out, too late to order them).
+            PlayFiles(LocalCollection.FilesWhere(static _ => true), shuffle);
+            return;
+        }
+        Playback.PlayContext(local.Id);   // the Local Files list from its own rows (Playback.PlayLocalList), shuffled when shuffle is on
+    }
+
+    /// <summary>The most files one verb stages and queues at once (a decade or a big folder plays a random sample of this many).</summary>
+    const int MaxQueued = 500;
+
+    static void PlayFiles(List<long> ids, bool shuffle)
+    {
+        if (ids.Count == 0) return;
+        if (shuffle) Random.Shared.Shuffle(CollectionsMarshal.AsSpan(ids));
+        var rows = StagedRows(ids);
+        if (rows.Count == 0) return;
+        // The order is already the one asked for: shuffle goes off, only when it is on (a toggle while another device owns playback goes to it).
+        if (Playback.Snap().Shuffle) Playback.SetShuffle(false);
+        Playback.PlayRows(CollectionsMarshal.AsSpan(rows), 0, Playlist.LocalFiles.Id);
+    }
+}

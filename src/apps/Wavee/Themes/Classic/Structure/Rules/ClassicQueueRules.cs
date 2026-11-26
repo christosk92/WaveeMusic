@@ -44,6 +44,8 @@ public static class ClassicQueueRules
     /// <summary>The small text of the panel: header counts, "Clear", the hint, "Show more" and "Playing from" (size, line height), and the
     /// glyphs beside them (size).</summary>
     public const float SmallSize = 12f, SmallLine = 16f, GlyphSize = 12f;
+    /// <summary>The queue's Mix line (#48): its accent stroke's thickness.</summary>
+    public const float MixStrokeH = 2f;
 
     /// <summary>The "Playing from" header's least height.</summary>
     public const float PlayingFromMinH = 28f;
@@ -112,6 +114,9 @@ public static class ClassicQueueRules
 
     /// <summary>A section caption's height.</summary>
     public const float StageHeaderH = 40f;
+
+    /// <summary>The stage caption's words (an AI DJ segment's label and its mark): the section caption's 12/16.</summary>
+    public const float StageCaptionSize = 12f, StageCaptionLine = 16f;
 
     /// <summary>The Autoplay rows' dim on the stage.</summary>
     public const float StageAutoplayDim = 0.68f;

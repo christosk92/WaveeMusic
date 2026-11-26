@@ -129,6 +129,8 @@ public static class App
                 static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
             // "On this PC" (ZC2): the persisted (track, quality) → file id map loads off-thread; the row fact reads the cache index and the key store above. Indicator only (NQ4).
             Playback.OnThisPc.Use(Playback.AudioFileMap.PathUnder(Platform.LocalFolder));
+            // The music folders (#240): the local index loads off-thread beside audiofiles.tsv, then each folder is caught up and watched. No folder: nothing runs.
+            LocalLibrary.Use(Platform.LocalFolder);
         }
         Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
         Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
@@ -138,6 +140,7 @@ public static class App
         StartupTimeline.Mark("entities");
         if (Platform.Args.Fake) Playback.OnThisPc.UseFake(Entities.FakeOnThisPc);   // --fake: a stable spread of "on this PC" rows (ZC2's fact has no cache to read)
         if (Platform.Args.Fake) Playback.UseFakeAutoplay(Entities.FakeAutoplay);   // --fake: autoplay answers from the demo catalogue (#215 verification)
+        if (Platform.Args.Fake) Playback.Dj.UseFake(Entities.FakeLexicon);         // --fake: the lexicon session provider answers the demo DJ list (AI DJ)
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
         Spotify.Boot();                  // session static, signals created once; login later
         Spotify.Api.Boot();              // Fetch.Register(Transport): the planner's provider (G-003)
@@ -153,12 +156,15 @@ public static class App
         Playback.Audio.EnumerateEndpoints = static () => Playback.Audio.Outputs(FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints());
         Playback.Boot();                 // state, host loop, audio pump, os bridges
         Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
+        // #48 Mix: the transition editor's Hear it plays through the preview engine, looped until Stop; the engine's state lights the button.
+        MixHearIt.Install((s, f, t, r, raw) => Playback.MixPreview.Start(s, f, t, r, raw, loop: true), () => Playback.MixPreview.Stop(),
+            () => Playback.MixPreview.State.Value != Playback.MixPreview.Phase.Idle);
         if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
         if (Platform.Args.Fake) Playback.Audio.UseFake(Entities.FakeOutputs());  // --fake: a stable outputs roster and a format echo for the device picker (audit B5b)
         Modules.Boot(startIdleTimer: gui);   // the headless host sweeps nothing: its idle timer would outlive a test
         Video.Install();                 // the video host: resolver tiers (chained after the module tier), demotion, engine log sink, attachments, placement preference (B7)
-        Video.InstallMirror();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.VideoOverride/LocalVideo; after Install, which loads the roster
+        Video.LinkedVideoMirror.ApplyFakeClip();           // G-220: the roster's ONE subscriber — attachments mirrored onto Track.LinkedVideo/LocalVideo; after Install, which loads the roster
         Sidebar.Boot();                  // design, pane state, the layout document and pins; before its action seams and the UI (B6)
         HomeBoardStore.Boot();           // the pinned Home's per-account document (home.acct-<hash>.json); after Sidebar.Boot: its folder and pins
         Sidebar.InstallActionSeams();    // Actions.Services.IsPinned / SetPinned (J1)
@@ -200,6 +206,7 @@ public static class App
         if (gui)
         {
             Shell.StartUpdater();        // AFTER Diagnostics.InstallServices: the updater reads Update.Host.IsMetered at start (WP-6.R)
+            RateNudge.Boot(Platform.Settings);   // AFTER StartUpdater (UpdatedFrom / PreviousRunVersion are known) and Crash.Host.BeginGuiRun, BEFORE the shell mounts; the headless inspect boot resets it itself
             Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
         }
         if (!Platform.Args.Fake)         // --fake stays providerless; its tracks answer from the word-synced fixture instead
@@ -337,6 +344,7 @@ public static class App
         // The exit tail (G-012), after the loop and while the log is still alive: layout write, telemetry batch, audio,
         // video, the graph store, the stream caches, then the platform (whose log sink flushes last).
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Library);
+        RateNudge.Flush();               // a session that ends mid-track still counts its listening; settings are still open here
         Spotify.Library.Shutdown();      // its watches and settle timers, and the pin store's hook, before the sidebar's layout write
         Crash.Host.NoteShutdownPhase(Crash.ShutdownPhase.Sidebar);
         Sidebar.Shutdown();

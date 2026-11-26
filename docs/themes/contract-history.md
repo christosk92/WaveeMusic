@@ -10,6 +10,11 @@ version by hand.
 The history before 2026-11-20 was written by hand in `ContractVersion.cs`. It is kept below as it was written, oldest
 first: a version that names a branch (`pinned-home 1.117`) was numbered on that branch before it merged.
 
+## 2.9 (Wavee 0.3.13)
+
+- ViewKeys.ShellRateNudge with RateNudgeCardProps (RateNudgeView, RateNudgeGlyph); optional
+  AfterUpdatePlateProps.RateDoor (RateDoorLine)
+
 ## 2.8 (Wavee 0.3.12)
 
 - the optional `PlayerBarProps.LosslessFormat` (the playing stream's badge, such as FLAC 24/96, while a lossless stream

@@ -714,9 +714,14 @@ public static partial class Diagnostics
         /// placement to audio ("Couldn't play the video") and close the surface a `video=` mount opened. The inspector's resolver answers
         /// nothing while the mount lives instead: the video join stays in flight (the poster, then the ring past its budget), as a slow
         /// manifest leaves it, and the next mount (<see cref="EndVideoJoins"/>) lets it answer "no video" once its playback is reset.
-        /// Once, right after <c>Shell.Headless.Boot</c>.</summary>
+        /// Once, right after <c>Shell.Headless.Boot</c>. A local video file (#240) needs no network: it resolves at once to its file (<c>Playback.Video.LocalVideos</c>), as it does in the app.</summary>
         public static void InstallVideoJoinHold()
-            => Playback.VideoResolver = static (_, _, _) => { Volatile.Read(ref s_videoJoin).Wait(); return null; };
+            => Playback.VideoResolver = static (id, _, _) =>
+            {
+                if (Playback.Video.LocalVideos.PathOf(id) is { } local) return Playback.Video.LocalVideos.Source(local) with { PlayableUri = id.Text };
+                Volatile.Read(ref s_videoJoin).Wait();
+                return null;
+            };
 
         /// <summary>Let every video resolve the last mount parked answer "no video" (after <see cref="ResetPlayback"/>: the reducer the
         /// answer reaches plays no video any more, so it changes nothing).</summary>
@@ -782,6 +787,7 @@ public static partial class Diagnostics
         {
             if (!EntityId.TryParse(uri.AsSpan(), out EntityId id)) return false;
             EntityRef row = Entities.Ref(id);
+            LocalLibrary.RuleItem(id);   // a spotify:local: uri: matched against the music folders before it plays
             next = Math.Clamp(next, 0, 64);
             var members = new List<EntityRef>(1 + next) { row };
             const string prefix = "spotify:track:tr";
@@ -790,6 +796,29 @@ public static partial class Diagnostics
                     if (EntityId.TryParse((prefix + (k + i).ToString(System.Globalization.CultureInfo.InvariantCulture)).AsSpan(), out EntityId more)) members.Add(Entities.Ref(more));
             for (int i = 1; i <= Math.Clamp(cold, 0, 16); i++)
                 if (EntityId.TryParse(("spotify:track:qcold" + i.ToString(System.Globalization.CultureInfo.InvariantCulture)).AsSpan(), out EntityId bare)) members.Add(Entities.Ref(bare));
+            // A playlist context that lists the row: its own track rows in list order, from that row — what a double-tap on the row does
+            // (#240 P4: a playlist's spotify:local: rows queue, the dead ones marked, with the list's item ids as their uids).
+            if (!context.IsEmpty && !video && next == 0 && cold == 0 && context.Kind == EntityKind.Playlist && Entities.Current is { } scope
+                && scope.Playlists.TryGetSlot(context, out int list) && row.Kind == EntityKind.Track)
+            {
+                ReadOnlySpan<int> targets = scope.Edges.PlaylistTracks.Targets(list);
+                ReadOnlySpan<PlaylistTrackEdge> payload = scope.Edges.PlaylistTracks.Payload(list);
+                var listed = new List<EntityRef>(targets.Length);
+                int start = -1;
+                for (int i = 0; i < targets.Length && i < payload.Length; i++)
+                {
+                    if (payload[i].Kind != PlaylistItemKind.Track) continue;
+                    var t = new Track(targets[i]);
+                    if (start < 0 && t.Id.Equals(id)) start = listed.Count;
+                    listed.Add(Entities.Ref(t.Id));
+                }
+                if (start >= 0)
+                {
+                    Playback.PlayRows(listed.ToArray(), start, context, fromMs);
+                    Shell.RecordPlay(id, id, DateTimeOffset.UtcNow.AddMinutes(-agoMin).ToUnixTimeMilliseconds());
+                    return true;
+                }
+            }
             if (!context.IsEmpty && !video)
                 Playback.PlayRows(members.ToArray(), Math.Clamp(at, 0, members.Count - 1), context, fromMs);
             else

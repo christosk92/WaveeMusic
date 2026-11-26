@@ -72,6 +72,8 @@ public enum ActionId : ushort
     SaveEpisode,
     // The pinned Home's pin pair (an ABSOLUTE-STATE pair, like the sidebar's): two identities, two labels.
     PinToHome, UnpinFromHome,
+    /// <summary>#48 Mix: a track row of a mixed playlist opts its pair (this row → the next) out of Mix on this PC (Entities/Mix.Menu.cs).</summary>
+    DontMixIntoNext,
 }
 
 /// <summary>The action icon-KEY vocabulary: an action carries a SEMANTIC key and never a raw glyph. The one

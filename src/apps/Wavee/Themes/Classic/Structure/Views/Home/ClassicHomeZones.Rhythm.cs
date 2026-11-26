@@ -75,13 +75,17 @@ internal static partial class ClassicHomeZones
     static Element LeadCard(HomeCard c, bool beside)
     {
         var cc = c;
-        string line = HomeCards.PlainText(c.Subtitle);
+        // The DJ (AI DJ) leads as its own card states it: its colour field for art with what the DJ says on it, the list's own line below.
+        bool dj = RhythmCards.DrawsDj(in c);
+        string line = HomeCards.PlainText(dj ? c.PlaylistDescription ?? c.Subtitle : c.Subtitle);
         var art = new BoxEl
         {
             ZStack = true, MinWidth = 0f, MinHeight = beside ? ClassicHomeRules.LeadArtMin : 0f, Grow = beside ? 1f : 0f,
             AspectRatio = beside ? float.NaN : ClassicHomeRules.LeadArtAspect, ClipToBounds = true,
             Cursor = CursorId.Hand, OnClick = () => HomeCardNav.Open(in cc),
-            Children = [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, ClassicHomeRules.LeadArtDecodePx)],
+            Fill = dj ? RhythmCards.DjBack(c.DjColors) : ColorF.Transparent,
+            Gradient = dj ? RhythmCards.DjWash(c.DjColors, GradientShape.Linear, ClassicHomeRules.DjWashAngle) : null,
+            Children = dj ? [DjWords(in c)] : [Controls.CoverFill(c.HeaderImageUrl ?? c.ImageUrl, 0f, ClassicHomeRules.LeadArtDecodePx)],
         };
         var copy = new BoxEl
         {
@@ -119,6 +123,18 @@ internal static partial class ClassicHomeZones
     }
 
     static float LeadInsetTop => SurfaceGeometry.ShelfPlatePad;
+
+    /// <summary>What the DJ says on its card (<c>home.card.dj.transcript_text</c>), in Classic's pick-quote voice and the card's own text colour, at
+    /// the foot of its colour field.</summary>
+    static Element DjWords(in HomeCard c) => new BoxEl
+    {
+        Direction = 1, Justify = FlexJustify.End, MinWidth = 0f, HitTestPassThrough = true,
+        Padding = Edges4.All(ClassicHomeRules.DjWordsPad),
+        Children = [R.Type.PickQuote(HomeCards.PlainText(c.Subtitle)) with
+        {
+            Color = RhythmCards.DjInk(c.DjColors), MaxLines = ClassicHomeRules.DjWordsLines, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        }],
+    };
 
     // ── the capped grids: CompactGrid, ArtistCircles, CappedShelf ───────────────────────────────────────────────────────
 

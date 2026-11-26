@@ -49,7 +49,7 @@ using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
 using RemoteCommand = Wavee.Spotify.Decode.RemoteCommand;
-using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
+using PlayerSignal = Wavee.Spotify.Decode.PlayerSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 using ClusterOrigin = Wavee.Spotify.Decode.ClusterOrigin;
 
@@ -165,6 +165,13 @@ public static partial class Playback
         DeviceReload,
         /// <summary>The video host found no source for the row (the manifest resolve answered nothing): demote to audio.</summary>
         VideoUnavailable,
+        /// <summary>#48 Mix: the playing row's own speed changed (a beatmatched B at its <c>speedB</c>, then each 0.005 step of its glide
+        /// back to 1). <see cref="Input.LongArg"/> carries the factor (<see cref="BitConverter.DoubleToInt64Bits"/>); it rides the PUT as
+        /// <c>playback_speed</c> and the playhead's extrapolation (<see cref="State.PlayRate"/>).</summary>
+        MixSpeed,
+        /// <summary>AI DJ talk-over (plan-dj §1.6): the track an intro or a welcome talks over started under it. The voice stays the current
+        /// item to its end; the narration restrictions lift now (<see cref="State.TargetUnder"/>).</summary>
+        TargetStarted,
     }
 
     /// <summary>Why the current playable is not playing. <see cref="Fault.None"/> is the ONLY value that lets the
@@ -910,6 +917,11 @@ public static partial class Playback
     /// <param name="ManifestId">The row's music-video manifest id as the owner offers it (<c>associated_video_id</c>), interned.</param>
     /// <param name="VolumeFixed">The ACTIVE device does not let a controller set its volume (its capabilities,
     /// <see cref="Spotify.Decode.ClusterDevice.VolumeFixed"/>).</param>
+    /// <param name="Locks">AI DJ: the toggles the owner says may not be changed (its restrictions 8 / 9 / 10, a DJ's <c>dj-disallow</c>),
+    /// and <paramref name="LockReason"/> why, in the reason words <see cref="ContextLocks.ReasonOf"/> reads for a local DJ.</param>
+    /// <param name="LockReason">See <paramref name="Locks"/>.</param>
+    /// <param name="NoTransfer">The owner refuses a transfer (restriction 13: a DJ while it talks, <c>narration</c>).</param>
+    /// <param name="Narrating">The owner's current item is a DJ narration (<c>is_narration</c>).</param>
     public readonly record struct RemoteState(
         bool HasTrack,
         EntityId Track,
@@ -930,7 +942,11 @@ public static partial class Playback
         VideoSignals Offered = VideoSignals.None,
         VideoSignals Disallowed = VideoSignals.None,
         StringId ManifestId = default,
-        bool VolumeFixed = false);
+        bool VolumeFixed = false,
+        ToggleLock Locks = ToggleLock.None,
+        LockReason LockReason = LockReason.None,
+        bool NoTransfer = false,
+        bool Narrating = false);
 
     /// <summary>THE playback state. One value, written on the UI thread only (C1), copied freely, and the single
     /// source every playback surface binds through the host's signals.
@@ -1028,9 +1044,21 @@ public static partial class Playback
         public uint ScrubEpoch;
         public bool Shuffle;
         public RepeatMode Repeat;
+        /// <summary>The playing context's OWN toggle restrictions (AI DJ: shuffle and both repeats <c>dj-disallow</c>, plan-dj §2.5),
+        /// from its resolve, and the user's shuffle / repeat held while they apply (<see cref="ContextLocks"/>). A foreign owner's
+        /// restrictions are not these: they stay the cluster mirror's.</summary>
+        public ContextLocks Locks;
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
         /// <see cref="CanSkipNext"/> / <see cref="CanSkipPrev"/> / <see cref="CanSeek"/>, never off these directly.</summary>
         public bool NoNext, NoPrev, NoSeek;
+        /// <summary>AI DJ, the foreign owner's side (<see cref="MirrorRemote"/>): the toggles its restrictions forbid and why, a refused
+        /// transfer, and a narration on its deck. They restrict only while it owns playback, as the bits above do.</summary>
+        public ToggleLock MirrorLocks;
+        public LockReason MirrorLockReason;
+        public bool NoTransfer, MirrorNarrating;
+        /// <summary>AI DJ: the track the current narration talks over has started under it (<see cref="AudioSignal.TargetStarted"/>; an
+        /// intro or a welcome stays current to its end). Cleared whenever another row goes on the deck.</summary>
+        public bool TargetUnder;
         /// <summary>The stream's format badge ("OGG 320", "FLAC 44.1/16"), published by the audio host. CLEARED the
         /// moment a remote device owns playback — we cannot know a phone's format, and 0.2.9 left ours on screen
         /// (ch 21 G8).</summary>
@@ -1070,6 +1098,15 @@ public static partial class Playback
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
         public float EpisodeRate;
         public readonly float ContentRate => SpeedApplies(CurrentId.Kind) && EpisodeRate > 0 ? EpisodeRate : 1f;
+        /// <summary>#48 Mix: the playing row's own speed as the pump last published it (<see cref="AudioSignal.MixSpeed"/>), for the load
+        /// <see cref="MixSpeedEpoch"/>; 0 = none.</summary>
+        public double MixSpeed;
+        public uint MixSpeedEpoch;
+        /// <summary>The pace the content moves at: <see cref="ContentRate"/> (the session's, an episode's speed) × a beatmatched track's
+        /// own speed while it plays by one (#48: B at its <c>speedB</c> and on its glide back to 1). The playhead extrapolates by it and
+        /// the PUT states it as <c>playback_speed</c>; the session rate itself stays <see cref="ContentRate"/>.</summary>
+        public readonly float PlayRate => MixSpeed > 0 && MixSpeedEpoch == LoadEpoch && CurrentId.Kind == EntityKind.Track
+            ? (float)(ContentRate * MixSpeed) : ContentRate;
         public uint PublishSeq;
 
         // ── the connect bookkeeping the PUT body carries ──
@@ -1103,6 +1140,10 @@ public static partial class Playback
         public uint HoldLoadEpoch;
         /// <summary>The placement wants video: a row that has one loads on the video host (G-141).</summary>
         public bool VideoWanted;
+        /// <summary>The wish is on only because a local video file landed on the deck (<see cref="LocalVideoWish"/>): it ends when the deck
+        /// leaves local videos, so the rows after one play as they would have before it. Any change of the wish the deck did not make
+        /// itself (the user's switch, a fault's demotion) makes it the user's again.</summary>
+        public bool VideoByLocal;
         /// <summary>The screen the video is on cannot carry HDCP (<see cref="InputKind.VideoScreen"/>): a row whose video is protected loads
         /// on the audio host whatever <see cref="VideoWanted"/> says. <see cref="VideoWanted"/> is kept, so the row goes back to its video
         /// the moment the screen can show it.</summary>
@@ -1150,9 +1191,16 @@ public static partial class Playback
         public readonly bool RoutesLocal => Ownership.RoutesLocal(in Own);
         /// <summary>Is the transport armed at all? Ch 20 §7's <c>canTransport</c>.</summary>
         public readonly bool CanTransport => HasCurrent && Error == Fault.None;
+        /// <summary>An AI DJ narration clip is the current item (its playable identity is a <c>wavee:tts:</c> clip, plan-dj §2.2): no seek
+        /// (a seek would land in the voice), Next and Previous land past it, and the surfaces suppress its progress (<c>suppress_progress</c>).</summary>
+        public readonly bool ClipCurrent => CurrentId.Provider == EntityProvider.Tts;
+        /// <summary>The DJ talks: a narration clip is current AND the track it talks over has not started under it (plan-dj §1.6, §1.9): no
+        /// repeat-track, no transfer (the official restriction reason <c>narration</c>, f17 3 / 9 / 13). Once the target sounds under the
+        /// voice the official player lifts them while the voice is still current.</summary>
+        public readonly bool Narrating => ClipCurrent && !TargetUnder;
         /// <summary>May the seek bar be dragged? While LIVE this is exactly <see cref="LiveWindow.HasWindow"/> — a
-        /// seekable span under 30 s is not a window, and the rail becomes the breathing line.</summary>
-        public readonly bool CanSeek => CanTransport && !SeekRestricted && Phase != Phase.Loading
+        /// seekable span under 30 s is not a window, and the rail becomes the breathing line. Never while a narration clip is current.</summary>
+        public readonly bool CanSeek => CanTransport && !SeekRestricted && !ClipCurrent && Phase != Phase.Loading
             && (Live.IsLive ? Live.HasWindow : DurationMs > 0);
         /// <summary>May Next fire? The FOLDED answer; the raw restriction bits are not the UI's business.</summary>
         public readonly bool CanSkipNext => CanTransport && !NextRestricted;
@@ -1169,6 +1217,22 @@ public static partial class Playback
         public readonly bool PrevRestricted => NoPrev && Own.Kind == Owner.Foreign;
         /// <inheritdoc cref="NextRestricted"/>
         public readonly bool SeekRestricted => NoSeek && Own.Kind == Owner.Foreign;
+        /// <summary>The context forbids toggling shuffle here (<see cref="Locks"/>; never while another device owns playback, whose own
+        /// rules the verb is forwarded to).</summary>
+        public readonly bool ShuffleLocked => (Locks.Bits & ToggleLock.Shuffle) != 0 && Own.Kind != Owner.Foreign;
+        /// <summary>The context forbids repeat <paramref name="mode"/> here (Off is always allowed).</summary>
+        public readonly bool RepeatLocked(RepeatMode mode) => Own.Kind != Owner.Foreign
+            && (mode == RepeatMode.Context ? (Locks.Bits & ToggleLock.RepeatContext) != 0
+                : mode == RepeatMode.Track && (Locks.Bits & ToggleLock.RepeatTrack) != 0);
+        /// <summary>The locks a surface draws: the context's own while the deck is ours, the owner's (its DJ's) while another device owns playback.</summary>
+        public readonly ToggleLock LiveLocks => Own.Kind == Owner.Foreign ? MirrorLocks : Locks.Bits;
+        /// <summary>Why <see cref="LiveLocks"/> lock: the owner's reason while another device owns playback, the context's otherwise.</summary>
+        public readonly LockReason LiveLockReason => Own.Kind == Owner.Foreign ? MirrorLockReason : Locks.Reason;
+        /// <summary>The foreign owner refuses a transfer away from it (a DJ while it talks): the picker's "play here" and "play there"
+        /// are refused rather than sent.</summary>
+        public readonly bool TransferRestricted => NoTransfer && Own.Kind == Owner.Foreign;
+        /// <summary>The foreign owner's deck is a DJ narration (the caption's text is the host's, <c>Playback.Dj.RemoteNarration</c>).</summary>
+        public readonly bool RemoteNarrating => MirrorNarrating && Own.Kind == Owner.Foreign;
         /// <summary>Does the CONTEXT allow Next / Previous, error or not? The player bar reads these for its own fold:
         /// a failed load parks the deck row with <see cref="Error"/> set and <see cref="CanTransport"/> false, and the
         /// one way out that does not re-play the dead row is to skip past it (<c>Advance</c> heals the error through
@@ -1192,7 +1256,7 @@ public static partial class Playback
         public readonly int Position(long nowMs)
         {
             if (Phase != Phase.Playing || Buffering) return PosMs;
-            long p = PosMs + (long)((nowMs - PosQpc) * ContentRate);
+            long p = PosMs + (long)((nowMs - PosQpc) * PlayRate);
             if (p < 0) p = 0;
             if (DurationMs > 0 && p > DurationMs) p = DurationMs;
             return (int)p;
@@ -1300,6 +1364,9 @@ public static partial class Playback
         SessionOnline,
         /// <summary>The host holds (<c>IntArg</c> != 0) or no longer holds a next page for <see cref="Input.Context"/> (G-242).</summary>
         ContextPages,
+        /// <summary>The context about to play (<see cref="Input.Context"/>) states its own toggle restrictions (<c>IntArg</c> low byte =
+        /// <see cref="ToggleLock"/>, next byte = <see cref="LockReason"/>; 0 = none): AI DJ, plan-dj §2.5.</summary>
+        ContextLocks,
         /// <summary>A context page answered for <see cref="Input.Context"/> (<c>IntArg</c> = rows appended, <c>LongArg</c> != 0 =
         /// another page follows it).</summary>
         Paged,
@@ -1332,6 +1399,9 @@ public static partial class Playback
         /// <summary>The screen the video is on can (<c>IntArg</c> 0) or cannot (1) carry the HDCP protected video needs (<c>Video.Hdcp</c>).
         /// While it cannot, a row whose video is protected plays its song instead; when it can again, the row goes back to its video.</summary>
         VideoScreen,
+        /// <summary>"Let DJ pick" (AI DJ, plan-dj §1.8, §2.6): the rest of the playing segment is skipped and the next segment's first row
+        /// (its <c>dj.jump_target</c>) plays. Refused while no later segment is loaded (<see cref="Refusal.NoJumpTarget"/>).</summary>
+        DjJump,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1383,19 +1453,26 @@ public static partial class Playback
         /// context post. <c>LongArg</c> packs the cause (low byte) and <see cref="PausedBit"/>; a plain
         /// <see cref="Play"/> is <see cref="ClaimCause.UserPlay"/>, playing.</summary>
         public static Input PlayFrom(EntityRef row, EntityId id, EntityId context, QueueCursor cursor, PlayableKind kind,
-            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false)
-            => new(InputKind.Play, row, id, context, cursor, fromMs, (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L),
+            int fromMs, long nowMs, ClaimCause cause, bool paused, bool explicitPosition = false, bool here = false)
+            => new(InputKind.Play, row, id, context, cursor, fromMs,
+                (long)cause | (paused ? PausedBit : 0L) | (explicitPosition ? ExplicitPositionBit : 0L) | (here ? HereBit : 0L),
                 nowMs: nowMs, playKind: kind);
 
         /// <summary>The bit of a Play's <c>LongArg</c> that asks for a paused start.</summary>
         public const long PausedBit = 1L << 8;
         public const long ExplicitPositionBit = 1L << 9;
+        /// <summary>The bit of a Play's <c>LongArg</c> that says the row plays only on THIS device (a file on this PC, #240): the play
+        /// claims playback here even while another device owns it, as the official client plays a local file on the computer that
+        /// has it. Without it such a play went to the owner, which cannot open the file, and nothing played.</summary>
+        public const long HereBit = 1L << 10;
 
         /// <summary>The bit of a SetShuffle's <c>IntArg</c> that says the queue is ALREADY in the asked order (a load that
         /// built it shuffled), so no reorder effect follows.</summary>
         public const int ShuffleOrderedBit = 2;
 
         public static Input Next(long nowMs = 0) => new(InputKind.Next, nowMs: nowMs);
+        /// <summary>"Let DJ pick" (<see cref="InputKind.DjJump"/>).</summary>
+        public static Input DjJump(long nowMs = 0) => new(InputKind.DjJump, nowMs: nowMs);
         public static Input Prev(long nowMs = 0) => new(InputKind.Prev, nowMs: nowMs);
         public static Input Pause(long nowMs = 0) => new(InputKind.Pause, nowMs: nowMs);
         public static Input Resume(long nowMs = 0) => new(InputKind.Resume, nowMs: nowMs);
@@ -1453,6 +1530,10 @@ public static partial class Playback
         public static Input Stop(StopReason why) => new(InputKind.Stop, intArg: (int)why);
         public static Input DeviceLost() => new(InputKind.DeviceLost);
         public static Input ShuffleOrdered(bool on) => new(InputKind.SetShuffle, intArg: (on ? 1 : 0) | ShuffleOrderedBit);
+        /// <summary>The context about to play forbids these toggles, for this reason (none: it forbids nothing). The host posts it
+        /// before the context's Play (<see cref="InputKind.ContextLocks"/>).</summary>
+        public static Input ContextLocks(EntityId context, ToggleLock locks, LockReason reason, long nowMs = 0)
+            => new(InputKind.ContextLocks, context: context, intArg: (int)locks | ((int)reason << 8), nowMs: nowMs);
         public static Input HandedOff(uint epoch, EntityId preparedId, int positionMs, long nowMs = 0)
             => new(InputKind.AudioSignal, id: preparedId, intArg: (int)AudioSignal.HandedOff, longArg: positionMs,
                 epoch: epoch, nowMs: nowMs);
@@ -1497,6 +1578,31 @@ public static partial class Playback
 
     // ── 8. the effects (C3) ─────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The toggles a context may forbid (its resolve's <c>restrictions</c>: <c>disallow_toggling_shuffle_reasons</c>,
+    /// <c>disallow_toggling_repeat_context_reasons</c>, <c>disallow_toggling_repeat_track_reasons</c>; plan-dj §1.3).</summary>
+    [Flags]
+    public enum ToggleLock : byte { None = 0, Shuffle = 1, RepeatContext = 2, RepeatTrack = 4 }
+
+    /// <summary>Why a context forbids its toggles (the restriction's reason word): <c>dj-disallow</c>, or another we do not name.</summary>
+    public enum LockReason : byte { None = 0, Dj, Other }
+
+    /// <summary>A context's own toggle restrictions (<see cref="State.Locks"/>) and the user's shuffle and repeat they hold back, given
+    /// back when another context plays (the DJ forbids shuffle and repeat; the user's preference must survive it).</summary>
+    public struct ContextLocks
+    {
+        /// <summary>The context the locks belong to.</summary>
+        public EntityId Context;
+        public ToggleLock Bits;
+        public LockReason Reason;
+        /// <summary>The user's own modes are held (they were in force when the first locked context began).</summary>
+        public bool Holding;
+        public bool HeldShuffle;
+        public RepeatMode HeldRepeat;
+
+        /// <summary>The reason word a resolve states → <see cref="LockReason"/>. PURE.</summary>
+        public static LockReason ReasonOf(string word) => word.Length == 0 ? LockReason.None : word == "dj-disallow" ? LockReason.Dj : LockReason.Other;
+    }
+
     /// <summary>A user-click intent the reducer declined (<see cref="Effects.Refused"/>): no behaviour changes, but a
     /// click that does nothing leaves one always-on log line so "nothing happened" is explainable from the log.</summary>
     public enum Refusal : byte
@@ -1517,6 +1623,16 @@ public static partial class Playback
         NoVideo,
         /// <summary>A volume change for a foreign owner whose volume a controller cannot set (<see cref="State.VolumeFixed"/>).</summary>
         VolumeFixed,
+        /// <summary>A shuffle or repeat toggle the playing context forbids (<see cref="State.Locks"/>: the DJ's <c>dj-disallow</c>).</summary>
+        ContextLocked,
+        /// <summary>A seek, a repeat-track or a transfer while an AI DJ narration is the current item (<see cref="State.Narrating"/>; the
+        /// official player's restriction reason <c>narration</c>, plan-dj §1.8).</summary>
+        Narration,
+        /// <summary>A transfer (to another device, or pulling playback here) the foreign owner refuses (<see cref="State.TransferRestricted"/>:
+        /// a DJ while it talks, restriction 13 <c>narration</c>).</summary>
+        TransferRestricted,
+        /// <summary>"Let DJ pick" with no DJ session on the deck, or with no later segment loaded yet (the page it needs is asked for).</summary>
+        NoJumpTarget,
     }
 
     /// <summary>Fixed effect SLOTS — one per effect KIND, never a list. The last write inside a drain wins and the
@@ -1583,6 +1699,8 @@ public static partial class Playback
         public bool PrepareNext;
         public EntityRef NextRow;
         public EntityId NextId;
+        /// <summary>The kind <see cref="NextRow"/> will play as (Spotify audio or a local file): the pump's splice gate reads it.</summary>
+        public PlayableKind NextKind;
         /// <summary>WARM the next row only — head, mirrors, key; no ring, no decoder. What a load asks for.</summary>
         public bool Prefetch;
         public EntityRef PrefetchRow;
@@ -1621,6 +1739,12 @@ public static partial class Playback
         /// <see cref="AutoplayPageContext"/> and answer with <see cref="Input.AutoplayPaged"/>.</summary>
         public bool AutoplayPage;
         public EntityId AutoplayPageContext;
+        /// <summary>"Let DJ pick" moved the deck to the next segment's first row (<see cref="DjJumpTarget"/>, the row's item id). The
+        /// host's seam for the jump narration (plan-dj §2.6: D3 plays <c>narration.jump</c> with its talk-over here); today a log line.</summary>
+        public bool DjJump;
+        public ulong DjJumpTarget;
+        /// <summary>A controller sent "Let DJ pick" (the <c>jump</c> signal): the host runs <see cref="Playback.DjJump(string)"/>.</summary>
+        public bool DjJumpAsked;
 
         // ── video (G-142) ──
         /// <summary>The reducer decided the video mode for the shell's surface: on (a controller's switch-to-video, a play that
@@ -1717,7 +1841,7 @@ public static partial class Playback
         public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume || PersistVolume
             || ScrubBegin || ScrubMove || ScrubEnd || ScrubCancel
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
-            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
+            || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage || DjJump || DjJumpAsked
             || VideoIntent || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
     }
 
@@ -1780,6 +1904,7 @@ public static partial class Playback
             case InputKind.AutoplayPaged: DoAutoplayPaged(ref s, in i, ref fx); break;
             case InputKind.SessionOnline: DoSessionOnline(ref s, ref fx); break;
             case InputKind.ContextPages: DoContextPages(ref s, in i, ref fx); break;
+            case InputKind.ContextLocks: DoContextLocks(ref s, in i, ref fx); break;
             case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
             case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
             case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
@@ -1790,6 +1915,7 @@ public static partial class Playback
             case InputKind.ScrubEnd: DoScrubEnd(ref s, in i, ref fx); break;
             case InputKind.ScrubCancel: DoScrubCancel(ref s, ref fx); break;
             case InputKind.EndHold: DoEndHold(ref s, in i, ref fx); break;
+            case InputKind.DjJump: DoDjJump(ref s, in i, ref fx); break;
             default: break;
         }
         if (s.Hold != EndHold.None) HoldInvariant(ref s);
@@ -1824,11 +1950,14 @@ public static partial class Playback
         var cause = (ClaimCause)(byte)(i.LongArg & 0xFF);
         bool paused = (i.LongArg & Input.PausedBit) != 0;
         bool inbound = cause >= ClaimCause.InboundPlay;
+        bool here = !inbound && (i.LongArg & Input.HereBit) != 0;
 
         // Forwarding: while another device owns playback, a local Play is a PLAY COMMAND to that device, not a load
         // here. This is the routing rule, and it reads the ownership verdict — never a raw cluster id. An INBOUND load
-        // that raced a takeover is simply stale: it is nobody's command to forward.
-        if (!s.RoutesLocal)
+        // that raced a takeover is simply stale: it is nobody's command to forward. A file on this PC (HereBit) is the
+        // exception: no other device can open it, so the play claims playback here (the owner stops once the server
+        // adopts the claim, as after a takeover).
+        if (!s.RoutesLocal && !here)
         {
             // Not a bare `play` (a RESUME on the owner): the desktop `play` envelope naming the context and the row, so
             // the phone starts what was clicked here (0.2.9 parity; user report 2026-09-16 "it does not start playing").
@@ -1866,11 +1995,12 @@ public static partial class Playback
             ownerBefore, s.Own.Kind, reason: Capture.Enabled ? cause.ToString() : null);
         ReportEnd(ref s, ref fx, inbound ? PlayReason.Remote : PlayReason.ClickRow, s.Position(i.NowMs));
         if (!context.Equals(s.Context)) ResetRefill(ref s);
+        if (!context.Equals(s.Locks.Context)) ReleaseLocks(ref s);   // another context: the user's own shuffle and repeat come back
         s.Context = context;
         s.StartedPlayingAtMs = activeSince;
         s.HasBeenPlayingForMs = 0;
         s.AutoSkips = 0;                                  // a chosen row is a fresh intent: the guard starts over
-        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? KindOfRow(row, s.VideoWanted) : i.PlayKind;
+        PlayableKind kind = i.PlayKind == PlayableKind.Audio ? DeckKind(in s, row) : i.PlayKind;
         // A play that ASKED for video (a controller's single-track video play, a "watch" click) is the video mode: the wish
         // sticks for the rows after it, and the shell opens the surface to show it.
         if (kind == PlayableKind.Video && i.PlayKind == PlayableKind.Video) VideoMode(ref s, ref fx, on: true);
@@ -1905,6 +2035,14 @@ public static partial class Playback
             if (forward && jumpTo < 0) why = PlayReason.TrackDone;
         }
         bool natural = why == PlayReason.TrackDone;
+        // An AI DJ narration current: Next goes to the track after it, or past it once it started under the voice (one skip ends both,
+        // plan-dj §1.8); Previous restarts the track it belongs to (`skipping_*_past_track=resume`). A natural end is the plain walk.
+        if (!natural && jumpTo < 0 && s.ClipCurrent
+            && Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward, s.TargetUnder) is var spoken and >= 0)
+        {
+            LandPastNarration(ref s, in i, ref fx, spoken, why);
+            return;
+        }
 
         // Repeat-one re-plays the same row on its NATURAL end: the one place the cursor stands still under a transport
         // verb. A MANUAL Next moves on and turns repeat-one off, leaving repeat-context on (#215; librespot "when we skip in
@@ -1967,7 +2105,7 @@ public static partial class Playback
         EntityRef row = Queue.RefAt(at);
 
         ReportEnd(ref s, ref fx, why, natural && s.DurationMs > 0 ? s.DurationMs : s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, row, row.Id, cursor, KindOfRow(row, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, row, row.Id, cursor, DeckKind(in s, row), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false);
         fx.Snapshot = true;
@@ -1979,7 +2117,7 @@ public static partial class Playback
     /// (Spotify's "Autoplay", default on; librespot-java <c>player.autoplayEnabled</c> default true, go-librespot
     /// <c>disable_autoplay</c> default false). #215.</summary>
     public static bool AutoplayAllowed(in State s)
-        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled);
+        => s.Repeat == RepeatMode.Off && Platform.Settings.Get(Platform.Keys.AutoplayEnabled) && !Dj.RefusesAutoplay(s.Context);
 
     /// <summary>How far into a row Previous still means "previous" rather than "start this one again".</summary>
     public const int RestartWindowMs = 3_000;
@@ -1989,7 +2127,7 @@ public static partial class Playback
     static void ReplayFromStart(ref State s, in Input i, ref Effects fx, PlayReason why)
     {
         ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
-        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, KindOfRow(s.Current, s.VideoWanted), 0, paused: false);
+        PutOnDeck(ref s, in i, s.Current, s.CurrentId, s.Cursor, DeckKind(in s, s.Current), 0, paused: false);
         s.StartReason = why;
         EmitLoad(ref s, ref fx, LoadOrigin.Advance, paused: false, explicitPosition: true);
         fx.Snapshot = true;
@@ -2112,7 +2250,7 @@ public static partial class Playback
             }
             else fromMs = verdict.Ms;
 
-            PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused: false);
+            PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused: false);
             s.StartReason = PlayReason.PlayButton;
             EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused: false);
             if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -2138,6 +2276,7 @@ public static partial class Playback
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
         if (!s.HasCurrent) return;
+        if (s.ClipCurrent) { fx.Refused = Refusal.Narration; LogRestricted("seek", "narration", in s); return; }   // plan-dj §1.8: not in a voice
         if (s.SeekRestricted && !s.Parked && s.Error == Fault.None) { LogRestricted("seek", "noSeek", in s); return; }
         if (!s.RoutesLocal)
         {
@@ -2181,7 +2320,7 @@ public static partial class Playback
         s.ScrubPosMs = i.IntArg;
         s.ScrubEpoch = s.LoadEpoch;
         bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
-                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted;
+                       && !s.Parked && s.Error == Fault.None && !s.SeekRestricted && !s.ClipCurrent;
         // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
         // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
         // non-audible press in one drain also withdraws an earlier audible one's begin.
@@ -2302,7 +2441,16 @@ public static partial class Playback
     static void DoShuffle(ref State s, in Input i, ref Effects fx)
     {
         bool on = (i.IntArg & 1) != 0;
-        if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on); return; }
+        if (!s.RoutesLocal)
+        {
+            // A foreign DJ forbids the toggle (its dj-disallow): nothing is sent that it would refuse.
+            if (s.Own.Kind == Owner.Foreign && (s.MirrorLocks & ToggleLock.Shuffle) != 0) { fx.Refused = Refusal.ContextLocked; return; }
+            Forward(ref s, RemoteCmd.SetShufflingContext, ref fx, 0, on);
+            return;
+        }
+        // The context forbids the toggle (the DJ): a click or a controller's set_shuffling_context changes nothing. The host's own
+        // statement of the order it built (ShuffleOrderedBit) is a fact, not a toggle.
+        if (s.ShuffleLocked && (i.IntArg & Input.ShuffleOrderedBit) == 0) { if (s.Shuffle != on) fx.Refused = Refusal.ContextLocked; return; }
         if (s.Shuffle == on) return;
         s.Shuffle = on;
         Bump(ref s);
@@ -2320,10 +2468,16 @@ public static partial class Playback
             // verb does not name. One verb left it stuck (Track then Off sent only set_repeating_context false: the owner
             // kept repeating the track). So the COMPLETE mode is forwarded, both flags (docs/plans/wavee-playback-arbitration-
             // rules.md "Shuffle / Repeat"): RemoteArg = 1 + the mode, which the host spells as the two verbs (#215).
+            // A foreign DJ forbids turning either repeat on (its dj-disallow): nothing is sent that it would refuse.
+            if (s.Own.Kind == Owner.Foreign && mode != RepeatMode.Off
+                && (s.MirrorLocks & (mode == RepeatMode.Track ? ToggleLock.RepeatTrack : ToggleLock.RepeatContext)) != 0)
+            { fx.Refused = Refusal.ContextLocked; return; }
             Forward(ref s, RemoteCmd.SetRepeatingContext, ref fx, 1 + (long)mode, mode != RepeatMode.Off);
             return;
         }
         if (s.Repeat == mode) return;
+        if (mode == RepeatMode.Track && s.Narrating) { fx.Refused = Refusal.Narration; return; }   // plan-dj §1.8: not while the DJ talks
+        if (s.RepeatLocked(mode)) { fx.Refused = Refusal.ContextLocked; return; }   // the context forbids it (the DJ)
         s.Repeat = mode;
         Bump(ref s);
         ArmNext(ref s, ref fx);                          // repeat changes what a natural end continues into
@@ -2422,6 +2576,22 @@ public static partial class Playback
                 fx.SmtcEpoch = s.Epoch;
                 break;
 
+            case AudioSignal.MixSpeed:
+            {
+                double speed = BitConverter.Int64BitsToDouble(i.LongArg);
+                if (!double.IsFinite(speed) || speed <= 0) break;
+                // Re-anchor the playhead at the old pace before the new one applies, then state the step on the wire (each one a PUT,
+                // as the official player publishes every 0.005 step).
+                s.PosMs = s.Position(i.NowMs);
+                s.PosQpc = i.NowMs;
+                s.MixSpeed = speed;
+                s.MixSpeedEpoch = s.LoadEpoch;
+                if (s.IsPlaying) Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                fx.Smtc = true;
+                fx.SmtcEpoch = s.Epoch;
+                break;
+            }
+
             case AudioSignal.Duration:
                 s.DurationMs = (int)i.LongArg;
                 fx.Smtc = true;
@@ -2477,6 +2647,16 @@ public static partial class Playback
 
             case AudioSignal.VideoUnavailable:
                 if (s.Kind == PlayableKind.Video && s.RoutesLocal) DoVideoFault(ref s, in i, ref fx, retry: false, Fault.Unavailable);
+                break;
+
+            case AudioSignal.TargetStarted:
+                // The talk-over's track sounds under the voice: the narration restrictions lift and the PUT says so (plan-dj §1.6:
+                // one PutState moves the target out of next_tracks, the narration still current).
+                if (!s.ClipCurrent || s.TargetUnder) break;
+                s.TargetUnder = true;
+                Bump(ref s);
+                Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                fx.Snapshot = true;
                 break;
         }
     }
@@ -2680,6 +2860,7 @@ public static partial class Playback
         // is already on screen. A new context is a new refill story, as in DoPlay.
         EntityId context = Queue.MirrorContextFor(s.Own.Kind, r.HasTrack, r.Context, s.Context);
         if (!context.Equals(s.Context)) ResetRefill(ref s);
+        if (!context.Equals(s.Locks.Context)) s.Locks = default;   // the owner's modes are the mirror's below: nothing is held back
         s.Context = context;
         s.Shuffle = r.Shuffling;
         s.Repeat = r.Repeat;
@@ -2688,6 +2869,15 @@ public static partial class Playback
         s.NoNext = r.NoNext;
         s.NoPrev = r.NoPrev;
         s.NoSeek = r.NoSeek;
+        // AI DJ: the owner's toggle locks (shuffle and repeat show disabled with the reason a local DJ gives), a transfer it refuses
+        // and its narration (plan-dj §2.7)
+        if (s.MirrorLocks != r.Locks || s.NoTransfer != r.NoTransfer || s.MirrorNarrating != r.Narrating)
+            Log.Info("playback", "owner restrictions: locks=" + r.Locks + " reason=" + r.LockReason + " noTransfer=" + (r.NoTransfer ? 1 : 0)
+                + " narrating=" + (r.Narrating ? 1 : 0));
+        s.MirrorLocks = r.Locks;
+        s.MirrorLockReason = r.LockReason;
+        s.NoTransfer = r.NoTransfer;
+        s.MirrorNarrating = r.Narrating;
         s.StreamFormat = StringId.Empty;
         // The slider follows the OWNER; our own volume (the sink's, the PUT body's) is untouched.
         if (r.Volume >= 0) s.MirrorVolume = Math.Clamp(r.Volume / (float)MaxWireVolume, 0f, 1f);
@@ -2791,8 +2981,11 @@ public static partial class Playback
             // above still answers it); an unknown signal id was acked by the glue and is dropped here.
             case RemoteCmd.Signal:
                 {
-                    if (c.Signal == VideoSignal.None) break;
-                    bool on = c.Signal == VideoSignal.ToVideo;
+                    // AI DJ (plan-dj §1.8): a controller's "Let DJ pick". The host runs the jump as the button does (it lays the queue
+                    // first, Playback.DjJump), so the reducer only asks for it; a DJ that is not ours, or no DJ, refuses there.
+                    if (c.Signal == PlayerSignal.Jump) { fx.DjJumpAsked = true; break; }
+                    if (c.Signal == PlayerSignal.None) break;
+                    bool on = c.Signal == PlayerSignal.ToVideo;
                     if (on && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; break; }
                     VideoMode(ref s, ref fx, on);
                     PlayableKind kind = GatedKind(in s, s.Current, KindOfRow(s.Current, on));
@@ -2869,6 +3062,8 @@ public static partial class Playback
         // refuses it, and pulling playback here is `TakeOver` (a local claim), never this.
         if (target == 0) { fx.Refused = Refusal.NoTransferTarget; return; }
         if (target == s.Us) { fx.Refused = Refusal.SelfTransfer; return; }
+        if (s.Narrating) { fx.Refused = Refusal.Narration; return; }   // plan-dj §1.8: "DJ segment will end soon"
+        if (s.TransferRestricted) { fx.Refused = Refusal.TransferRestricted; return; }   // a foreign DJ talking (13 narration)
         Owner transferOwnerBefore = s.Own.Kind;
         s.PosMs = s.Position(i.NowMs);                   // freeze the extrapolation: a refused transfer parks the deck HERE
         s.PosQpc = i.NowMs;
@@ -2926,6 +3121,7 @@ public static partial class Playback
     static void DoTakeOver(ref State s, in Input i, ref Effects fx)
     {
         if (s.Own.Kind == Owner.Us || !s.HasCurrent) return;    // already here, or nothing to bring
+        if (s.TransferRestricted) { fx.Refused = Refusal.TransferRestricted; return; }   // a foreign DJ talking: "DJ segment will end soon"
         bool paused = s.Own.Kind == Owner.Foreign && s.Phase == Phase.Paused;
         int fromMs = s.Position(i.NowMs);                       // the mirror extrapolated to now; s.Context is the owner's already
 
@@ -2948,7 +3144,7 @@ public static partial class Playback
         }
         else fromMs = verdict.Ms;
 
-        PutOnDeck(ref s, in i, row, id, cursor, KindOfRow(row, s.VideoWanted), fromMs, paused);
+        PutOnDeck(ref s, in i, row, id, cursor, DeckKind(in s, row), fromMs, paused);
         s.StartReason = PlayReason.PlayButton;
         EmitLoad(ref s, ref fx, LoadOrigin.Claim, paused);
         if (!id.IsEmpty && !RowNamesId(row, id)) { fx.Fetch = true; fx.FetchId = id; fx.FetchEpoch = s.Epoch; }
@@ -3217,6 +3413,7 @@ public static partial class Playback
     static void VideoMode(ref State s, ref Effects fx, bool on)
     {
         if (s.VideoWanted != on) { s.VideoWanted = on; s.VideoRetries = 0; }
+        s.VideoByLocal = false;
         fx.VideoIntent = true;
         fx.VideoIntentOn = on;
         fx.VideoIntentWhy = Fault.None;

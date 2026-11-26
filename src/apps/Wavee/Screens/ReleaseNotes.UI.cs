@@ -279,6 +279,7 @@ public static partial class ReleaseNotes
             ShowFull = () => { Close(); Shell.GoTo(new Shell.Route(Shell.RouteKind.WhatsNew)); },
             Close = Close,
             OpenStoreListing = OpenStoreListingVerb,
+            RateDoor = RateDoorOf(),
         };
         handle = overlay.Open(
             static () => NodeHandle.Null,
@@ -286,6 +287,13 @@ public static partial class ReleaseNotes
             FlyoutPlacement.BottomCenter,
             new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.Modal, Chrome: PopupChrome.Modal) { ScrimVisual = true });
     }
+
+    /// <summary>The plate's quiet rate/star door: a Store install rates, any other build stars (the same ask as Settings → About).</summary>
+    static Wavee.Theming.Contracts.RateDoorLine RateDoorOf() => RateNudge.DoorAsk(RateNudge.Channel) switch
+    {
+        RateNudge.Ask.Rate => new(Loc.Get(Strings.RateNudge.Plate.Rate), Loc.Get(Strings.RateNudge.Rate.Primary), static () => RateNudge.DoorPrimary()),
+        _ => new(Loc.Get(Strings.RateNudge.Plate.Star), Loc.Get(Strings.RateNudge.Star.Primary), static () => RateNudge.DoorPrimary()),
+    };
 
     // ══ 5. THE MOTION LAYER ══════════════════════════════════════════════════════════════════════════════════════════
 

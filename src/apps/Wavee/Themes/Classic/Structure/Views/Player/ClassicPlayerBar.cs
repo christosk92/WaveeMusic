@@ -191,6 +191,8 @@ internal static partial class ClassicPlayerBar
                     Key = "remote-device-line", Direction = 1, MinWidth = 0f, Animate = ClassicPlayerBarLayout.ItemMotion,
                     Children = [Embed.Comp(() => new RemoteDeviceLine(props))],
                 });
+            // AI DJ: the segment line ("DJ · Vibes") where the "playing on" line stands, over the title.
+            else if (v.Dj is { } djLine) metaKids.Add(DjLine(djLine));
             metaKids.Add(titleSlot);
             if (v.ShowArtistLine)
             {
@@ -290,6 +292,10 @@ internal static partial class ClassicPlayerBar
         {
             Key = "left-flow", Grow = mini ? 1f : 0f, Shrink = 1f, MinWidth = 0f,
             Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = !mini,
+            // It hugs the text block, which eases (MoveMotion) when its lines change (a first track after "Nothing playing", the DJ's segment
+            // line arriving): the flow eases with it instead of taking the new width on the first frame while the block and the heart glide. The mini
+            // bar's door fills its row and keeps its own motion.
+            Animate = mini ? null : ClassicPlayerBarLayout.MoveMotion,
             Gap = mini ? ClassicPlayerTiers.MiniDoorGap : huge ? ClassicPlayerTiers.HugeLeftGap : m.LeftGap,
             Children = mini || v.ShowTitleBlock ? [art, metaCol] : [art],
         };
@@ -339,6 +345,8 @@ internal static partial class ClassicPlayerBar
             transportKids.Add(BarButton(ClassicPlayerBarLayout.NextSolid, () => verbs.Next(), v.NextEnabled, false, box, skipGlyph, primaryInk: true)
                 with { Key = "next" });
 
+        // AI DJ: "Let DJ pick" after next, where an episode brings its +10 and speed: the transport's own optional place (the seek row gives way).
+        if (!mini && v.OwnsTransport && v.Dj is { } djPick) transportKids.Add(DjPick(djPick));
         if (!mini && v.OwnsTransport && v.Episode)
         {
             transportKids.Add(SeekStepButton(props, ClassicPlayerBarLayout.SeekStepMs, box, v.SeekStepEnabled) with { Key = "seek-forward-10" });
@@ -479,10 +487,12 @@ internal static partial class ClassicPlayerBar
             {
                 case RightSlot.Shuffle:
                     return Slot("shuffle", w, box, lit,
-                        BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, box, glyph), ClassicPlayerBarLayout.FlankMotion);
+                        ToolTip.Wrap(BarButton(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, box, glyph),
+                            (Prop<string?>)v.ShuffleLock), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Repeat:
                     return Slot("repeat", w, box, lit,
-                        BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, box, glyph), ClassicPlayerBarLayout.FlankMotion);
+                        ToolTip.Wrap(BarButton(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport && v.RepeatLock is null, v.RepeatOn, box, glyph),
+                            (Prop<string?>)v.RepeatLock), ClassicPlayerBarLayout.FlankMotion);
                 case RightSlot.Volume:
                 {
                     bool popup = v.VolumePopup;
@@ -646,7 +656,7 @@ internal static partial class ClassicPlayerBar
                         {
                             // NO fill, NO shadow, NO Elevation.DockTop: the dock is a paint-site omission over live Mica.
                             Direction = 1, Grow = 1f, MinHeight = 0f,
-                            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS),
+                            Focusable = true, FocusVisualMargin = Edges4.All(Spacing.XXS), DropTarget = verbs.OsDrop,
                             OnRealized = node => barNode.Value = node,
                             // A press on the bar's own ground takes its key map: the press handler makes that ground a press target, and the
                             // engine's pointer focus focuses the bar without its ring (Tab still shows it). NOT OnClick: that made the bar a button,
@@ -1015,6 +1025,41 @@ internal static partial class ClassicPlayerBar
 
     /// <summary>"🖳 Playing on &lt;device&gt;" — 13 DIP, accent @ 88 % → full accent on hover, above the title. A second
     /// anchor for the SAME picker.</summary>
+    /// <summary>"Let DJ pick" (AI DJ): Classic's tinted call-to-action after next in the transport (where an episode's +10 and speed come and go),
+    /// filled with the DJ's own button colour (<c>narration.jump.background.color</c>; the accent when none is stated), the sparkle and the
+    /// session's label; greyed while the next segment is still on its way. It comes and goes with the line's motion (fade and size): the seek row
+    /// after it gives way, nothing before it moves.</summary>
+    static Element DjPick(DjChrome dj) => new BoxEl
+    {
+        Key = "dj-pick", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Animate = ClassicPlayerBarLayout.ItemMotion,
+        Children =
+        [
+            ToolTip.Wrap(Controls.PrimaryButton(dj.Pick, dj.Jump, dj.PickFill != 0 ? ColorScience.ToColor(dj.PickFill) : Tok.AccentDefault,
+                Icons.RefineSparkle, isEnabled: dj.CanPick), dj.PickTip),
+        ],
+    };
+
+    /// <summary>The DJ's segment line ("DJ · Vibes") in the "playing on" line's place and size: the sparkle in the DJ's icon colour, the words in
+    /// the secondary ink.</summary>
+    static Element DjLine(DjChrome dj) => new BoxEl
+    {
+        Key = "dj-line", Height = ClassicPlayerBarLayout.RemoteLineHeight, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+        MinWidth = 0f, ClipToBounds = true, Animate = ClassicPlayerBarLayout.ItemMotion,
+        Children =
+        [
+            new TextEl(Icons.RefineSparkle)
+            {
+                Size = ClassicPlayerBarLayout.RemoteLineSize, FontFamily = Tok.Definition.Fonts.Icon, Shrink = 0f,
+                Color = dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Tok.AccentDefault,
+            },
+            new TextEl(dj.Line)
+            {
+                Size = ClassicPlayerBarLayout.RemoteLineSize, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+            },
+        ],
+    };
+
     private sealed class RemoteDeviceLine(PlayerBarProps props) : Component
     {
         readonly PlayerBarProps _props = props;

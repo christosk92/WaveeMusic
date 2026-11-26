@@ -136,8 +136,8 @@ internal static partial class WinUiDetailFrame
             var faces = FacesOf(id);
             bool metaLine = id.MetaLoading || id.Meta is { Length: > 0 };
             bool settled = !id.MetaSettling && !id.MetaLoading;
-            if (faces is { Count: > 0 } || metaLine)
-                rows.Add(Block("hero-attribution", Facts(faces, id.Meta, settled, metaLine, avatar, measure, form, center)));
+            if (faces is { Count: > 0 } || metaLine || spec.Slots.Status is not null)
+                rows.Add(Block("hero-attribution", FactsOrStatus(faces, id.Meta, settled, metaLine, avatar, measure, form, center, spec.Slots.Status)));
             // A daylist's strip under the facts (its countdown, or "Your next daylist is running late"): the page's pulse slot, as Classic's rail draws it.
             if (Pulses(spec)) rows.Add(Block("hero-daylist", PulseRow(spec.Slots.Pulse!(), center)));
             rows.Add(Block("hero-actions", Actions(id, spec.Config, spec.Actions, spec.PlayAll, tier, form, words, center)));
@@ -194,6 +194,26 @@ internal static partial class WinUiDetailFrame
         Key = key, Direction = 1, Layout = WinUiDetailKit.Shove, Enter = late ? WinUiDetailKit.FadeUp : (EnterExit?)null,
         Exit = formPiece ? WinUiDetailRules.FormSwap : (EnterExit?)null, Children = [child],
     };
+
+    /// <summary>The facts line, or the page's status IN ITS PLACE while it has one (Local Files' first scan, #240 S4; board FirstScan: "Reading your music ·
+    /// 1,930 of 4,812" stands where "On this device · 0 songs" stands, its bar under it): ONE slot whose two layers cross-fade, its height the facts row's
+    /// reserved one in the horizontal form. The status' bar hangs below the line into the air above the actions (the slot never grows), so the words column,
+    /// the cover beside it and the rows under it never move when the status comes or goes.</summary>
+    static Element FactsOrStatus(IReadOnlyList<Controls.Face>? faces, string? meta, bool settled, bool metaLine, float avatar, float measure,
+        WinUiHeroForm form, bool center, Func<float, bool, Element>? status)
+    {
+        Element facts = Facts(faces, meta, settled, metaLine, avatar, measure, form, center);
+        Element layer = status is null
+            ? new BoxEl { Key = "hero-facts-layer", Direction = 1, MinWidth = 0f, Enter = WinUiDetailKit.FadeUp, Exit = WinUiDetailRules.FormSwap, Children = [facts] }
+            : new BoxEl { Key = "hero-status", Direction = 1, MinWidth = 0f, Enter = WinUiDetailKit.FadeUp, Exit = WinUiDetailRules.FormSwap, Children = [status(measure, true)] };
+        return new BoxEl
+        {
+            Key = "hero-facts-slot", ZStack = true, MinWidth = 0f,
+            // The horizontal form's facts row is a fixed reserved line: the slot keeps it in both states. The stacked form's lines hug their words.
+            Height = center ? float.NaN : WinUiDetailRules.AttributionRow(avatar),
+            Children = [layer],
+        };
+    }
 
     /// <summary>The facts under the title, ONE tree in every form (audit B9): the billed names and the meta are the same keyed nodes whether the horizontal hero
     /// runs them on one line after the avatars ("Artist, Artist · 15 songs · 57 min", W-Album) or the stacked hero centres them on two (W-Album-Compact), so a
@@ -356,7 +376,8 @@ internal static partial class WinUiDetailFrame
             // once, it sat under the still-shrinking cover on the 720 crossing.
             Key = "hero-toolbar", Direction = 1, Margin = new Edges4(0f, form.ListGap, 0f, 0f), Animate = HeroReflowMotion,
             Padding = new Edges4(MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f, MathF.Max(0f, tier.InsetX - WinUiDetailRules.BarInset), 0f),
-            Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
+            // A list with no list bar at all (its body is the page: the DJ) reserves no row; the list gap above stays the head's air.
+            Children = parts.NoListBar ? [] : [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
         };
 
     /// <summary>The words' loading boundary: the words once the header has answered, else their shimmer (<see cref="SkeletonWords"/>), one cross-dissolve

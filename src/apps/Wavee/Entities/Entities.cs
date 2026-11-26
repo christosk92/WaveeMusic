@@ -119,6 +119,8 @@ public enum EntityProvider : byte
     UserPlaylist = 5,
     /// <summary><c>wavee:show:*</c> / <c>wavee:episode:*</c> — the synthetic podcast source.</summary>
     WaveePodcast = 6,
+    /// <summary><c>wavee:tts:&lt;key&gt;</c> — an AI DJ narration clip (<c>Spotify.DjTts</c>), played through <c>SourceRoute.Tts</c>.</summary>
+    Tts = 7,
 }
 
 /// <summary>Who wrote a column group, and therefore who may overwrite it (D16). A LOWER rung never overwrites a higher
@@ -789,6 +791,7 @@ public readonly record struct EntityUri(EntityId Id)
             if (Starts(rest, "playlist:")) { kind = EntityKind.Playlist; return EntityProvider.UserPlaylist; }
             if (Starts(rest, "show:")) { kind = EntityKind.Show; return EntityProvider.WaveePodcast; }
             if (Starts(rest, "episode:")) { kind = EntityKind.Episode; return EntityProvider.WaveePodcast; }
+            if (Starts(rest, "tts:")) { kind = EntityKind.Track; return EntityProvider.Tts; }
             kind = EntityKind.Unknown;
             return EntityProvider.None;   // wavee:skeleton:*, wavee:media:*, … — routed by their own owners, not here
         }
@@ -822,6 +825,7 @@ public readonly record struct EntityUri(EntityId Id)
     static EntityKind SpotifyKind(ReadOnlySpan<byte> rest)
     {
         var head = Head(rest);
+        if (Is(head, "local")) return LocalItemKind(rest[head.Length..]);
         if (!Is(head, "user")) return CatalogKind(head);
         var tail = rest[head.Length..];                       // ":<u>:playlist:<id>" | ":<u>" | ""
         if (tail.Length == 0) return EntityKind.User;         // "spotify:user" — degenerate, still a user
@@ -833,6 +837,12 @@ public readonly record struct EntityUri(EntityId Id)
         if (Is(facet, "collection")) return EntityKind.Collection;
         return EntityKind.User;                               // any other tail is still a user surface
     }
+
+    // spotify:local:<artist>:<album>:<title>:<seconds> — a playlist's local file (#240 §3.2) — is a TRACK: its row lives in the
+    // track table, a matched one plays from the file on this PC, and the queue, Connect and the reports carry it like any track.
+    // The two-part `local-album` (spotify:local:<artist>:<album>) and one-part `local-artist` forms stay Unknown. Form-encoding
+    // leaves no ':' inside a part, so the count of ':' after the head is the part count. `tail` is ":<a>:<b>:<c>:<d>".
+    static EntityKind LocalItemKind(ReadOnlySpan<byte> tail) => tail.Count((byte)':') == 4 ? EntityKind.Track : EntityKind.Unknown;
 
     // wavee:local:file:<b64url(path)> is a PLAYABLE (the local media provider decodes it at play time), so it maps to
     // Track like every other local playable — a "file" kind would just be a Track the queue could not carry.
@@ -1955,6 +1965,7 @@ public sealed partial class Staging
     public void Reset()
     {
         for (int i = 0; i < _lists.Count; i++) _lists[i].Clear();
+        _localItems?.Clear();
         _textLength = 0;
         _creditLength = 0;
         _generation = NextGeneration();
@@ -2298,6 +2309,9 @@ public static partial class Entities
             return;
         }
         CommitTracks(staging);
+        // A playlist's spotify:local: items this batch ruled (Track.LocalUri.cs): their committed ids join the local library's
+        // path map and the set its restate re-rules (#240 §3.7 step 2). After the tracks, so every one has its slot.
+        if (staging.LocalItemCount > 0) LocalLibrary.ItemsLanded(staging);
         CommitEpisodes(staging);
         CommitAlbums(staging);
         CommitArtists(staging);
@@ -2324,6 +2338,8 @@ public static partial class Entities
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
+        // The friend-activity run names users, tracks, albums, artists and playlists: after every row it points at (#277).
+        CommitFriends(staging);
         // Not an entity at all: the dark gradings extension kind 179 carries, keyed by the IMAGE (Palette.cs).
         CommitGradings(staging);
     }
@@ -2345,6 +2361,7 @@ public static partial class Entities
     static partial void CommitTraits(Staging s);
     static partial void CommitCanvas(Staging s);
     static partial void CommitRecents(Staging s);
+    static partial void CommitFriends(Staging s);
     static partial void CommitGradings(Staging s);
 
     /// <summary>Enqueue a table that changed in this drain. Called by <see cref="Publishable.MarkDirty"/> only.</summary>

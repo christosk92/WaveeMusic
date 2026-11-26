@@ -237,7 +237,13 @@ internal static class RailWiring
         }
     }
 
-    static FriendsProps BuildFriends() => new()
+    static FriendsProps BuildFriends()
+    {
+        Spotify.Friends.Attach();   // the feed's host fills Rail.Friends' seams before the panel first mounts (#277)
+        return BuildFriendsProps();
+    }
+
+    static FriendsProps BuildFriendsProps() => new()
     {
         Feed = new FriendsFeed(),
         SetActive = static active => Shell.PanelHost.Shared.SetFriendsActive(active),
@@ -303,11 +309,14 @@ internal static class RailWiring
         _ = Platform.SettingsChanged.Value;                                   // the footer states the equalizer and normalization at rest
         var sound = Shell.DevicePickerFacts.Sound;
 
+        // AI DJ: no move while the DJ talks, here (the reducer's `narration` refusal) or on the owner's deck (its restriction 13, D4's
+        // Playback.CanTransfer): the rows say why instead of offering it (plan-dj §1.8).
+        bool moveLocked = Playback.Narrating.Value || !Playback.CanTransfer.Value;
         int stamp = HashCode.Combine(roster, (byte)owner, activeSlot, local, selected, supported, unresponsive,
-            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound));
+            HashCode.Combine(observed.Label, (byte)observed.Format, (byte)asked, sound, moveLocked));
         string selectedName = Platform.Settings.Get(Platform.Keys.OutputDeviceName);   // a chosen output that left the roster keeps its row by this name
         return Shell.DevicePicker.Compose(owner, activeSlot, Playback.Devices.Rows, local, selected, selectedName, supported, unresponsive, observed,
-            asked, sound, stamp);
+            asked, sound, stamp, moveLocked);
     }
 
     // ══ THE ON-MEDIA TRANSPORT ═══════════════════════════════════════════════════════════════════════════════════════
@@ -399,7 +408,8 @@ internal static class RailWiring
         bool primary = Stage.Transport.PrimaryEnabled(!Playback.Current.Value.IsNone, loading);
         var repeat = Playback.Repeat.Value;
         return new PanelTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
-            repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track);
+            repeat != Wavee.Spotify.Decode.RepeatMode.Off, repeat == Wavee.Spotify.Decode.RepeatMode.Track)
+        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
     }
 
     /// <summary>The video body's title-row actions (C-Video-Huge): the playing track's heart and its "..." menu (the stage's now-playing menu).
@@ -416,7 +426,7 @@ internal static class RailWiring
     {
         var track = Rail.NowTrack();
         var lib = Controls.Library;
-        string uri = track.IsValid ? track.Uri.Text : "";
+        string uri = track.IsValid && !Playback.Dj.IsNarrationRow(Playback.Current.Value) ? track.Uri.Text : "";   // a DJ narration: nothing to save
         string title = track.IsValid ? track.Title : "";
         bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
         Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;

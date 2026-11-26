@@ -296,13 +296,13 @@ public static partial class Spotify
         if ((fx & SessionEffects.CloseAll) == SessionEffects.CloseAll) CloseLogin();
         if ((fx & SessionEffects.CloseAp) != 0) CloseAp();
         if ((fx & SessionEffects.CloseDealer) != 0) { CloseDealer(); Connect.Clear(); }
-        if ((fx & SessionEffects.SignedOut) != 0) SignOutTeardown();
+        if ((fx & SessionEffects.SignedOut) != 0) { SignOutTeardown(); Friends.OnSignedOut(); }
         if ((fx & SessionEffects.Welcome) != 0) AdoptWelcome(in s);
         if ((fx & SessionEffects.ResolveHosts) != 0) StartAp(s.ApEpoch);
         if ((fx & SessionEffects.OpenDealer) != 0) StartDealer(s.Epoch);
         if ((fx & SessionEffects.ApBackoff) != 0) ArmApRetry(in s);
         if ((fx & SessionEffects.DealerBackoff) != 0) ArmDealerRetry(in s);
-        if ((fx & SessionEffects.AnnounceDevice) != 0) Connect.AnnounceDevice();
+        if ((fx & SessionEffects.AnnounceDevice) != 0) { Connect.AnnounceDevice(); Friends.OnConnection(); }
     }
 
     /// <summary>UI THREAD (the <see cref="SessionEffects.SignedOut"/> effect): the account is gone from this PC. Playback
@@ -368,6 +368,7 @@ public static partial class Spotify
         if (next == scope.Key) return;
         Entities.Switch(next);
         Playback.Rebind();               // G-241: the restored deck follows the scope switch before the next drain
+        LocalLibrary.Rebind();           // #240: the music folders' rows and the Local Files membership follow it too (start-up staged them into the old set)
         Log.Info("spotify", "catalog scope adopted (" + Platform.Redact(next.Account) + ", market " + next.Market
             + ", tier " + s.Tier + ")");
     }

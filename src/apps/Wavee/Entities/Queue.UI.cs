@@ -101,14 +101,23 @@ public static partial class Queue
             return new QueueRowText(e.Uri.Text, e.Title, e.Show.IsValid ? e.Show.Title : "", Controls.ArtUrl(e.ImageId), e.DurationMs,
                                !e.Knows(EpisodeFields.Title), false);
         if (r.Kind != EntityKind.Track || new Track(r.Slot) is not { IsValid: true } t) return new QueueRowText("", "", "", null, 0, true, false);
-        // A ruled-unavailable track (Spotify no longer resolves it for this account) is NOT a thin row: it says so.
+        // An AI DJ narration (the now card while the DJ talks, here or on the owner's deck): its words and the DJ's name, and NO uri, so nothing
+        // offers to save, share or open it (the bar's rule: Rail.Wiring and the stage frame name no uri for one either).
+        if (Playback.Dj.IsNarrationRow(r)) return new QueueRowText("", t.Title, t.CreditLine, Controls.ArtUrl(t.ImageId), 0, false, false);
+        // A ruled-unavailable track is NOT a thin row: it says so (the contract's Unavailable row: the statement, no artists, no cover),
+        // naming the catalog's reason when it gave one ("Not available in your country", "Premium only"), else "Audio unavailable".
         if (t.Unplayable())
-            return new QueueRowText(t.Uri.Text, Loc.Get(Strings.Detail.TrackFacts.Unavailable), "", null, 0, false, false, Unavailable: true);
+        {
+            var why = t.UnplayableReason();
+            string said = why is Track.UnavailableWhy.Region or Track.UnavailableWhy.Premium
+                ? Loc.Get(Track.WithheldShortKey(why)) : Loc.Get(Strings.Detail.TrackFacts.Unavailable);
+            return new QueueRowText(t.Uri.Text, said, "", null, 0, false, false, Unavailable: true);
+        }
         // The FACTS come off the display row (a relinked id reads its canonical track); the uri stays this row's.
         Track d = t.ForDisplay;
         bool thin = !d.Knows(TrackFields.Title);
         string album = !thin && d.Album is { IsValid: true } al && al.Knows(AlbumFields.Title) ? al.Title : "";
-        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, Entities.Strings.Resolve(d.ArtistLineId), Controls.ArtUrl(d.ImageId),
+        return new QueueRowText(t.Uri.Text, thin ? "" : d.Title, d.CreditLine, Controls.ArtUrl(d.ImageId),
                            d.DurationMs, thin, d.IsExplicit, Album: album);
     }
 
@@ -290,11 +299,12 @@ public static partial class Queue
                 DragStyle = new DragVisualStyle { Lift = DragLift.Stationary, Opacity = FluentGpu.Controls.Drag.SourceDimOpacity },
                 // Released outside the list commits nothing: no surface takes a queue row as a copy.
                 RequireDropOnList = true,
-                CanAcceptForeign = static p => Drag.Unwrap(p) is { CanCopyTracks: true },
+                // An OS drop (files, folders, a playlist file, track links: #240 D15) lands at the line too (List widens the kinds).
+                CanAcceptForeign = static p => Drag.Unwrap(p) is { CanCopyTracks: true } || DropAnywhere.QueueAccepts(p),
                 ForeignRefusalCaption = static p => Drag.Unwrap(p) is { } r
                     ? Loc.Get(r.FromQueue ? Strings.Drag.ReorderHint : r.Kind == DragKind.Artist ? Strings.Drag.CantAddArtist : Strings.Drag.NothingToAdd)
                     : null,
-                ForeignCaption = static (_, _) => Loc.Get(Strings.Drag.AddToQueue),
+                ForeignCaption = static (p, _) => DropAnywhere.QueueCaption(p) ?? Loc.Get(Strings.Drag.AddToQueue),
             };
             Reorder.ExtentOf = ExtentAt;
             Reorder.ItemOf = PayloadAt;
@@ -359,6 +369,10 @@ public static partial class Queue
             Model = Shell.QueueModel.Project(Queue.Rows, static i => Queue.RefAt(i), viewer ? -1 : cursor, viewer,
                                              Autoplay, shuffle, repeat, Current, playingFrom);
             if (!rail && ReadsHistory) Model = Model with { History = ReadHistory() };
+            // The surfaces' own shuffle and repeat toggles wear the bar's locks (the DJ forbids them); an AI DJ continuation groups by segment.
+            Model = Model with { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock() };
+            if (!viewer && Playback.DjNow.Value.Active)
+                Model = Shell.QueueModel.WithSegments(Model, Playback.Dj.NextJumpTarget(Queue.Rows, cursor));
         }
 
         /// <summary>The surface lists "played before this" (the stage's Up next column); the rail and the shelf do not.</summary>
@@ -379,6 +393,8 @@ public static partial class Queue
             _ = Platform.SettingsChanged.Value;
             return (Shell.QueueVerbs.CrossfadeEnabled(), Shell.QueueVerbs.CrossfadeLength());
         };
+        /// <summary>The Mix pair (the queue's "Mixing" line and the Crossfade row's note, #48), a value the memo compares.</summary>
+        protected static readonly Func<(string Line, string Note)> s_mix = static () => (Playback.Mix.QueueLine(), Playback.Mix.CrossfadeNote());
         static readonly Func<bool> s_autoplayListed = static () => { _ = Platform.SettingsChanged.Value; return Shell.QueueModel.AutoplayListed(Shell.QueueModel.AutoplayEnabled(), Playback.Repeat.Value); };
         static readonly Func<string?> s_contextName = static () =>
         {
@@ -475,9 +491,13 @@ public static partial class Queue
         protected void BuildSlots(int shownQueue, int shownNextUp, int shownAutoplay)
         {
             var counts = Model.Counts;
-            int cap = QueueSlots.Capacity(counts.Queue, counts.NextUp, counts.Autoplay);
+            var segments = Model.Segments;
+            int cap = QueueSlots.Capacity(counts.Queue, counts.NextUp, counts.Autoplay, segments.Length);
             if (_slots.Length < cap) _slots = new QueueSlot[Math.Max(cap, _slots.Length * 2)];
-            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots);
+            Span<int> starts = segments.Length <= 32 ? stackalloc int[segments.Length] : new int[segments.Length];
+            for (int i = 0; i < segments.Length; i++) starts[i] = segments[i].Start;
+            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots, starts,
+                Model.Lead);
         }
 
         /// <summary>Point the lane at THIS render's slots. A pointer lift whose gesture ended without telling the list (a
@@ -506,7 +526,24 @@ public static partial class Queue
         public Element List(Element body, string key, float leadExtent = 0f)
         {
             Reorder.LeadExtent = leadExtent;
-            return Reorder.List(body).As<BoxEl>() with { Grow = 0f, Key = key };
+            var list = Reorder.List(body).As<BoxEl>();
+            return list with { Grow = 0f, Key = key, DropTarget = OsWidened(list.DropTarget) };
+        }
+
+        DropTargetSpec? _osSpec;
+
+        /// <summary>The lane's drop target taking OS drags as well (#240 D15, board 24): the same handlers, the same line and gate,
+        /// the kinds widened, and the spotlight lit for an OS payload only (an in-app drag keeps its look); the drop panel stays up over
+        /// it (<see cref="DropAnywhere.KeepsPanel"/>). Built once.</summary>
+        DropTargetSpec? OsWidened(DropTargetSpec? spec)
+        {
+            if (spec is null || Viewer) return spec;
+            return _osSpec ??= DropAnywhere.KeepsPanel(spec with
+            {
+                AcceptKinds = [.. spec.AcceptKinds, .. DropAnywhere.OsKinds],
+                VisualPolicy = DropTargetVisualPolicy.Spotlight,
+                SpotlightWhen = static s => DropAnywhere.IsOsPayload(s.Payload) && DropAnywhere.PlanOf(s).QueueTakes,
+            });
         }
 
         public DragSource? OwnDrag(ulong itemId, int index, EntityRef row)
@@ -544,7 +581,11 @@ public static partial class Queue
         }
 
         void CommitForeign(object? payload, int fromIndex, Reorderable? from, Reorderable to, int slot)
-            => Verbs.DropInsert(payload, QueueMovePlan.InsertIndex(new ReadOnlySpan<QueueSlot>(_slots, 0, _slotCount), slot));
+        {
+            int userIndex = QueueMovePlan.InsertIndex(new ReadOnlySpan<QueueSlot>(_slots, 0, _slotCount), slot);
+            if (DropAnywhere.IsOsPayload(payload)) DropAnywhere.DropOnQueue(payload, userIndex);
+            else Verbs.DropInsert(payload, userIndex);
+        }
     }
 
     /// <summary>The queue row as a drag: its track travels for the chip, and <c>SourceQueueItemId</c> marks it a reorder
@@ -596,6 +637,7 @@ public static partial class Queue
             Prologue(rail: true);
             // The crossfade switch and its length through a value memo: the panel re-renders when either changes, not on every settings write.
             var crossfade = UseComputed(s_crossfade).Value;
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             var counts = Model.Counts;
             BuildSlots(QueueSlots.Realized(counts.Queue, Pages.Of(QueueSection.Queue).Value, PageSize),
@@ -629,6 +671,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
 
@@ -697,6 +741,7 @@ public static partial class Queue
         {
             Prologue(rail: false);
             var crossfade = UseComputed(s_crossfade).Value;   // the "between songs" pair's second switch and its length, as the rail reads them
+            var mix = UseComputed(s_mix).Value;
             UseEffect(() => Pages.Reset(), DepKey.From(ContextId.GetHashCode()));
             int pages = Pages.Of(QueueSection.Queue).Value;
             var counts = Model.Counts;
@@ -714,6 +759,8 @@ public static partial class Queue
                 Crossfade = crossfade.On,
                 CrossfadeLength = crossfade.Length,
                 OpenCrossfadeLength = Shell.QueueVerbs.OpenCrossfadeLength,
+                MixLine = mix.Line,
+                CrossfadeNote = mix.Note,
             });
         }
     }
@@ -755,6 +802,16 @@ public static partial class Queue
     /// behind it (0.2.9 <c>TrackActions.Play</c>).</summary>
     static void PlayTracks(IReadOnlyList<Track> tracks)
     {
+        // A set the catalog withholds whole (one region-locked row's menu Play) says why instead of landing the deck on a row it
+        // can only skip (Track.RefuseWithheld); a mixed set starts on its first row that plays.
+        int start = 0;
+        while (start < tracks.Count && Track.WithheldTrack(tracks[start])) start++;
+        if (start == tracks.Count)
+        {
+            if (tracks.Count > 0) Track.RefuseWithheld(tracks[0]);
+            return;
+        }
+        if (start > 0) tracks = tracks.Skip(start).ToArray();
         EntityRef[] refs = RefsOf(tracks);
         if (refs.Length == 0) return;
         Playback.PlayContext(refs[0].Id);

@@ -364,10 +364,10 @@ public static partial class Spotify
         }
 
         /// <summary>"Switch the row you play to its video / back to its audio" on the device that owns playback — the desktop's
-        /// `signal` envelope (itsover.saz 772). Blocks; api threads only.</summary>
-        public static bool Signal(string targetDeviceId, Decode.VideoSignal signal, CancellationToken ct)
+        /// `signal` envelope (itsover.saz 772) — or "Let DJ pick" on a DJ player (<c>jump</c>, plan-dj §1.8). Blocks; api threads only.</summary>
+        public static bool Signal(string targetDeviceId, Decode.PlayerSignal signal, CancellationToken ct)
         {
-            if (signal == Decode.VideoSignal.None) return false;
+            if (signal == Decode.PlayerSignal.None) return false;
             var buffer = new ArrayBufferWriter<byte>(384);
             SignalBody(buffer, signal, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
             return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
@@ -375,7 +375,7 @@ public static partial class Spotify
 
         /// <summary>The `signal` envelope body, field for field as the official client sends it: endpoint, <c>signal_id</c>, the
         /// three option bools, the logging params, then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
-        public static void SignalBody(IBufferWriter<byte> into, Decode.VideoSignal signal, string deviceId, string commandId,
+        public static void SignalBody(IBufferWriter<byte> into, Decode.PlayerSignal signal, string deviceId, string commandId,
             string intentId, long nowMs)
         {
             using var w = new Utf8JsonWriter(into);
@@ -383,6 +383,36 @@ public static partial class Spotify
             w.WriteStartObject("command");
             w.WriteString("endpoint", "signal");
             w.WriteString("signal_id", Decode.SignalId(signal));
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
+        /// <summary>#48 M5, the editor's side of a Mix preview (protocol §5): <c>automix-preview</c> with the base64
+        /// <c>AutomixPreview</c> as its <c>parameters</c>, or <c>stop-automix-preview</c> with "true" / "false" (resume afterwards or
+        /// not), to the device that owns playback. Blocks; api threads only.</summary>
+        public static bool MixPreviewSignal(string targetDeviceId, Decode.MixPreviewSignal signal, string parameters, CancellationToken ct)
+        {
+            if (signal == Decode.MixPreviewSignal.None) return false;
+            var buffer = new ArrayBufferWriter<byte>(512 + parameters.Length);
+            MixPreviewSignalBody(buffer, signal, parameters, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The Mix preview <c>signal</c> envelope, as the captured editor sends it: endpoint, <c>signal_id</c>, <c>parameters</c>,
+        /// the three option bools, the logging params, then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void MixPreviewSignalBody(IBufferWriter<byte> into, Decode.MixPreviewSignal signal, string parameters, string deviceId,
+            string commandId, string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "signal");
+            w.WriteString("signal_id", Decode.SignalId(signal));
+            w.WriteString("parameters", parameters);
             QueueOptions(w);
             LoggingParams(w, deviceId, commandId, "", nowMs);
             w.WriteEndObject();

@@ -15,6 +15,9 @@
 // `Shell.DeviceVerbs`) and unit-tested without a reducer; this class composes them with the model.
 
 using FluentGpu.Controls;
+using FluentGpu.Foundation;
+using FluentGpu.Localization;
+using Wavee.Theming.Contracts;
 
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
@@ -76,6 +79,10 @@ public interface IPlayerVerbs
     /// <summary>A drop on the transport: front-insert the dropped tracks (PLAY NEXT), never an immediate playback change.</summary>
     void DropPlayNext(DragPayload payload);
 
+    /// <summary>The bar's OS drop (#240 §3.15, board 22): audio files and Spotify links dropped anywhere on the bar play now; folders and
+    /// playlist files are not its to take. The views hang it on the bar's root (an in-app drag still meets the transport's own target).</summary>
+    DropTargetSpec OsDrop => DropAnywhere.PlayerBar;
+
     /// <summary>The now-playing track's context menu, or null while nothing is playing or the playable is not a track.</summary>
     ContextMenuModel? NowPlayingMenu();
 
@@ -126,6 +133,47 @@ public sealed class PlayerVerbs : IPlayerVerbs
                 Playback.Buffering.Value, Playback.Recovery.Value, Playback.PrevAllowedByContext.Value, Playback.NextAllowedByContext.Value)
             : Shell.SkipRule.Facts(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(), Playback.PhaseSignal.Peek(),
                 Playback.Buffering.Peek(), Playback.Recovery.Peek(), Playback.PrevAllowedByContext.Peek(), Playback.NextAllowedByContext.Peek());
+
+    /// <summary>The tooltip a shuffle button wears while the playing context forbids it (the DJ: "Not available with DJ"), or null
+    /// while it may be pressed. Every surface's shuffle button reads it (and draws disabled when it is set); <paramref name="track"/>
+    /// false peeks.</summary>
+    public static string? ShuffleLock(bool track = true)
+    {
+        Playback.LockFacts f = track ? Playback.LockedToggles.Value : Playback.LockedToggles.Peek();
+        return f.Shuffle ? LockText(f.Reason) : null;
+    }
+
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>.</summary>
+    public static string? RepeatLock(bool track = true)
+    {
+        Playback.LockFacts f = track ? Playback.LockedToggles.Value : Playback.LockedToggles.Peek();
+        return f.Repeat ? LockText(f.Reason) : null;
+    }
+
+    /// <summary>Why a context forbids a toggle, in words: the restriction's reason (<c>dj-disallow</c>), else the general sentence.</summary>
+    static string LockText(Playback.LockReason reason)
+        => Loc.Get(reason == Playback.LockReason.Dj ? Strings.Player.NotWithDj : Strings.Player.NotAvailableHere);
+
+    /// <summary>What the now-playing surfaces draw of the DJ playing here ("Let DJ pick", its tint, the segment line), or null while no DJ plays
+    /// on this device (<see cref="Playback.DjNow"/>). One instance per state, so a surface's props compare equal while nothing changed;
+    /// <paramref name="track"/> false peeks.</summary>
+    public static DjChrome? Dj(bool track = true)
+    {
+        Playback.Dj.Facts f = track ? Playback.DjNow.Value : Playback.DjNow.Peek();
+        if (!f.Active) return null;
+        if (s_dj is { } held && s_djFor == f) return held;
+        string name = f.Name.Length > 0 ? f.Name : Loc.Get(Strings.Player.DjName);
+        string line = f.Segment.Length > 0 ? Strings.Player.DjLine(name, f.Segment) : name;
+        s_djFor = f;
+        // Disabled, the tip says why: no later segment is loaded here, or the device that plays the DJ does not offer a jump yet.
+        return s_dj = new DjChrome(f.Pick.Length > 0 ? f.Pick : Loc.Get(Strings.Player.DjPick),
+            Loc.Get(f.CanJump ? Strings.Player.DjPickTip : Strings.Player.DjPickNotYet), f.CanJump,
+            f.PickFill, f.PickBorder, f.PickInk, line, s_jump);
+    }
+
+    static DjChrome? s_dj;
+    static Playback.Dj.Facts s_djFor;
+    static readonly Action s_jump = static () => Playback.DjJump("player.button");
 
     public void TogglePlay(string cause) => Playback.TogglePlay(cause);
 

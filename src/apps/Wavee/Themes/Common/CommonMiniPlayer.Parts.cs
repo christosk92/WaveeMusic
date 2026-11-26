@@ -34,11 +34,25 @@ internal static partial class CommonMiniPlayer
         bool remote = m.Bar.DeviceIsRemote();
         // Without a detail line (the strip, the square, a short wide card) "Playing on …" takes the artist's line, in the accent: the title stays.
         bool onLine = remote && !detail && m.P.DetailText() is { Length: > 0 };
+        // AI DJ: while the DJ talks, its words take the artist's line ("a caption line", plan-dj §2.8): same slot, nothing moves.
+        string spoken = m.P.SpokenText();
         TextEl a = onLine
             ? st.Artist(m.P.DetailText(), m.Accent, m.Media) with { Color = m.Media ? m.Ink : m.Accent }
-            : st.Artist(m.P.ArtistText(), m.Accent, m.Media);
+            : st.Artist(spoken.Length > 0 ? spoken : m.P.ArtistText(), m.Accent, m.Media);
         var lines = new List<Element>(3) { Title(m, title, reserve, hug), a };
-        if (detail && m.P.DetailText() is { Length: > 0 } d)
+        // AI DJ: the detail line is the segment ("DJ · Vibes", the host's DetailText) and "Let DJ pick" rides its end, the window's sparkle button
+        // lit in its accent (the line's room after the words: nothing before it moves).
+        if (detail && !remote && m.V.Dj is { } dj && m.P.DetailText() is { Length: > 0 } djLine)
+            lines.Add(new BoxEl
+            {
+                Key = H.DjLineKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = H.LineGap, MinWidth = 0f,
+                Children =
+                [
+                    st.Detail(djLine) with { Color = m.Ink3, MinWidth = 0f, Shrink = 1f },
+                    ToolTip.Wrap(Btn(m, Icons.RefineSparkle, dj.Jump, dj.CanPick, dj.Pick, lit: true), dj.Pick) with { Key = H.DjPickKey, Enter = s_fade, Exit = s_fade },
+                ],
+            });
+        else if (detail && m.P.DetailText() is { Length: > 0 } d)
             lines.Add(st.Detail(d) with { Color = remote ? (m.Media ? m.Ink : m.Accent) : m.Ink3 });
         return new BoxEl { Key = H.MetaKey, Grow = column ? 0f : 1f, Shrink = column ? 0f : 1f, MinWidth = 0f, Direction = 1, Gap = H.LineGap, Children = lines.ToArray() };
     }

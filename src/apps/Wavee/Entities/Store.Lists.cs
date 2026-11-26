@@ -6,7 +6,8 @@
 // a7ce5209, ~30 full `GET /playlist/v2/playlist/{id}` three minutes after the previous launch, zero diffs). This named
 // partial of Store.cs is the whole of it:
 //
-//     list_head(scope_id, list, revision, total, written_at, written_by)             one row per list
+//     list_head(scope_id, list, revision, total, written_at, written_by, mix)        one row per list (mix: #48, a mixed
+//                                                                                    list's Mix half, Mix.Persist.cs)
 //     list_item(scope_id, list, position, uri, item_id, added_at, added_by,           one row per member, in order
 //               chart_status, chart_pos, chart_prev, flags, kind, depth, wire_pos, folder_id, folder_name)
 //
@@ -173,7 +174,9 @@ public static partial class Store
     /// part of the fingerprint that NAMES the file: a column added here opens a new file, never a migration.
     /// <c>ix_list_item_uri</c> answers "which lists hold this uri", the dealer's question (wave D3).</summary>
     const string ListDdl =
-        "CREATE TABLE IF NOT EXISTS list_head(scope_id INT NOT NULL, list TEXT NOT NULL, revision TEXT NOT NULL, total INT NOT NULL, written_at INT NOT NULL, written_by TEXT NOT NULL, PRIMARY KEY(scope_id,list)) WITHOUT ROWID;\n" +
+        "CREATE TABLE IF NOT EXISTS list_head(scope_id INT NOT NULL, list TEXT NOT NULL, revision TEXT NOT NULL, total INT NOT NULL, written_at INT NOT NULL, written_by TEXT NOT NULL, mix BLOB, PRIMARY KEY(scope_id,list)) WITHOUT ROWID;\n" +
+        // `mix` (#48 M2): a mixed list's Mix half (recipes, signal templates, the lens etag; Entities/Mix.Persist.cs), true at
+        // the same revision as the rows; null for every other list. Added here, never migrated: the file's name moves with it.
         // `item_kind` (plan §3.1, ledger row 12): a playlist member's PlaylistItemKind (0 Track, 1 Episode) — added
         // here, never migrated, so opening this DDL text moves every install onto a fresh file (Store.cs's
         // Fingerprint hashes it verbatim) and a playlist saved by the pre-fix decoder, which always assumed Track, is
@@ -314,9 +317,11 @@ public static partial class Store
         else if (relation == EdgeRelation.Rootlist)
             rows = SnapshotRootlist(scope, parent, baseline: false, revision, wholeAnswer, out ids, out key);
         else return null;
-        return rows is null ? null
-             : new ListSnapshot(key, revision!, rows, ids, relation == EdgeRelation.PlaylistTracks ? key : null,
-                                Entities.Now, BuildStamp);
+        if (rows is null) return null;
+        // #48 Mix: a mixed list's Mix half rides with the rows it was read with (Mix.Persist.cs), so a cold start owes no lens read.
+        byte[]? mix = relation == EdgeRelation.PlaylistTracks ? MixPersist.Encode(scope, parent) : null;
+        return new ListSnapshot(key, revision!, rows, ids, relation == EdgeRelation.PlaylistTracks ? key : null,
+                                Entities.Now, BuildStamp, mix);
     }
 
     /// <summary>UI THREAD (C1). ONE parent's settled list as TEXT — the BASELINE a <c>/diff</c>'s ops are replayed over
@@ -446,8 +451,10 @@ public static partial class Store
     /// <summary>One list's snapshot: taken on the UI thread, written on the store thread by <see cref="Save"/>. A class —
     /// one allocation per list saved — rather than a closure over seven locals, because the job IS this object's method.</summary>
     sealed class ListSnapshot(string key, string revision, ListRow[] rows, EntityId[] ids, string? playlistUri, int now,
-                              string stamp)
+                              string stamp, byte[]? mix = null)
     {
+        /// <summary>#48 Mix: the list's Mix half (Mix.Persist.cs), or null for a list that is not read through the mix lens.</summary>
+        public readonly byte[]? Mix = mix;
         public readonly string Key = key;
         public readonly string Revision = revision;
         public readonly ListRow[] Rows = rows;
@@ -489,13 +496,14 @@ public static partial class Store
                 using (var head = db.Write.CreateCommand())
                 {
                     head.Transaction = tx;
-                    head.CommandText = "INSERT OR REPLACE INTO list_head(scope_id,list,revision,total,written_at,written_by) VALUES($s,$l,$r,$n,$w,$b);";
+                    head.CommandText = "INSERT OR REPLACE INTO list_head(scope_id,list,revision,total,written_at,written_by,mix) VALUES($s,$l,$r,$n,$w,$b,$m);";
                     head.Parameters.Add(new SqliteParameter("$s", s_scopeId));
                     head.Parameters.Add(new SqliteParameter("$l", list.Key));
                     head.Parameters.Add(new SqliteParameter("$r", list.Revision));
                     head.Parameters.Add(new SqliteParameter("$n", (long)list.Rows.Length));
                     head.Parameters.Add(new SqliteParameter("$w", ToUnix(list.Now)));
                     head.Parameters.Add(new SqliteParameter("$b", list.Stamp));
+                    head.Parameters.Add(new SqliteParameter("$m", list.Mix is { } mix ? mix : DBNull.Value));
                     head.ExecuteNonQuery();
                 }
                 if (list.PlaylistUri is { } uri && s_shapes[(byte)EntityKind.Playlist] is { Shape: PlaylistShape shape })
@@ -668,9 +676,10 @@ public static partial class Store
         string key = relation == EdgeRelation.Rootlist ? ListWrite.RootlistKey(parentText) : parentText;
         string revision;
         int total;
+        byte[]? mix;
         using (var head = db.Read.CreateCommand())
         {
-            head.CommandText = "SELECT revision,total,written_by FROM list_head WHERE scope_id=$s AND list=$l;";
+            head.CommandText = "SELECT revision,total,written_by,mix FROM list_head WHERE scope_id=$s AND list=$l;";
             head.Parameters.Add(new SqliteParameter("$s", s_scopeId));
             head.Parameters.Add(new SqliteParameter("$l", key));
             using SqliteDataReader r = head.ExecuteReader();
@@ -678,6 +687,7 @@ public static partial class Store
             revision = ColumnText(r, 0) ?? "";
             total = r.IsDBNull(1) ? -1 : (int)r.GetInt64(1);
             if (total < 0 || !ListWrite.IsWellFormedRevision(revision) || !ListWrite.Trusts(ColumnText(r, 2))) return false;
+            mix = relation == EdgeRelation.PlaylistTracks && !r.IsDBNull(3) ? (byte[])r.GetValue(3) : null;
         }
 
         s.Epoch = epoch;
@@ -701,6 +711,9 @@ public static partial class Store
         }
         if (rows != total) return false;
         CloseList(s, relation, in parent, in mark, rows, revision, Authority.Thin);
+        // #48 Mix: the Mix half the list was written with, staged as its lens read staged it (a blob that does not parse is left
+        // out: the list then owes the one lens read it owed before M2).
+        if (mix is not null && !MixPersist.Stage(s, parentText, mix)) Log.Warn("mix", "a persisted Mix half did not parse; the list owes a lens read");
         return true;
     }
 

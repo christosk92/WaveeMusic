@@ -164,12 +164,12 @@ internal static partial class ZunePlayerBar
         {
             case RightSlot.Shuffle:
                 return Slot("shuffle", lit, ToolTip.Wrap(
-                    Glyph(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle ? Tok.AccentTextPrimary : Tok.TextSecondary, box, glyph),
-                    Loc.Get(Strings.Player.Shuffle)));
+                    Glyph(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle ? Tok.AccentTextPrimary : Tok.TextSecondary, box, glyph),
+                    v.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle)));
             case RightSlot.Repeat:
                 return Slot("repeat", lit, ToolTip.Wrap(
-                    Glyph(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn ? Tok.AccentTextPrimary : Tok.TextSecondary, box, glyph),
-                    Loc.Get(Strings.Player.Repeat)));
+                    Glyph(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport && v.RepeatLock is null, v.RepeatOn ? Tok.AccentTextPrimary : Tok.TextSecondary, box, glyph),
+                    v.RepeatLock ?? Loc.Get(Strings.Player.Repeat)));
             case RightSlot.Volume:
                 return Slot("volume", lit, Embed.Comp(new ToolProps(props, box, glyph, look.WordSize, v.VolumePopup), static () => new ZuneVolumeGlyph()));
             case RightSlot.VolumeSlider:

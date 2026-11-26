@@ -69,6 +69,20 @@ internal static partial class ZuneReleaseNotes
             });
         }
 
+        // The quiet rate/star door: one row above the footer's buttons, the line as hint text and a command word (Zune's type).
+        if (props.RateDoor is { } door)
+            scrolled.Add(new BoxEl
+            {
+                Key = "zrn:plate:rate", Direction = (byte)(ov.FooterStacked ? 1 : 0), Gap = Spacing.S,
+                AlignItems = ov.FooterStacked ? FlexAlign.Stretch : FlexAlign.Center, MinWidth = 0f,
+                Padding = new Edges4(padX, Spacing.XS, padX, Spacing.XS),
+                Children =
+                [
+                    ZuneText.Hint(door.Line) with { Wrap = TextWrap.Wrap, Grow = 1f, Shrink = 1f, MinWidth = 0f },
+                    k.Cmd(door.Button, door.Open) with { Shrink = 0f },
+                ],
+            });
+
         // Written IMMEDIATELY, not on close.
         Element dontShowBox = k.Check(Loc.Get(Strings.WhatsNew.Dialog.DontShow), dontShow, props.SetDontShowAgain) with { Key = "zrn:plate:check" };
         // close THEN navigate: the reverse of the viewer's "try it" (this plate is the thing being replaced).

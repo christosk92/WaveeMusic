@@ -121,6 +121,11 @@ public static class ClassicHomeRules
     /// <summary>The lead art's decode target.</summary>
     public const int LeadArtDecodePx = 960;
 
+    /// <summary>The DJ lead (AI DJ): its art is the DJ's colour field, washed left to right through its jellyfish colours (0, Classic's
+    /// spotlight and mood-plate direction), its words inset by the copy band's own 16 and kept to three lines.</summary>
+    public const float DjWashAngle = 0f, DjWordsPad = LeadCopyPadX;
+    public const int DjWordsLines = 3;
+
     /// <summary>A capped card's title lines (two title lines over one caption line).</summary>
     public const int CappedTitleLines = 2;
 
@@ -175,7 +180,22 @@ public static class ClassicHomeRules
     /// <summary>The Huge clock plate's fill. The plate lies mostly on the card's veil, which follows the kind (graded from the art toward the page's
     /// ground), so the plate follows the kind too and its inks stay the page's: the board's dark plate (black 26 %, C-Home-Huge) in dark, the card's
     /// frosted fill in light, where black 26 % over the light veil left a mid-grey that neither ink read on (2.4 : 1).</summary>
-    public static ColorF ClockPlateFill => Tok.Theme == ThemeKind.Light ? Tok.FillCardDefault : ColorF.FromRgba(0, 0, 0) with { A = 0.26f };
+    /// A user's colour set (#184) keeps the dark plate's ink margin: the plate darkens as far as the set's inks (primary, secondary, the accent's text) need to read as Classic's own
+    /// does there (<c>ColorScience.PlateAlphaFor</c>, never below 26 %; with no set, exactly the board's plate).
+    public static ColorF ClockPlateFill => Tok.Theme == ThemeKind.Light ? Tok.FillCardDefault : DarkClockPlate();
+
+    private const float ClockPlateDarkA = 0.26f;
+
+    private static ColorF DarkClockPlate()
+    {
+        ColorF black = ColorF.FromRgba(0, 0, 0);
+        if (Wavee.Theming.ThemeHost.OwnTokensUnderColours(ThemeKind.Dark) is not { } own) return black with { A = ClockPlateDarkA };
+        // The plate carries the line (primary), the dayparts (secondary) and the Late face's link (the accent's text shade).
+        float a = MathF.Max(ColorScience.PlateAlphaFor(Tok.TextSecondary, own.TextSecondary, black, black, lightGround: false, ClockPlateDarkA),
+            ColorScience.PlateAlphaFor(Tok.TextPrimary, own.TextPrimary, black, black, lightGround: false, ClockPlateDarkA));
+        a = MathF.Max(a, ColorScience.PlateAlphaFor(Tok.AccentTextPrimary, own.AccentTextPrimary, black, black, lightGround: false, ClockPlateDarkA));
+        return black with { A = a };
+    }
     public static Edges4 ClockPlatePadding => new(14f, 12f, 14f, 12f);
 
     /// <summary>At most this many tag links on the description line.</summary>

@@ -145,8 +145,8 @@ internal sealed class ClassicStageVideoBar : Component
             var right = new List<Element>(8) { K("heart", Heart(f.Saved, f.Like, lit)) };
             if (fold < G.FoldSatellites)
             {
-                right.Add(Fold("shuffle", ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport, f.Shuffle, lit), Loc.Get(Strings.Player.Shuffle))));
-                right.Add(Fold("repeat", ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport, f.RepeatOn, lit), Loc.Get(Strings.Player.Repeat))));
+                right.Add(Fold("shuffle", ToolTip.Wrap(Toggle(Icons.Shuffle, verbs.ToggleShuffle, f.CanTransport && f.ShuffleLock is null, f.Shuffle, lit), f.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
+                right.Add(Fold("repeat", ToolTip.Wrap(Toggle(f.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, verbs.CycleRepeat, f.CanTransport && f.RepeatLock is null, f.RepeatOn, lit), f.RepeatLock ?? Loc.Get(Strings.Player.Repeat))));
                 right.Add(Fold("device", Embed.Comp(new ClassicStageTransport.DeviceButton.Props(t, OnPicture: true), static () => new ClassicStageTransport.DeviceButton())));
             }
             right.Add(K("more", ToolTip.Wrap((Glyph(Icons.More, null, true) with { Key = "picture:bar:more", ClickRequestsContext = true })

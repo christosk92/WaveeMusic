@@ -87,9 +87,6 @@ public static partial class Shell
     /// <summary>The command palette is open (Ctrl+K).</summary>
     public static readonly Signal<bool> PaletteOpen = new(false);
 
-    /// <summary>An OS file drag is over the window — the centred drop pill's gate.</summary>
-    public static readonly Signal<bool> FileDropOver = new(false);
-
     /// <summary>The window's material: who owns the tint and whether its colour is settled.</summary>
     public static readonly Signal<TintOwner> Material = new(TintOwner.Neutral);
 
@@ -107,11 +104,6 @@ public static partial class Shell
 
     /// <summary>Stage 2's frame component. See the file header for why this is a FIELD and not a partial method.</summary>
     internal static Func<Element>? RootFactory = null;
-
-    /// <summary>The OS file-drop hook. `Shell.UI.cs`'s drop target calls it; owner L's `Drag.cs` owns the rule tables
-    /// that decide what a path is, and the local-file verbs are owner O's. A null hook means a drop is ignored, which
-    /// is what a build without the local-file surface should do.</summary>
-    public static Action<IReadOnlyList<string>>? OnFilesDropped;
 
     /// <summary>Boot's last timing mark: <c>boot.firstframe</c>, the first frame the engine actually rendered — the
     /// number that answers "how long did the user stare at nothing". Subscribed once, right before <c>Run</c>; logs
@@ -276,6 +268,7 @@ public static partial class Shell
         // `wavee://open?route=…&arg=…` goes through the same drain a cold protocol launch does (the shell's first effect).
         else if (capture.DeepLink.Length > 0) s_pendingActivation = capture.DeepLink;
 
+        Wavee.Theming.Colours.ColourChoice.Seed(Platform.Settings);   // the colour sets first: the mode's seed installs the definition they shape (#184)
         Appearance.Seed(Appearance.ModeOf(Platform.Settings.Get(Platform.Keys.ThemeMode)));   // the persisted preference, else the live OS theme (a fresh install)
         LoadDocuments();
 
@@ -1061,6 +1054,7 @@ public static partial class Shell
 
     public static void GoBack()
     {
+        if (PageStepBack()) return;   // a step the page opened in place goes first (Shell.PageBack.cs)
         if (!BackStep(ref s_nav)) return;
         RedirectCurrent();
         ArmBack(Current.Peek(), s_nav.Current);   // the hero of the page being left flies back into its card (Shell.Connected.cs)
@@ -1456,6 +1450,9 @@ public static partial class Shell
         /// (<see cref="SessionDeck.MaxRows"/>). ADDITIVE: a document without them restores through the context seed as
         /// before. When present, <see cref="CursorIndex"/> indexes THESE rows, not the live queue that produced them.</summary>
         public SessionQueueRowDto[]? Rows { get; set; }
+        /// <summary>A DJ deck's lexicon url (AI DJ): the launch restore resolves its session from it. ADDITIVE: absent for every other
+        /// context, and a reader that does not know it ignores it.</summary>
+        public string? ContextUrl { get; set; }
     }
 
     /// <summary>One persisted queue row: the uri text plus <c>QueueEdge</c>'s three numbers — <c>QueueBucket</c>'s and

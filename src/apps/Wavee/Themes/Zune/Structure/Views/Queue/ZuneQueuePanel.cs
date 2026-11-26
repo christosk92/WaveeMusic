@@ -66,7 +66,7 @@ internal sealed class ZuneQueuePanelView : Component
     readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
-    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3;
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemMix = -4;
     /// <summary>The vacancy's estimate until its first measure.</summary>
     const float VacancyEstimate = 120f;
     Func<QueueSlot, float>? _extentOf;
@@ -115,6 +115,8 @@ internal sealed class ZuneQueuePanelView : Component
         float lead = 0f;
         if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
         if (!queue.NowPlaying.IsNone) { _kinds[n] = ItemNow; _extents[n++] = Q.NowH; lead += Q.NowH; }
+        // #48 Mix: "Mixing · Rise · 2.9 s" between the playing row and the next one, while the playing pair will mix.
+        if (!queue.NowPlaying.IsNone && props.MixLine.Length > 0) { _kinds[n] = ItemMix; _extents[n++] = Q.PlayingFromH; lead += Q.PlayingFromH; }
         for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
         if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -VacancyEstimate; }
         _layout.SetExtents(_extents.AsSpan(0, n), 0f, Q.BottomRoom);
@@ -129,13 +131,23 @@ internal sealed class ZuneQueuePanelView : Component
         float modeH = Q.ModeRow(_window);
         var modes = new List<Element>(5)
         {
-            ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
-            ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
+            // The words the playing context forbids (the DJ's shuffle and repeat) draw disabled and say why, as the bar's buttons do.
+            Locked(ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, queue.ShuffleLock is null, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" }, queue.ShuffleLock),
+            Locked(ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, queue.RepeatLock is null, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" }, queue.RepeatLock),
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, _onCrossfade, latchedInk: _ink?.Accent)
                 with { Key = "mode:crossfade" },
         };
-        if (props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
+        // While a mixed playlist plays, the length gives way to the note "Mix is on for this playlist" (#48), on its own quiet line under the
+        // words (the row of four words has no room for a sentence).
+        Element? note = props.CrossfadeNote.Length > 0
+            ? new TextEl(props.CrossfadeNote)
+            {
+                Key = "mode:crossfade:note", Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = R.Case.For(LabelKind.Label),
+                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 0f, Margin = new Edges4(Q.ModeRowPadding.Left, 0f, Q.ModeRowPadding.Right, 0f),
+            }
+            : null;
+        if (note is null && props.CrossfadeLength.Length > 0 && props.OpenCrossfadeLength is { } openLength)
             modes.Add(ToolTip.Wrap(ZunePlayerBar.Word(props.CrossfadeLength, openLength, true, false, modeH, Q.WordSize) with { Role = AutomationRole.Hyperlink },
                 Loc.Get(Strings.Player.CrossfadeLengthTip)) with { Key = "mode:crossfade:length" });
         return new BoxEl
@@ -148,6 +160,7 @@ internal sealed class ZuneQueuePanelView : Component
                     Key = ZuneQueue.ModesKey, Height = modeH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Padding = Q.ModeRowPadding,
                     Children = modes.ToArray(),
                 },
+                note ?? new BoxEl { Key = "mode:crossfade:note", Visible = false },
                 body,
                 Hints.Pointer(HintSurfaces.QueuePanel, _crossfadeTarget, _panel),   // the crossfade hint's line floats at the word (a zero box: no room)
             ],
@@ -163,6 +176,7 @@ internal sealed class ZuneQueuePanelView : Component
         {
             case ItemPlayingFrom: return Inset(PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom, _ink));
             case ItemNow: return Inset(NowRow(props, _ink));
+            case ItemMix: return Inset(MixLine(props.MixLine, _ink));
             case ItemVacancy:
                 return Inset(new BoxEl
                 {
@@ -172,7 +186,7 @@ internal sealed class ZuneQueuePanelView : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section));
+        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section, props.Queue.SegmentOf(slot)));
         if (slot.Kind == QueueSlotKind.More) return Inset(ShowMore(props, slot.Section, _ink));
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? Inset(lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index)))
@@ -263,6 +277,13 @@ internal sealed class ZuneQueuePanelView : Component
     }
 
     /// <summary>"playing from" (cased) and the context's name (its own casing), at the foot of its 28; it opens the context when it has a page.</summary>
+    /// <summary>The Mix line (#48): "Mixing · Rise · 2.9 s" in the panel's quiet word, its first word in the accent ink (type, no stroke: Zune's grammar).</summary>
+    static Element MixLine(string text, ZunePanelInk? ink) => new BoxEl
+    {
+        Key = "qp:mix", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+        Children = [new TextEl(text) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = ink?.Accent ?? Tok.AccentTextPrimary, Case = R.Case.For(LabelKind.Label), MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f }],
+    };
+
     static Element PlayingFrom(string source, Action? open, ZunePanelInk? ink) => new BoxEl
     {
         Key = "qp:ctx", Height = Q.PlayingFromH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, Gap = ZunePlayerLayout.FromGap,
@@ -312,12 +333,29 @@ internal sealed class ZuneQueuePanelView : Component
     }
 
     /// <summary>A section's header at the foot of its slot: the section's name (cased), the source's name after "next up from", and "clear".</summary>
-    Element Header(QueuePanelProps props, QueueSection section)
+    /// <para>AI DJ: a segment's header (<paramref name="segment"/>) is the segment's label in the section words' case, and "let dj pick starts
+    /// here" in the accent where the button lands (the queue by segment, plan-dj §2.8).</para>
+    /// <summary>A mode word wearing its lock's reason as a tooltip while the playing context forbids it (null: no tooltip).</summary>
+    static Element Locked(Element word, string? reason) => reason is null ? word : ToolTip.Wrap(word, reason) with { Key = ((BoxEl)word).Key };
+
+    Element Header(QueuePanelProps props, QueueSection section, QueueSegment? segment = null)
     {
         var queue = props.Queue;
         var kids = new List<Element>(3);
         var @case = R.Case.For(LabelKind.Label);
         float h = Q.Header(_window);
+        if (segment is { } seg)
+        {
+            kids.Add(new TextEl(QueueProps.SegmentTitle(seg)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, MaxLines = 1, Shrink = 0f });
+            if (QueueProps.SegmentMark(seg) is { Length: > 0 } mark)
+                kids.Add(new TextEl(mark) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.AccentTextPrimary, Case = @case, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+            return new BoxEl
+            {
+                Key = "hdr:" + seg.Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, Gap = ZunePlayerLayout.FromGap,
+                Padding = new Edges4(0f, 0f, 0f, Q.HeaderPadBottom), Layout = LayoutTransition.Slide, BlocksDragArm = true,
+                Children = kids.ToArray(),
+            };
+        }
         if (section == QueueSection.NextUp && queue.PlayingFrom is { Name.Length: > 0 } src)
         {
             kids.Add(new TextEl(Loc.Get(Strings.Theme.Zune.Player.NextUpFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, Shrink = 0f });

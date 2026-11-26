@@ -605,9 +605,25 @@ is on and what will play: `deck` (the track id), `cursor`, `phase`, `repeat` (of
 deck, `U` user queue, `N` next up; provider `c` context, `q` queued, `a` autoplay; a trailing `!` marks a row the deck may not land on)
 and `upNext` (the queue panel's rows in display order, `<section>:<id>`, section `q`, `n` or `a`). `do=` is `status`, `next`, `prev`,
 `end` (the track ran out with nothing prepared, the natural-end path), `seek ms=`, `shuffle value=on|off`, `repeat value=off|all|one`,
-`add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
+`pause`, `resume`, `add uri=` / `playnext uri=` (the user queue), `clear` (empties the user queue), `dead uri=` (the catalog rules that track
 unavailable, so the walk steps past it) or `duration ms=` (the decoder reports the playing row's real length: the same row's duration
-changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
+changes, as a music video's length replacing the song's does; the seek rail's rescale, `status log="seek.rescale"`). `do=putstate` returns the connect-state PUT body the deck would send (base64, with its `quality`: the `playback_quality` read back off the bytes) and `do=cluster file=<b64 lines>` decodes captured cluster pushes (one base64 `ClusterUpdate` per line) with the real decoder, `decoded`: per frame the active device's `quality`, `activeKind`, `outputType`, the picker's `footer` words and the bar's Lossless `badge` (nothing folded, no device id written); `do=remotequality value=hifi|hifi24|veryhigh|high|normal|none` makes `--fake`'s active Connect device (after a transfer to the demo phone under `mount connect=nearby`) state that `playback_quality`, as a push re-stating it would; and `do=telemetry` the playing row's
+RawCoreStream and closing segment as its registration would report them (base64, with `contentUri`, `localContentUri`); nothing
+is sent (`--fake` sends no telemetry). A playlist's matched `spotify:local:` row adds `deckFile` (the file's name, never its
+folder). `do=inbound file=<json>` decodes a controller's Connect `play`/`transfer` command body with the app's own decoders and hands it to
+the host as the dealer glue does (no dealer, no ack). `play uri=<row> context=spotify:playlist:<id>` with the row in that list plays the list's own rows from it, as a
+double-tap on the row does. `state kind=music-folders value=folder path=<dir>` runs the real scanner over a real folder into the
+in-memory index (#240's real-file matching; the app's index file is never touched). `value=startup path=<dir>` instead runs the app's own start-up (`LocalLibrary.Use`) with that folder over
+the scratch profile's `Wavee\Cache\localindex.bin` (copy an older build's index there first to replay its rebuild): the load, the
+start-up scan and the restate run on their threads and land over the next frames; `state kind=rescope` after it is the login's scope switch. `state kind=local-peek value=counting|landed|empty|capped|none`
+(after `music-folders value=none`) stages what "Find music on this PC" counted (#240, 0dm; no disk; the real peek, which counts this PC's Music and
+Downloads folders by extension, runs when the card mounts on a mount with no music folder and logs `local.peek <folder> songs= cloud= videos= entries=
+capped= ms=`); `trace=90 prefix=local-` on `landed` proves the card keeps still. `localindex prefix=<path start>`
+lists the index (each file's LocalId, folder id, path, state and Wavee rename; `next`; `idMark`, the id high-water mark kept
+outside the bin); `rename=<LocalId> title=<t>` renames a file first, `compact=true` writes the bin now, and `mark=<n>` sets the
+high-water mark a previous run would have left (an inspector's settings live in memory), before a `value=startup`. The #240 LocalId
+safety checks corrupt or downgrade a scratch profile's bin between two such runs (`--profile`), then read `status log="local.index"`
+(`local.index.ids next= bin= floor= version=`) and `status log="local.link.identity"` (`kept dropped backfilled rebound orphans`). Under `--fake` autoplay answers from the demo catalogue (`Playback.UseFakeAutoplay`), so the
 end of a context behaves as it does online; `setting id=autoplay value=false` turns it off. A sequence of `transport do=end` (or
 `do=next`) replies is the sequence of tracks played:
 
@@ -616,6 +632,44 @@ play uri=spotify:track:tr1 next=5 context=spotify:playlist:pl1 at=3   # tr1..tr6
 transport do=clear
 transport do=repeat value=all
 transport do=end                                                       # deck=tr5, then tr6, then tr1 (the wrap)
+```
+
+### `timecode {do?, samples?, every?, key?, value?}`
+
+Reads the playback timeline tap (#154): what `Playback.Timeline.TryRead` composes from the engine's anchor
+(`PcmAudioSession.TryReadTimeline`) and the pump's identity. `tap` is `{live, uri, positionMs, durationMs, rate, playing, flags,
+epoch, changes}` (position extrapolated to the reply's instant; `epoch` is `<identity generation>.<engine epoch>`; `flags` adds
+`Transition` while a crossfade or a #48 join is audible, with `incoming`, `master` and the window's edges from now); `engine` is the
+raw anchor (`contentFrame`, `sourceFrame`, `mixFrame`, `mixRate`, `voice`, `advancing`, `anchorAgeMs`), the publisher's counters
+(`publishes`, `epochs`, `driftEpochs`: epochs started only because the playhead left the extrapolated line by more than 2 ms,
+`lastDriftMs`), `outputDelayMs` and `sampleClock`. `samples=N every=ms` adds `series`, N readings `every` ms apart: on a mounted
+inspector the gap is run as frames held to real time (the fake deck's endpoint is paced by the 16 ms frame clock, and `frames`
+runs frames back to back, faster than the session's feed, so the paced endpoint starves and loses that time). Steady play reads
+`positionMs` rising by exactly the gap with one epoch; a seek, a pause (after the endpoint's queue, 2 s headless, has played out),
+a resume and a track change each start one. Fake loads never prepare a join, so `Transition` is not reachable headless.
+
+`ltc` is the LTC output (phase 3): `status` (the Settings row's words), `device`, the aux output's `state`, `auxRate`, `blocks`,
+`underruns`, `auxLatencyMs`, and the generator's `rate`, `locked`, `sent` (the label written now, for the instant that block will
+be heard: 2 s ahead of the tap headless, where the paced endpoint queues 2 s), `read` and `readCount` (its self-check reader
+decoding the generator's own output), `matches` / `mismatches` (each decoded word against the frame the encoder finished),
+`errorMs` (the chase error) and `relocations`. `do=set key=enabled|device|rate|start|level|offset value=` writes a dial through
+the Settings rows' own verbs (`Playback.TimecodeOutput.Set`; headless any device id stands for the silent endpoint). A live
+window takes the same through `wavee://diag?cmd=timecode&key=&value=`.
+
+```text
+timecode do=set key=device value=headless-ltc
+timecode do=set key=rate value=29.97
+timecode do=set key=enabled value=true
+play spotify:track:tr3 fromMs=57000
+timecode samples=8 every=500          # ltc.matches rises with readCount, mismatches 0, relocations 1
+```
+
+```text
+play spotify:track:tr3 next=2
+timecode samples=6 every=500          # positionMs +496 per reading, epoch unchanged
+transport do=seek ms=60000
+transport do=pause
+timecode samples=8 every=500          # runs on ~2 s (the headless queue), then playing:false and held
 ```
 
 ### `state {kind, page?, ai?, error?, lang?}` and `dialog {kind}`
@@ -895,6 +949,154 @@ settings q="dark mode"                      # appearance.appMode first, by its p
 settings q=crosfade                         # a typo: playback.crossfade, then its duration
 settings focus=lyrics.ai                    # opens Lyrics & Now playing on the AI lyrics card, as the AI sparkle does
 goto deeplink="wavee://open?route=settings&arg=playback/playback.crossfade"   # the same door from a link
+```
+
+### `drop {path, import?}`
+
+Reads a local file with the tag readers (`LocalTags.TryRead`, #240) and imports it into Local files the way a dropped file
+is staged before it plays (`Playlist.ImportLocalFile`): the row gets the file's title tag (else its file name), its
+artists, album and length. `import=false` only reads (nothing is staged; no mount needed), which makes it the diagnostic
+over real files. The reply carries every field read: `format`, `why` (the reason a file is unplayable or unread), `kind`
+(`Audio`/`Video`, with `videoW`, `videoH`, `hasAudio`), `title`, `titleOrFileName`, `artists[]`, `album`, `albumArtist`,
+`track`, `disc`, `year`, `durationMs`, `estimated` (a bitrate estimate), `kbps`, `cover{exists, offset, length, mime,
+encoding, pictureType}` (where the picture is; its bytes are never read), `keys{exactTitle, looseTitle, exactArtist,
+looseArtist}` (`LocalMatch`), `spotifyUri` (as the official client would name the file), `readMs`, and with an import
+`row{imported, uri, title, artist, album, durationMs, duration, video, image}` (`video`: the row is a local video file and plays as one;
+`image`: its cover, a video's still from the `LocalArt` cache once it has landed: a second `drop` of the file reads it). It does not play the
+file; `play <row uri>` does, and a local video resolves to its file at once (the inspector's video resolver holds only network videos), so
+it really opens on the video host headless (`status log="first.frame"`).
+
+```text
+drop path=C:/music/song.flac
+drop path=C:/music/song.mp3 import=false
+```
+
+### `decode {path, out?, rate?, seekMs?, ms?}`
+
+Runs a local file through the decoder playback opens it with (its content's format through `Playback.Audio.CreateDecoderFor`: WAV and
+AIFF PCM since #240, FLAC, MP3, Ogg) into raw float32 little-endian stereo frames at `out=` (none: the count only), at the mix rate
+`rate=` (0, the default, is the file's own rate: no resampling, so the output can be compared with `ffmpeg -f f32le` sample by
+sample). `seekMs=` seeks with the decoder's own seek first; `ms=` stops early. The reply: `format`, `decoder`, `opened`, `why` (a
+refusal: "a WAV file with ADPCM audio"), `tagDurationMs`, `estimated`, `sourceRate`, `sourceChannels`, `exactFrames` and `tailKnown`
+(the gapless info a join plans on), `seekedTo`, `frames`, `peak`, and for PCM `label` ("WAV 24/96"), `gain`, `layoutFrames` and
+`sample`. No mount, no device. (`play` of a local row under `--fake` opens no source: this is the decoder check headless.)
+
+```text
+decode path=C:/music/a.wav out=C:/scratch/a.f32
+decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
+```
+
+### `dj {do?, uri?, pages?, ms?, until?, file?, track?, on?, try?}`
+
+AI DJ (plan `docs/plans/wavee/dj-implementation.md`). Plain `dj` (`do=status`) reads the fake DJ list (`spotify:playlist:pldj`),
+the lexicon session playing it (pages, segments, the lookahead), the DJ book per queue row, the context's toggle locks, and
+`narration` (D2): `current` (the deck's item, its position and length as the reducer holds them, `narrating`, `canSeek`, the
+`published` position and duration the surfaces see: 0 while a narration plays, and the plain-text `caption`), `rows` (each
+narration row the planner laid: `slot` welcome / intro / outro, the track it `belongsTo`, its `mediaUri` and `provider` as the
+wire names them, the clip `key`, the clip's state, length and bytes, when and why it was asked for, `dropped`), `first` (the deck
+and the next two rows), `nextJumpTarget`, `made` (every narration this session, the prefetched jump clips included), `prefetch`
+(each ask: frame ms, `why` = `resolve` / `item+5s` / `reached`, slot, segment, key, the clip before the ask), `playLog`
+and `playLogNarrations` (must stay 0), and `timeline` (each deck item: start and end on the frame clock, its length).
+`do=play` starts the list as a click does; `do=answers` decodes the fake lexicon answers; `do=expire` ends the session's
+validity. `do=run ms=<n>` plays on in REAL time (16 ms frames paced to the wall clock, so a clip's download and its playback
+keep their live proportions) for `n` ms of the frame clock, `until=change` stopping when the deck moves. `do=transfer` asks a
+transfer to the first other Connect device (`mount connect=nearby`); during a narration it is refused. In the fake service the
+welcome is 3.4 s (whole), page 1's intro the 24.5 s streamed clip (its length is learned when its body ends and pushed),
+page 2's jump 4.9 s, page 2's outro the broken fixture (dropped) and page 3's the flaky one. A track's end is
+`transport do=end`; the controls during a clip are `transport do=next|prev|seek|repeat` and `dj do=transfer`, each answered in
+`status log="intent refused"` (`Narration`). Headless, the silent endpoint holds 2 s ahead of the played count, so a boundary
+announced on the render clock can read up to ~2 s off a clip's length on the frame clock; the lengths themselves are exact.
+
+Talk-over and radio automix (D3, D3b, `Playback/Playback.Dj.TalkOver.cs`): `narration.seams` plans every seam from the deck on
+(`kind` `TalkOver` a voice over its track, `Outro` a track ducked under the voice after it, `Sequential` a voice into a voice,
+`Radio` two DJ tracks; the timing, the cues it read, and its `events` on A's clock: `trackStarts` / `trackStartsAtPosition`,
+`duckStart` / `duckLands` / `voiceStarts`, `fadeOutStarts` / `bStarts` / `bFadeInEnds`, `bCurrentAt` and `bPositionWhenCurrent`;
+`refused` with the reason, `NoData` while a streamed voice has no length) and `narration.joins` lists what the pump scheduled (A's
+position from the mixer frames at the window, at B's start, at the announce and at the window's end; `heard`, `announced`,
+`cancelled`, `lateShifted`, `overlapMs` and `cutAtFrame`, and `reportedA` / `reportedB` once the play report took the overlap). `do=seams samples=250 n=12` adds each side's curve JSON and its gain sampled over its window.
+`current.narrating` is "the DJ talks" (the clip is current and its track has not started under it: the f17 `narration`
+restrictions, the device picker's and a transfer's lock), `clipCurrent` the clip is the deck (no seek, no progress, no heart, the
+caption shows), `targetUnder` the track sounds under the voice. Under
+`--fake` the tracks of the first six fake DJ pages carry kind 28 cues covering every rule and play as silent MP3 bytes while a DJ
+session plays (`Playback/Playback.Audio.FakeTracks.cs`), so the joins run through the real pump; reach a seam with
+`transport do=next` and `transport do=seek ms=` (a track's window starts about 5 s before its end cue), then `dj do=run until=change`.
+
+```text
+dj do=play
+dj do=run ms=6000 until=change     # welcome -> page 1's intro (24.5 s; its track has a human cue at 8932: starts 17.2 s in)
+dj do=run ms=18000                 # targetUnder: narrating false, the clip still current; transport do=putstate lifts 3/9/13
+transport do=next                  # one skip ends the voice and its started track
+dj do=seams samples=250 n=7        # the radio seams of page 1, its outro, the next intro over its track
+```
+
+`current.restorePoint` is what the session document would keep for the next launch (during a clip: the track it belongs to,
+from 0). `do=jump` presses "Let DJ pick" (D5): the rest of the segment goes to history, the user's queued rows wait behind the
+target, and the deck lands on the target's prefetched jump clip right before it (`first` = `jump:<segment>`, the target, ...);
+`do=starve on=true|false` makes the fake service answer no more pages. The Connect half (D4,
+`Screens/Diagnostics.Inspect.DjConnect.cs`): `do=envelope uri=` (the play body a start sends another device), `do=cluster file=`
+(ClusterUpdates as dealer pushes, then the mirror; a foreign DJ shows "Let DJ pick", which sends the `jump` signal),
+`do=transfer file=` (a controller's transfer body; a current item `spotify:media:<id>` lands on that track from 0, the welcome's on
+the session's first row), `do=restore track=` (the launch restore), `do=bodies`, and `do=signal` (a made-up inbound
+`{"endpoint":"signal","signal_id":"jump"}` routed as the dealer glue routes it, plus the `outbound` body Wavee sends as a
+controller). `transport do=putstate` during a clip shows the narration item as the official player sends it (f7 `spotify:media:`,
+`narration/<slot>`, no f6, f17 3/9/13 `narration`, `suppress_progress`, `media.manifest`); f33 carries `jump` while DJ plays.
+`do=cluster`'s mirror also reads `surfaces` (D5b): the deck's row (an owner's `spotify:media:` narration item shows as a staged
+`wavee:tts:remote:<id>` row: "Up next", the DJ's name, no fetch), `caption` (the words every caption lane shows), the bar's DJ facts
+(`djSegment` from the playing row's `station_subtitle`, a narration's from its target row; `djCanJump` = the owner's signals offer `jump`,
+or with no signals stated a later segment's `dj.jump_target` is listed; `djPickTip` says why when it is off) and `progressShown`.
+
+`do=telemetry` (D5b, plan §2.9): `on=true` arms a tap on every event the play report hands `Spotify.Telemetry.Enqueue` (nothing is sent
+under `--fake`), then `dj do=telemetry` lists the tapped `RawCoreStream` and `RawCoreStreamSegment` payloads decoded field by field
+(`all=true` adds every other event by name and size). A narration reports under its wire name (`spotify:media:<id>`, provider
+`narration/<slot>`, format `MP3 160 kbps`, its `dj~` decision id and attribution); a DJ track carries its `ssp~` decision id and
+attribution. The overlap fields come from the pump's joins (`narration.joins[].overlapMs`, the ms both sides sounded from the mixer
+frames): `msPlayedOverlapping` (16) and `msOverlappingSecondary` (67) on a narration (over its track, and over the ducked track of
+the outro join it is the B of: summed) and on both tracks of a radio seam, `msNarrationOverlapping` (46) on a track a voice talked
+over or ducked. A registration that closes while its join still sounds (a skip) counts up to the skip (`cutAtFrame`); side A of a join
+announced when B starts (a jump clip, an outro's track, a radio A) closes at that announce and reports the tail the pump scheduled.
+
+```text
+mount w=1440 h=960 theme=winui route=home
+transport do=clear                 # the fake boot's queued rows would play between the welcome and the intro
+dj do=play                         # welcome on the deck, the first intro and the first track after it
+dj do=run ms=6000 until=change     # welcome -> intro
+dj do=run ms=40000 until=change    # intro -> its track
+dj do=run ms=6000                  # the next segment's jump clip is prefetched 5 s into the item
+dj do=jump                         # the jump clip, then the target, then the user's queue
+dj do=signal                       # the same from a controller's `jump` signal
+dj do=telemetry                    # (after `dj do=telemetry on=true` before the play) the reports, decoded
+```
+
+### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`
+
+The AI DJ's text-to-speech client (`Spotify/Spotify.DjTts.cs`). The inspector is `--fake`, so the fulfil and the CDN are the in-process
+transports of `Spotify.DjTts.Fake.cs` (silent MPEG-1 Layer III clips of exact length); everything above the wire is the real code. No
+mount. Fixtures: `welcome` (3.4 s), `jump` (4.9 s), `intro` (24.5 s, a cache MISS streamed with no Content-Length over 5.3 s), `flaky`
+(the fulfil fails once), `broken` (fails twice: dropped), `cdnflaky` (the CDN answers its first GET 503, then serves it). The fake CDN
+logs through the app's wire log as the live one does, under `wire.local` (`status log="wire.call"`): the url's SSML segment is named `{ssml:<hash>}`, never its words.
+
+- `djtts fulfil fixture=welcome`: the body built from the narration keys (`body` hex, `fields`, `tail` against the spec's
+  `18 05 28 01 30 06 38 c4 d8 02`), what the transport received (`request`: verb, url, headers, `receivedEqualsSent`), the `status` and
+  `location`, `clientFollowsRedirects` (the live handler's setting) and `cdnRequestsDuringFulfil` / `followed`. `via=manifest` (or
+  `manifest=<base64>`) sends a `media.manifest`'s field 1.1.4 verbatim (built here in reverse field order, so it differs from `keysBody`).
+- `djtts ensure fixture=intro wait=8000`: `Ensure`, then up to `wait=` ms for the clip (and a spill pass) to settle: its state, `why`,
+  attempts, bytes, `contentLength` (−1 streamed), frames, `durationMs`, memory and disk, the CDN's `X-Cache`, first byte and done times;
+  `wasCached` says whether it was a hit. `seconds=200 n=9` makes distinct clips of that length (the 64 MB cap's proof). The twice-failing
+  `broken` logs `narration dropped why=` (`status log="narration dropped"`).
+- `djtts cache`: the counters (hits, misses, fulfils, retries, dropped, spills, reloads, evictions, disk adopts), memory against the cap,
+  the spill folder and its files, the fake wire's request counts (`cdnRequestsWithCredentials` must stay 0), every clip (least recently
+  used first).
+- `djtts play fixture=intro` (or `key=`): opens the clip through `SourceRoute.Tts` (a fixture is ensured first, so a MISS plays while it
+  downloads) and decodes it with the pump's `CreateDecoderFor`, paced at 1x (`pace=false`: as fast as the bytes land; `ms=` stops early):
+  `route`, `format`, `openedComplete` (seekable), `length` (`decodedFrames` against `expectedFrames` and the decoder's `exactFrames`),
+  `gain` (the decoder's folded factor against `NormalizationFactor` for the current setting), `timing` (`firstAudioMs`,
+  `bytesLandedAtFirstAudio`, `startedBeforeDownloadDone`, the position when the download ended) and the position `series`.
+- `djtts gain`: the narration's gain (−16 LUFS, −3 dBTP) under off, Quiet, Normal and Loud. `djtts reset disk=true` forgets the session.
+
+```text
+djtts fulfil fixture=welcome
+djtts ensure fixture=broken wait=5000
+djtts play fixture=intro every=2000
 ```
 
 ### `hint {do, id?, blob?}` and `recent {clear?}`
@@ -1371,6 +1573,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `curves` | `curves=true`: per watched key its motion curve (`curves[{key, frames, x\|y\|w\|h\|opacity: {v[], spark}}]`, only the channels that moved) and `motionFindings[{key, channel, kind, frame, delta, before, after}]`: `step` (one frame moves over 2.5x both neighbours), `reversal` (it turns back within 2 frames: a spring's overshoot does on purpose), `stall` (a still frame between visible moves), `snap` (the whole change in one frame); `motionCounts`. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
+| `realtime` | `true` paces the frames to the wall clock (16 ms each), so what runs on wall time keeps its proportions to the traced frames: the audio pump's announce of a join (a DJ voice ending into the track under it), a download. Off by default (frames run as fast as they render). |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
 | `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
 | `wheel`, `wheelEvery`, `wheelCount`, `wheelKey`, `wheelX`, `wheelY` | Mouse-wheel input during the trace: notches (a number, or a list that cycles: `3,3,-6` or `[3,3,-6]`), one event every `wheelEvery` frames, `wheelCount` events, aimed at `wheelKey`, a point, or the traced scroller. |
@@ -1480,6 +1683,61 @@ curves[]?, motionFindings[]?, motionCounts?, settledAt, snaps, instants, remount
 scroll key=home:scroll dy=14
 home do=page key=nmf page=2 settle=false
 film frames=36 every=3 cols=4 scale=0.6 crop=home:tile:feed:spotify:section:wavee-mockup-nmf path=C:/WAVEE/scratch/x/pager.png keys=[home-shelf-card:spotify:playlist:37i9dQZEVXbp4UblnlhiEI]
+```
+
+### `friends {push?, track?, playing?, agoMs?, context?, raw?, trace?, ...}`
+
+The friend-activity run (`Spotify/Spotify.Friends.cs`; verb in `Diagnostics.Inspect.Friends.cs`). With no args it reads the
+run: `state` and `rows[]` (`user`, `track`, `playing`, `ageMs`) in panel order. `push=<user> track=spotify:track:…` lands one
+friend's change the way the dealer pushes it (`hm://listening-activity/`, the captured shape: `playing=false` is a pause,
+`agoMs` sets the start); `raw=<file>` lands a captured frame as received. Both go through `Friends.ApplyPush`, so the row is
+replaced in place and the run re-sorts exactly as a live push does. With a mount the reply settles, so `trace=N prefix=fr:`
+sees the change.
+
+```text
+click key=winui.titlebar.friends
+friends push=jun-park track=spotify:track:tr3 trace=60 prefix=fr:
+friends push=christos track=spotify:track:tr4 playing=false agoMs=30000
+```
+
+### `nudge {fixture?, channel?, session?, window?, policy?, clock?, trouble?, sessionAge?, starsCache?, stars?, store?, link?, fire?, tick?, raw?, reload?, refresh?, expect?, ...}`
+
+The rate/star nudge (`Screens/RateNudge*.cs`; verb in `Diagnostics.Inspect.Nudge.cs`). With no args it reads: the decision, the ledger, the
+card. It does not settle: step frames yourself (`frames 1300` is about 20.8 s on the 16 ms clock). `fire`, `tick`, `refresh` and
+`expectCard` need a mount. `mount` ends by putting the `fresh` fixture back, so no run inherits the last one.
+
+Order inside one command: `raw`, `fixture`, `channel`/`session`/`policy`/`sessionAge`/`starsCache`, `clock`, `trouble`, `window`/`store`/`link`/`stars`,
+`reload`, `refresh`, `fire`, `tick`, then the reply and the `expect*` gates. A fixture, `channel`, `session`, `policy`, `sessionAge`, `starsCache` or
+`trouble` re-seeds the host (the card and the armed track change are cleared); loading a fixture also resets every pin to its default.
+
+- `fixture=` loads a ledger, the calendar and the channel (Store unless said): `fresh`, `day3`, `eligible` (30 days, 18 listening days, 26 h: the 25 h
+  milestone card), `short-days`, `short-hours`, `asked-60`, `asked-130`, `asked-130-quiet`, `capped` (a new install's two asks used), `rated`,
+  `starred` (github), `opted-out`, `troubled` (-2 d), `troubled-old` (-8 d), `milestone-99`, `milestone-100`, and the install that predates
+  the feature: `existing` (just seeded, launch ask pending, `session=after-update`), `existing-lapsed`, `existing-later`, `existing-capped`.
+- The four fakes (the only ones): calendar time is the fake seed date plus `clock=` (an absolute offset: `+130d`, `-20d`, `+6h`, `reset`),
+  the window fact is `window=front|behind|minimized|tray` (default front), the Store dialog answers `store=succeeded|canceled|network|error|unavailable`
+  (default succeeded), and opening a URL answers `link=ok|fail` and records the URL (`launched`). The star fetch answers `stars=120|fail`
+  (default fail) and is counted (`stars.fetches`); `starsCache=86@-2h|86@-8d|none` seeds the cache; `refresh=true` runs the daily refresh now.
+- `fire=true` is a track boundary through the playback effect's own entry; `tick=true` the once-a-second check. A quiet moment is `nudge fire=true`,
+  `window advance=21000`, `frames 1300`, `nudge tick=true`. `trouble=now|-8d|none` writes a fault. `raw="<string>"` writes the ledger setting, `reload=true`
+  re-reads it (a bad value starts fresh). `sessionAge=<minutes>` ages this launch.
+- `expect=show:rate:1` (also `show:star:2`, `show:rate:1:launch`), `quiet:<Rule>` (`quiet:Idle`) or `closed`, comma-separable; `expectLedger=asks=1,last=NotNow,enabled=true`
+  (the `ledger.text` fields); `expectLaunched=<url prefix>|none`; `expectCard=shown|hidden`. A mismatch is `ok:false` with `error`
+  (`expected quiet:InstallAge, got show:rate:1`) and the same body, so `inspect.py --gate error` fails the run.
+
+Reply: `channel, now, decision{show, ask, kind, askNumber, closed, blocker{rule,stage,pass,detail}|null, earliest|null, checks[{rule,stage,pass,detail}]},
+ledger{text, raw}, card{shown, ask?, askNumber?, held?}, launched[], stars{shown, cached, fetches}, after`. `decision` is the host's last evaluation since the
+fixture (the one that showed the card, when one did), else a fresh one that is not acted on.
+
+```text
+mount w=1440 h=960 theme=winui route=home
+nudge fixture=eligible
+nudge fire=true
+window advance=21000
+frames 1300
+nudge tick=true expect=show:rate:1 expectCard=shown
+click key=rate-nudge:later
+nudge expectLedger=asks=1,last=NotNow expectCard=hidden
 ```
 
 ## Typical workflows

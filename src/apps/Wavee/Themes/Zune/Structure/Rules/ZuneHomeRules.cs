@@ -167,6 +167,11 @@ public static class ZuneHomeRules
     /// <summary>The lead art's decode target.</summary>
     public const int LeadArtDecodePx = 960;
 
+    /// <summary>The DJ lead (AI DJ): Zune draws the DJ's colour as one flat block (its background colour: Zune's plates are flat, never washed),
+    /// the DJ's words on it at the tile's own inset, three lines at most.</summary>
+    public const float DjWordsPad = TilePadX;
+    public const int DjWordsLines = 3;
+
     /// <summary>A capped card's title lines (two title lines over one caption line) and the compact tiles' gap.</summary>
     public const int CappedTitleLines = 2;
 

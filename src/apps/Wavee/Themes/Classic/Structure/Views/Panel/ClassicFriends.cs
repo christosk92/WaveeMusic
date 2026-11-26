@@ -1,7 +1,7 @@
 // ── Themes/Classic/Structure/Views/Panel/ClassicFriends.cs — Classic's `Panel.Friends` (themes plan 6.1, T6b) ───────────────────
 //
 // From `Shell/Rail.UI.cs`: the friends panel. Keyed rows in a scroller so every push-driven upsert enters/exits/FLIPs into place.
-// Mount == visible (drives the host's watchdog through `props.SetActive`); a 30 s frame-clock interval advances the live window and
+// Mount == visible (drives the host's watchdog through `props.SetActive`); a 30 s frame-clock interval advances
 // the relative times without a push, and auto-pauses while the window is parked.
 //
 // The faces (rows win whenever there are any, so stale rows stay visible through a refresh or a transient error): the rows, the
@@ -40,7 +40,7 @@ internal static class ClassicFriends
         float avatar = ClassicFriendsLayout.Avatar;
         var user = new User(f.UserSlot);
         string name = props.ResolveString(user.NameId);
-        bool live = Rail.Friends.IsLive(now, f.TimestampMs);
+        bool live = f.Playing;
         string trackTitle = f.TrackSlot > 0 ? new Track(f.TrackSlot).Title : "";
         string artistName = f.ArtistSlot > 0 ? new Artist(f.ArtistSlot).Name : "";
         string albumTitle = f.AlbumSlot > 0 ? new Album(f.AlbumSlot).Title : "";

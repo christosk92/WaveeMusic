@@ -81,6 +81,19 @@ internal static partial class ClassicReleaseNotes
             });
         }
 
+        // The quiet rate/star door: one row above the footer's buttons, the line as caption text and a hyperlink button (WinUI's row; Classic's is identical).
+        if (props.RateDoor is { } door)
+            scrolled.Add(new BoxEl
+            {
+                Key = "rn:plate:rate", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Padding = new Edges4(padX, Spacing.XS, padX, Spacing.XS),
+                Children =
+                [
+                    Caption(door.Line) with { Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Grow = 1f, Shrink = 1f, MinWidth = 0f },
+                    HyperlinkButton.Create(door.Button, door.Open) with { Shrink = 0f },
+                ],
+            });
+
         // Written IMMEDIATELY, not on close.
         Element dontShowBox = (ov.Target > 0f
             ? CheckBox.Create(Loc.Get(Strings.WhatsNew.Dialog.DontShow), dontShow, props.SetDontShowAgain, style: CheckBox.DefaultStyle with { MinHeight = ov.Target })

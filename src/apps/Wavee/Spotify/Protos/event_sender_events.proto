@@ -63,6 +63,9 @@ message RawCoreStream {
   optional string player_session_id = 59;
   bytes  audio_id                   = 63;
   optional string jam_session_id    = 64;
+  // Not named in our descriptor: the official client writes an AI DJ narration's talk-over overlap here as well as in 16
+  // (dj-protocol §5: "overlap 3400 (fields 16 and 67)"). The name is ours.
+  int32  ms_overlapping_secondary   = 67;
   string playback_stack_secondary   = 69;
   string orchestration_stack        = 71;
   string controlling_device_brand   = 78;

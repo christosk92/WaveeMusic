@@ -122,6 +122,15 @@ public static class Wire
     /// this is the one field `HttpRequestMessage` carries for exactly this purpose.</summary>
     public static readonly HttpRequestOptionsKey<long> CauseIdOption = new("Wavee.Capture.CauseId");
 
+    /// <summary>The path the log and the capture name for a request instead of its own, for a url whose PATH carries content (the AI DJ's
+    /// TTS url holds the narration's SSML, base64, in its path: <c>Spotify.DjTts.LogPath</c>). A request without it logs its path as
+    /// before.</summary>
+    public static readonly HttpRequestOptionsKey<string> LogPathOption = new("Wavee.Wire.LogPath");
+
+    /// <summary>A request's path as the log and the capture name it: <see cref="LogPathOption"/> when its caller set one, else its own.</summary>
+    static string PathOf(HttpRequestMessage request)
+        => request.Options.TryGetValue(LogPathOption, out string? path) && path is not null ? path : request.RequestUri?.AbsolutePath ?? "-";
+
     /// <summary>A request/response body is captured only up to this many bytes, and only when `Content-Length` is
     /// known ahead of the read — an unknown-length or large body (the audio cdn's range reads chief among them) is
     /// never buffered just to satisfy an off-by-default capture (§3.2's "may drop a body, never the header").</summary>
@@ -142,8 +151,12 @@ public static class Wire
 
     /// <summary>Wrap <paramref name="inner"/> so every request through it is logged under <paramref name="client"/>.
     /// <paramref name="storms"/> is false for the audio cdn alone: a track IS dozens of range reads of one path a
-    /// minute, which is its job and not a loop (each is still logged).</summary>
-    public static HttpMessageHandler Handler(string client, HttpMessageHandler inner, bool storms = true) => new LoggingHandler(client, inner, storms);
+    /// minute, which is its job and not a loop (each is still logged). <paramref name="inProcess"/>: <paramref name="inner"/> answers in this
+    /// process (a <c>--fake</c> transport standing in for a live one): <see cref="GoOffline"/> never refuses it, since nothing it sends leaves
+    /// the process, and its lines are the live ones' under the <c>wire.local</c> category (no summary, no storm count), so "no request left
+    /// the process" still reads the <c>wire</c> category alone.</summary>
+    public static HttpMessageHandler Handler(string client, HttpMessageHandler inner, bool storms = true, bool inProcess = false)
+        => new LoggingHandler(client, inner, storms, inProcess);
 
     static int s_offline, s_refused;
 
@@ -164,41 +177,41 @@ public static class Wire
     {
         Interlocked.Increment(ref s_refused);
         Log.Info("wire", "wire.refused client=" + client + " "
-            + WireRules.EndpointOf(request.Method.Method, request.RequestUri?.Host ?? "", request.RequestUri?.AbsolutePath ?? "")
+            + WireRules.EndpointOf(request.Method.Method, request.RequestUri?.Host ?? "", PathOf(request))
             + " (the shell test host is offline)");
         return new HttpRequestException("the shell test host is offline");
     }
 
-    sealed class LoggingHandler(string client, HttpMessageHandler inner, bool storms) : DelegatingHandler(inner)
+    sealed class LoggingHandler(string client, HttpMessageHandler inner, bool storms, bool inProcess) : DelegatingHandler(inner)
     {
         protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken ct)
         {
-            if (IsOffline) throw Refuse(client, request);
+            if (IsOffline && !inProcess) throw Refuse(client, request);
             long start = Stopwatch.GetTimestamp();
             long captureId = CaptureBegin(request);
             try
             {
                 HttpResponseMessage response = base.Send(request, ct);
                 CaptureEnd(captureId, request, response);
-                Note(client, storms, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
+                Note(client, storms, inProcess, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
                 return response;
             }
-            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, request, 0, null, start, ex); throw; }
+            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, inProcess, request, 0, null, start, ex); throw; }
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            if (IsOffline) throw Refuse(client, request);
+            if (IsOffline && !inProcess) throw Refuse(client, request);
             long start = Stopwatch.GetTimestamp();
             long captureId = CaptureBegin(request);
             try
             {
                 HttpResponseMessage response = await base.SendAsync(request, ct).ConfigureAwait(false);
                 CaptureEnd(captureId, request, response);
-                Note(client, storms, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
+                Note(client, storms, inProcess, request, (int)response.StatusCode, response.Content.Headers.ContentLength, start, null);
                 return response;
             }
-            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, request, 0, null, start, ex); throw; }
+            catch (Exception ex) { CaptureEnd(captureId, request, null); Note(client, storms, inProcess, request, 0, null, start, ex); throw; }
         }
     }
 
@@ -223,7 +236,7 @@ public static class Wire
         long causeId = request.Options.TryGetValue(CauseIdOption, out long id) ? id : 0;
         Uri? uri = request.RequestUri;
         string host = uri?.Host ?? "-";
-        string path = uri?.AbsolutePath ?? "-";
+        string path = PathOf(request);
         string endpoint = WireRules.EndpointOf(request.Method.Method, host, Redactor.RedactQueryString(path) ?? path);
         if (CaptureRules.IsAuthEndpoint(host, path))
             return Capture.Begin(CaptureKind.HttpCall, causeId, a: endpoint, b: "bodyOmitted=auth");
@@ -430,12 +443,12 @@ public static class Wire
 
     static readonly RoutineSummary Routine = RoutineSummary.Create("wire", "wire.summary");
 
-    static void Note(string client, bool storms, HttpRequestMessage request, int status, long? responseBytes, long start, Exception? error)
+    static void Note(string client, bool storms, bool inProcess, HttpRequestMessage request, int status, long? responseBytes, long start, Exception? error)
     {
         Uri? uri = request.RequestUri;
         string method = request.Method.Method;
         string host = uri?.Host ?? "-";
-        string path = uri?.AbsolutePath ?? "-";                 // NEVER the query: signed cdn tokens, ids, search text
+        string path = PathOf(request);                          // NEVER the query: signed cdn tokens, ids, search text
         double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         long sent = request.Content?.Headers.ContentLength ?? 0;
 
@@ -444,12 +457,13 @@ public static class Wire
         {
             string range = request.Headers.Range is { } r ? " range=" + r.ToString() : "";
             string tail = error is null ? "" : " error=" + error.GetType().Name;
-            Log.Info("wire", $"wire.call client={client} {method} {host}{path} status={status} ms={ms:F0} sent={sent} recv={responseBytes?.ToString() ?? "?"}{range}{tail}");
+            Log.Info(inProcess ? "wire.local" : "wire",
+                $"wire.call client={client} {method} {host}{path} status={status} ms={ms:F0} sent={sent} recv={responseBytes?.ToString() ?? "?"}{range}{tail}");
         }
-        else
+        else if (!inProcess)
             Routine.Note(sent + (responseBytes ?? 0), (long)ms);
 
-        if (!storms) return;
+        if (!storms || inProcess) return;
         Storm(WireRules.EndpointOf(method, host, path));
     }
 }

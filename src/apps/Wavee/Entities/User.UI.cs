@@ -288,6 +288,7 @@ public readonly partial struct User
     {
         var scope = Entities.Current;
         if (scope is null || string.IsNullOrEmpty(uri) || EntityUri.IsLikedCollection(uri)) return;
+        if (uri.StartsWith(Spotify.DjTts.UriPrefix, StringComparison.Ordinal)) return;   // an AI DJ narration clip is no library item
         string address = SaveAddressOf(uri, scope, track: false, out bool needsLink);
         // An album the page never opened has not asked kind 138 (a card, a search hit): resolve it first, as PreSaveButton does,
         // and toggle what it answers on the UI thread; a release that is out, or no answer, toggles the album, as the page's heart

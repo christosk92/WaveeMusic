@@ -28,8 +28,9 @@
 //     have claimed their sections) whose usable cards mix ≥2 distinct HomeCardKinds — the plan's "first mixed
 //     section" rule, applied across sections rather than within one, since no single server section is itself typed
 //     "mixed".
-//   • DJ (format "dj", or the card decode flags by its lexicon set: the wire sends format "") is dropped everywhere, per
-//     the plan's explicit "DJ must NEVER appear anywhere" rule.
+//   • DJ (the card decode flags it by its lexicon set: the wire sends format "") shows like any other list (owner decision
+//     2026-11-25, AI DJ plan: the old "DJ must never appear anywhere" rule is lifted, with no setting); it leads its zone
+//     (HomeProjection.ToZone) and each theme's lead card draws it in its own colours (HomeCard.DjColors).
 //   • A card counts as usable when it is not blank and <c>IsPlayable</c> (A6's decode flag folds UnknownType /
 //     unresolved / paywalled cards into "not playable", so this one check covers all three).
 
@@ -61,10 +62,8 @@ public static class SectionRoles
     static bool IsRadioFormat(string? f)
         => f is not null && (f == "inspiredby-mix" || f.Contains("radio", StringComparison.OrdinalIgnoreCase));
 
-    public static bool IsDj(string? format) => format is not null && format.Equals("dj", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>A card worth showing at all: not blank, not DJ, and not ruled unplayable/UnknownType by decode.</summary>
-    public static bool IsUsable(HomeCard c) => !c.IsBlank && c.IsPlayable && !c.Id.IsEmpty && !c.IsDj && !IsDj(c.Format);   // Id, not Uri: Uri formats a string for a gid id
+    /// <summary>A card worth showing at all: not blank and not ruled unplayable/UnknownType by decode (the DJ included).</summary>
+    public static bool IsUsable(HomeCard c) => !c.IsBlank && c.IsPlayable && !c.Id.IsEmpty;   // Id, not Uri: Uri formats a string for a gid id
 
     static int Count(IReadOnlyList<HomeCard> cards, Func<HomeCard, bool> match)
     {

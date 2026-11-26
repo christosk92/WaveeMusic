@@ -64,7 +64,8 @@ public static partial class Actions
     // ══ 2. THE PROFILE MENU'S ROW TABLE (ch 19 §6.2) ════════════════════════════════════════════════════════════════
 
     /// <summary>One row slot of the profile menu, in order.</summary>
-    public enum ProfileRow : byte { Settings, Play, Separator, Notifications, Friends, AppMode, LogOut, Profile, PrivateSession }
+    /// <remarks>Append new rows at the END: the order of <see cref="ProfileRules.Rows"/> is the menu's, the enum's only an id.</remarks>
+    public enum ProfileRow : byte { Settings, Play, Separator, Notifications, Friends, AppMode, LogOut, Profile, PrivateSession, Support }
 
     public static class ProfileRules
     {
@@ -77,8 +78,9 @@ public static partial class Actions
         /// profile's "Open account" button now, not a row — then Settings always; <c>Play ▸</c> only
         /// when the build can play something of its own (ABSENT, never disabled); Notifications and Friends only once the
         /// chrome ladder has folded them out of the trailing island (never both places, never neither), behind a
-        /// separator that exists only for them; then App mode (System · Light · Dark, the Settings dial itself) with Private session, and
-        /// Log out, each group behind its own separator (design 5.4).</summary>
+        /// separator that exists only for them; then App mode (System · Light · Dark, the Settings dial itself) with Private session and
+        /// Support (rate Wavee in the Store, or star it on GitHub: <c>RateNudge.DoorPrimary</c>, every install), and Log out, each group
+        /// behind its own separator (design 5.4).</summary>
         public static ProfileRow[] Rows(bool canPlay, bool actionsInMenu, bool hasNotifications, bool hasProfile)
         {
             var rows = new List<ProfileRow>(10);
@@ -92,6 +94,7 @@ public static partial class Actions
             rows.Add(ProfileRow.Separator);
             rows.Add(ProfileRow.AppMode);
             rows.Add(ProfileRow.PrivateSession);
+            rows.Add(ProfileRow.Support);
             rows.Add(ProfileRow.Separator);
             rows.Add(ProfileRow.LogOut);
             return rows.ToArray();

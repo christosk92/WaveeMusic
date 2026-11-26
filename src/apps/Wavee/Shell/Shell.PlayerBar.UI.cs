@@ -199,21 +199,33 @@ public static partial class Shell
             NowPlayingText.Title => title,
             NowPlayingText.NothingPlaying => Loc.Get(Strings.Player.NothingPlaying),
             NowPlayingText.Reconnecting => Loc.Get(Strings.Player.Reconnecting),
-            // G-212: the reason on the model, not one fixed sentence for every fault.
-            NowPlayingText.CannotPlay => Loc.Get(PlayerBarRules.FaultTitleKey(Playback.Error.Value)),
+            // G-212: the reason on the model, not one fixed sentence for every fault — and for an Unavailable fault on a row the
+            // catalog ruled with a NAMED reason, that reason ("This song isn’t available in your country"), the row's own words.
+            NowPlayingText.CannotPlay => Loc.Get(PlayerBarRules.FaultTitleKey(Playback.Error.Value, NamedWithheld(r))),
             _ => Loc.Get(Strings.Player.Loading),
         };
     }
+
+    /// <summary>The deck row's named catalog verdict (region-locked, Premium only), or <see cref="Track.UnavailableWhy.None"/>.</summary>
+    static Track.UnavailableWhy NamedWithheld(EntityRef r)
+        => r.Kind == EntityKind.Track && new Track(r.Slot) is { IsValid: true } t ? t.UnplayableReason() : Track.UnavailableWhy.None;
 
     static string? BarArtUrl(EntityRef r)
     {
         if (r.IsNone) return null;
         return r.Kind switch
         {
-            EntityKind.Track when new Track(r.Slot) is { IsValid: true } t && t.Knows(TrackFields.Image) => Controls.ArtUrl(t.ImageId),
+            EntityKind.Track when new Track(r.Slot) is { IsValid: true } t && t.Knows(TrackFields.Image) => Controls.ArtUrl(t.ImageId) ?? WantLocalCover(t),
             EntityKind.Episode when new Episode(r.Slot) is { IsValid: true } e && e.Knows(EpisodeFields.Image) => Controls.ArtUrl(e.ImageId),
             _ => null,
         };
+    }
+
+    /// <summary>The bar shows a local file with no cover: ask for it (<see cref="LocalArt.Want"/>); null meanwhile, so the slot draws the no-art tile.</summary>
+    static string? WantLocalCover(Track t)
+    {
+        LocalArt.Want(t);
+        return null;
     }
 
     /// <summary>Title → the album (a track) or the show (an episode). Resolved at INVOKE time, against the row the
@@ -274,7 +286,15 @@ public static partial class Shell
         }
 
         var t = new Track(r.Slot);
-        if (!t.IsValid || !t.Knows(TrackFields.Artists)) return PlayerCredits.None;
+        if (!t.IsValid) return PlayerCredits.None;
+        // An AI DJ narration credits the DJ's NAME (its `narration.<slot>.artist`, the row's credit line): one inert entry, no artist row.
+        if (Playback.Dj.IsNarrationRow(r))
+            return t.CreditLine is { Length: > 0 } dj ? new PlayerCredits { Artists = [CreditLink(dj, Route.None, "dj:" + r.Slot)] } : PlayerCredits.None;
+        // A local row credits a NAME (its tag, its uri's, else "Unknown artist"): one inert entry, no artist page behind it. It has no
+        // artist edge to wait for (a spotify:local: item never knows Artists), so it is answered before the partial-list gate.
+        if (t.IsLocalRow && t.ArtistSlots.Length == 0)
+            return new PlayerCredits { Artists = [CreditLink(t.LocalCredit, Route.None, "local:" + r.Slot)] };
+        if (!t.Knows(TrackFields.Artists)) return PlayerCredits.None;
         var slots = t.ArtistSlots.ToArray();
         if (slots.Length == 0) return PlayerCredits.None;
 
@@ -355,12 +375,12 @@ public static partial class Shell
                 return new MenuFlyoutItem(Loc.Get(Strings.Player.Next), Icons.Next, facts.NextEnabled, static () => PlayerVerbs.Default.Next());
             case OverflowCommand.Shuffle:
                 return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Shuffle), Playback.Shuffle.Peek(), static () => PlayerVerbs.Default.ToggleShuffle(),
-                    Icons.Shuffle, facts.CanTransport);
+                    Icons.Shuffle, facts.CanTransport && PlayerVerbs.ShuffleLock(track: false) is null);
             case OverflowCommand.Repeat:
             {
                 var repeat = Playback.Repeat.Peek();
                 return MenuFlyoutItem.Toggle(Loc.Get(Strings.Player.Repeat), repeat != RepeatMode.Off, static () => PlayerVerbs.Default.CycleRepeat(),
-                    PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport);
+                    PlayerBarRules.RepeatGlyph(repeat), facts.CanTransport && PlayerVerbs.RepeatLock(track: false) is null);
             }
             case OverflowCommand.Lyrics:
                 return MenuFlyoutItem.Toggle(Loc.Get(Playback.CurrentId.Peek().Kind == EntityKind.Episode ? "podcast.reader.transcript" : Strings.Player.Lyrics), railOpen && mode == RailMode.Lyrics,
@@ -652,9 +672,11 @@ public static partial class Shell
                     with { Key = "player-rail-tip:" + chapterEpoch + ":" + chapterId.Text + (chapterRail ? ":chapters" : "") + (preview is null ? "" : ":" + preview.Key)
                         + (lyricRail ? ":lyrics:" + lyricTrack : "") }
                 : null;
+            // #48 Mix: the planned overlap as the rail's brighter last stretch, a decoration in the same full-width slot (it takes no input).
+            Element decoration = Embed.Comp(new MixRailProps(chapters), static () => new MixRailSegment()) with { Key = "player-rail-mix" };
             return ViewSlots.View(ViewKeys.SeekRail, new SeekRailProps
             {
-                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = tip, Chapters = chapters,
+                Host = this, Enabled = enabled, Pending = pending, Dvr = mode == SeekRailMode.Dvr, HoverTip = tip, Chapters = decoration,
             });
         }
 
@@ -880,9 +902,21 @@ public static partial class Shell
         {
             long duration = DurationNow();
             if (Playback.Live.Value.IsLive || duration <= 0L) return _remaining ? "-0:00" : "0:00";
+            // #48 Mix: while a join is planned the right slot may read "Mixing into …": its width is reserved from the plan on, so the
+            // swap during the overlap moves nothing (Playback.Mix.cs).
+            if (_remaining && Playback.Mix.LabelWhilePlanned() is { } mixing)
+            {
+                string digits = (_remaining ? "-" : "") + ZeroClock(duration);
+                return mixing.Length > digits.Length ? mixing : digits;
+            }
+            return (_remaining ? "-" : "") + ZeroClock(duration);
+        }
+
+        static string ZeroClock(long duration)
+        {
             var clock = Playback.TimeFormat.Clock(duration).ToCharArray();
             for (int i = 0; i < clock.Length; i++) if (char.IsDigit(clock[i])) clock[i] = '0';
-            return (_remaining ? "-" : "") + new string(clock);
+            return new string(clock);
         }
 
         /// <summary>The duration the labels count against: the pipeline's, or, while a load has not reported one yet (a skip resets it to 0
@@ -899,6 +933,9 @@ public static partial class Shell
             // Concealed: hold the last text. Returning before the position read drops this bind's subscription to it, so a
             // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
             if (_reveal is { } reveal && !reveal.Value) return _shown;
+            // An AI DJ narration's progress is suppressed (plan-dj §1.8): no digits while its clip is current, here or on the owner's deck;
+            // the slot keeps its width.
+            if (Playback.Dj.VoiceCurrent()) return _shown = "";
             long position = Playback.PositionMs.Value;
             long duration = DurationNow();
             bool isLive = Playback.Live.Value.IsLive;
@@ -908,6 +945,8 @@ public static partial class Shell
             long scrub = Playback.ScrubPositionMs.Value;
             long key = ScrubController.KeyPreviewMs.Value;
             if (!isLive) position = scrub >= 0L ? scrub : key >= 0L ? key : position;
+            // #48 Mix: inside the planned overlap the right slot says what is coming instead of the digits (decision D14 (b)).
+            if (_remaining && !isLive && scrub < 0L && key < 0L && Playback.Mix.LabelAt(position) is { } mixing) return _shown = mixing;
             var (ms, minus) = TimeLabel.Of(_remaining, Prefs.PlayerBar.ShowRemaining(), position, duration, isLive, tunedIn,
                 isLive ? Playback.UnixNowMs() : 0L);
             long seconds = ms / 1000L;

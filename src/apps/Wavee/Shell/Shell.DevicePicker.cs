@@ -93,7 +93,8 @@ public static partial class Shell
             Playback.Audio.Opened observed,
             Spotify.Audio.Quality asked,
             SoundState sound,
-            int stamp)
+            int stamp,
+            bool moveLocked = false)
         {
             int remoteSlot = DeviceRoster.RemoteSlot(owner, activeSlot, connect);
             bool remote = remoteSlot >= 0;
@@ -106,6 +107,8 @@ public static partial class Shell
             bool matchWindows = chosen < 0 && !chosenGone;
 
             // ── This PC: Match Windows (while this PC plays), then the outputs ──
+            // While another device's DJ talks, pulling playback here is a transfer it refuses (D4: restriction 13): the outputs say why.
+            bool pullLocked = remote && moveLocked;
             var thisPc = new List<DevicePickerEntry>(local.Length + 1);
             if (!remote)
             {
@@ -122,9 +125,9 @@ public static partial class Shell
                 ref readonly var d = ref local[i];
                 bool unresponsive = unresponsiveId is { Length: > 0 } && string.Equals(d.Id, unresponsiveId, StringComparison.OrdinalIgnoreCase);
                 var pick = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: d.Id, TakeOver: takeOver);
-                string? detail = Join(ConnectionWords(d.Connection), remote && d.IsDefault ? Loc.Get(P.WindowsDefault) : null,
-                    unresponsive ? Loc.Get(P.NotResponding) : null);
-                thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, CapLabel(d.Name), DeviceRoster.LookGlyph(d.Look), localSupported,
+                string? detail = pullLocked ? Loc.Get(Strings.Player.DjSegmentEnding)
+                    : Join(ConnectionWords(d.Connection), remote && d.IsDefault ? Loc.Get(P.WindowsDefault) : null, unresponsive ? Loc.Get(P.NotResponding) : null);
+                thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, CapLabel(d.Name), DeviceRoster.LookGlyph(d.Look), localSupported && !pullLocked,
                     localSupported && !remote && i == chosen, unavailable, localSupported ? () => DeviceVerbs.Run(pick) : null)
                 {
                     Chosen = localSupported && i == chosen, Detail = detail, Unresponsive = unresponsive, Id = d.Id,
@@ -143,15 +146,18 @@ public static partial class Shell
             // ── Other devices: Spotify Connect, this device filtered out ──
             var others = new List<DevicePickerEntry>(connect.Length);
             string connectWord = Loc.Get(Strings.Player.SpotifyConnect);
+            // An AI DJ narration current (<paramref name="moveLocked"/>: here, or on the owner's deck): no move until it ends (plan-dj §1.8), and the
+            // rows say why.
+            bool narrating = moveLocked;
             for (int i = 0; i < connect.Length; i++)
             {
                 ref readonly var d = ref connect[i];
                 if (d.Kind == Spotify.Decode.DeviceKind.ThisDevice) continue;
                 var transfer = new DeviceIntent(DeviceIntentKind.TransferTo, ConnectId: d.Id ?? "");
-                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), true,
+                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), !narrating,
                     i == remoteSlot, null, () => DeviceVerbs.Run(transfer))
                 {
-                    Detail = connectWord, Id = d.Id ?? "",
+                    Detail = narrating ? Loc.Get(Strings.Player.DjSegmentEnding) : connectWord, Id = d.Id ?? "",
                 });
             }
 
@@ -163,8 +169,8 @@ public static partial class Shell
                 var home = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: selectedLocalId ?? "", TakeOver: true);
                 card = new DevicePickerCard
                 {
-                    Name = r.Name ?? "", Glyph = DeviceRoster.ConnectGlyph(r.Kind), Connection = connectWord, Remote = true,
-                    PlayHere = localSupported ? () => DeviceVerbs.Run(home) : null,
+                    Name = r.Name ?? "", Glyph = DeviceRoster.ConnectGlyph(r.Kind), Connection = RemoteOutput(in r) ?? connectWord, Remote = true,
+                    PlayHere = localSupported && !pullLocked ? () => DeviceVerbs.Run(home) : null,
                     HereName = inUse >= 0 ? local[inUse].Name : null,
                     HereGlyph = inUse >= 0 ? DeviceRoster.LookGlyph(local[inUse].Look) : null,
                 };
@@ -183,7 +189,7 @@ public static partial class Shell
 
             // ── the footer ──
             var footer = remote
-                ? new DevicePickerFooter { QualitySetBy = QualitySetBy(connect[remoteSlot].Kind), Sound = sound.Words, OpenSound = OpenSound }
+                ? new DevicePickerFooter { QualitySetBy = RemoteQuality(in connect[remoteSlot]), Sound = sound.Words, OpenSound = OpenSound }
                 : new DevicePickerFooter { Quality = QualityChip(observed, asked), OpenQuality = OpenQuality, Sound = sound.Words, OpenSound = OpenSound };
 
             // ── the same answer as one flat menu (a menu-shaped surface) ──
@@ -253,6 +259,52 @@ public static partial class Shell
                 ? P.QualityBelow(quality, Loc.Get(AskedQualityLabel(asked)))
                 : quality;
         }
+
+        /// <summary>While a Connect device plays: the quality it SAYS it plays (its <c>playback_quality</c>, <see cref="Devices.Row.Quality"/>)
+        /// and who sets it ("Lossless · set by the phone", "Very high · set by the TV"); only who sets it when the device stated no level. PURE
+        /// over the row (Loc).</summary>
+        public static string RemoteQuality(in Playback.Devices.Row row)
+        {
+            string? words = RemoteQualityWords(row.Quality);
+            if (words is null) return QualitySetBy(row.Kind);
+            return row.Kind switch
+            {
+                Spotify.Decode.DeviceKind.Tv => P.QualityFromTv(words),
+                Spotify.Decode.DeviceKind.Speaker => P.QualityFromSpeaker(words),
+                Spotify.Decode.DeviceKind.Phone => P.QualityFromPhone(words),
+                _ => P.QualityFromDevice(words),
+            };
+        }
+
+        /// <summary>A stated quality in Settings' own words: "Lossless" (hifi), "Lossless · 24-bit" (hifi24), "Very high", "High", "Normal",
+        /// "Low"; null when the device stated nothing a listener can read.</summary>
+        static string? RemoteQualityWords(Spotify.Decode.PlaybackQuality q)
+        {
+            if (!q.Present) return null;
+            return q.Shown switch
+            {
+                Spotify.Decode.BitrateLevel.Hifi24 => Strings.Player.QualityFormat(Loc.Get(Strings.Settings.Playback.QualityLossless), "24-bit"),
+                >= Spotify.Decode.BitrateLevel.Hifi => Loc.Get(Strings.Settings.Playback.QualityLossless),
+                Spotify.Decode.BitrateLevel.VeryHigh => Loc.Get(Strings.Settings.Playback.QualityVeryHigh),
+                Spotify.Decode.BitrateLevel.High => Loc.Get(Strings.Settings.Playback.QualityHigh),
+                Spotify.Decode.BitrateLevel.Normal => Loc.Get(Strings.Settings.Playback.QualityNormal),
+                Spotify.Decode.BitrateLevel.Low => Loc.Get(P.QualityLow),
+                _ => null,
+            };
+        }
+
+        /// <summary>The Lossless badge's tooltip while a Connect device plays: the format its <c>playback_quality</c> states ("FLAC",
+        /// "FLAC 24-bit"), or null when it plays lossy or stated nothing — the badge's own rule, fed by the device instead of our open.</summary>
+        public static string? RemoteLossless(in Playback.Devices.Row row)
+            => row.Quality.Lossless
+                ? Playback.Audio.LabelFor(row.Quality.Shown == Spotify.Decode.BitrateLevel.Hifi24 ? Spotify.Audio.Format.Flac24 : Spotify.Audio.Format.Flac, 0, 0)
+                : null;
+
+        /// <summary>Where a Connect device itself plays, as it names that output ("AirPods Max"): null for its own built-in speaker or an
+        /// output named as the device is, which would say nothing the card's name does not.</summary>
+        public static string? RemoteOutput(in Playback.Devices.Row row)
+            => row.OutputName is { Length: > 0 } output && row.OutputType != 1
+               && !string.Equals(output, row.Name, StringComparison.OrdinalIgnoreCase) ? CapLabel(output) : null;
 
         /// <summary>Who sets the quality while a Connect device plays, by its kind.</summary>
         static string QualitySetBy(Spotify.Decode.DeviceKind kind) => Loc.Get(kind switch

@@ -63,6 +63,7 @@ public static partial class Diagnostics
             if (Array.IndexOf(args, "--relaunch-after") >= 0) { code = RelaunchBroker(args); return true; }
             if (Array.IndexOf(args, "--qr-dump") >= 0) { code = QrDump(args); return true; }
             if (Array.IndexOf(args, "--log-sessions") >= 0) { code = LogSessions(); return true; }   // Diagnostics/LogSessions.Probe.cs
+            if (Array.IndexOf(args, "--local-scan") >= 0) { code = LocalScanArm(args); return true; }   // Diagnostics/LocalScan.Probe.cs (#240)
             return false;
         }
 

@@ -1840,6 +1840,21 @@ public static partial class Spotify
         /// <summary>The bare word <c>Accept: protobuf</c> — what the official client puts on the connect-state transfer POST
         /// (capture 2026-10-01, 3 of 3); not the <c>application/protobuf</c> of <see cref="AcceptProtobuf"/>.</summary>
         AcceptBareProtobuf = 1 << 23,
+        /// <summary>#48 Mix: <c>spotify-apply-lenses: mix,auto</c> (instead of <see cref="ApplyLenses"/>'s <c>auto</c>) and
+        /// <c>spotify-list-player-enabled: true</c>, as the official client sends on a mixed list (capture report §3.6).</summary>
+        MixLens = 1 << 24,
+        /// <summary>#48 Mix M8: the <c>harmonize</c> lens ahead of the others (Smart reorder: Spotify's own order for smooth transitions,
+        /// the lens the official client requests with its Auto mix toggle). Which place the name takes in the header is open.</summary>
+        HarmonizeLens = 1 << 25,
+        /// <summary>AI DJ: <c>x-dynamic-device-context</c>, the value <c>Spotify.Api.DeviceContext</c> holds (plan-dj §1.2: every lexicon
+        /// session GET carries it).</summary>
+        DeviceContext = 1 << 26,
+        /// <summary>AI DJ: <c>Time-Zone</c>, the local zone as an IANA id (<c>Spotify.Api.LocalTimeZone</c>), as the official client sends it on
+        /// the lexicon session routes (dj-protocol §2.1).</summary>
+        TimeZone = 1 << 27,
+        /// <summary>AI DJ: <c>X-Client-Id</c>, the keymaster client id this session authenticated with (<c>Identity.ClientId</c>), as the
+        /// official client sends it on the lexicon session routes (dj-protocol §2.1).</summary>
+        ClientId = 1 << 28,
     }
 
     /// <summary>Which request. One per FAMILY, not one per caller: <c>Spotify.Api.cs</c>'s function per request picks
@@ -1862,6 +1877,20 @@ public static partial class Spotify
         /// <summary>The escape hatch: <c>Args.Path</c> verbatim on <c>Args.Host</c> with <c>Args.Headers</c>. A new
         /// route lands here first and graduates to a kind when a second caller wants it.</summary>
         Custom,
+    }
+
+    /// <summary>#48 Mix: how a <see cref="RequestKind.PlaylistSignals"/> POST travels (<see cref="RequestArgs.Number"/>): the
+    /// <c>spotify-apply-lenses</c> header and the <c>spotify-playlist-sync-reason</c> (protocol §1.1, §3). Which write takes
+    /// which route is <c>Spotify.Mixes.RouteOf</c>'s table, the one place to change it.</summary>
+    public enum SignalRoute : byte
+    {
+        /// <summary><c>auto</c>, <c>CA8QAQ==</c> {1:15,2:1}: every signal outside Mix, and Mix off [wire].</summary>
+        Edit = 0,
+        /// <summary><c>mix,auto</c> (+ <c>spotify-list-player-enabled</c>), <c>CBAQAQ==</c> {1:16,2:1}: Mix on [wire].</summary>
+        MixOn = 1,
+        /// <summary><c>mix,auto</c> (+ <c>spotify-list-player-enabled</c>), <c>CA8QAQ==</c>: a transition save, sent after Mix on in
+        /// the captured page session [wire].</summary>
+        MixLens = 2,
     }
 
     /// <summary>What a request needs beyond the session. A <c>ref struct</c> with writable fields, so a caller builds
@@ -2023,8 +2052,13 @@ public static partial class Spotify
                 w.Append("/playlist/v2/playlist/");
                 w.AppendEscaped(args.Id);
                 w.Append("/signals");
+                // #48 Mix: args.Number is the SignalRoute (protocol §1.1, §3): the lens header and the sync-reason a signal travels
+                // with. Edit (0, every signal before Mix, the Tune strip) = `auto` + {1:15,2:1}; MixOn = `mix,auto` + {1:16,2:1};
+                // MixLens = `mix,auto` + {1:15,2:1}.
+                var route = (SignalRoute)args.Number;
                 return new Request(Verb.Post, ApiHost.Spclient, w.Written,
-                    Mutation | HeaderSet.AcceptProtobuf, args.Body, "CA8QAQ==");
+                    Mutation | HeaderSet.AcceptProtobuf | (route == SignalRoute.Edit ? HeaderSet.None : HeaderSet.MixLens), args.Body,
+                    route == SignalRoute.MixOn ? "CBAQAQ==" : "CA8QAQ==");
 
             case RequestKind.RootlistRead:
                 w.Append("/playlist/v2/user/");

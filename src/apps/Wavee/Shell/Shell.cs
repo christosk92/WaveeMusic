@@ -219,6 +219,10 @@ public static partial class Shell
     /// three lists that must stay in step.</summary>
     public static ref readonly RouteRow Row(RouteKind k) => ref s_routes[(int)k];
 
+    /// <summary>The route's key in the table without any entity argument: "home", "album" (for <c>album:&lt;uri&gt;</c>), "pl",
+    /// "settings" …; "" for <see cref="RouteKind.NotFound"/>. The rate nudge's browse-page list is phrased in these.</summary>
+    public static string RouteKeyOf(Route r) => Row(r.Kind).Key.TrimEnd(':');
+
     /// <summary>Total kinds: the route table's length, which the route tests walk (and pin against the enum) rather than a
     /// hand-kept list.</summary>
     public static int RouteKindCount => s_routes.Length;
@@ -1455,7 +1459,7 @@ public static partial class Shell
     static string ObservedQualityWords(Playback.Audio.Opened observed)
     {
         var f = observed.Format;
-        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24)
+        if (f is Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 or Spotify.Audio.Format.Pcm)   // a local WAV or AIFF is lossless too
             return Strings.Player.QualityFormat(Loc.Get(Strings.Settings.Playback.QualityLossless), observed.Label);
         string? rung = f switch
         {

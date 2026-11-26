@@ -194,8 +194,9 @@ public static partial class Diagnostics
         /// <summary>The slack (DIP) before an edge, a clip or an overlap counts: sub-pixel rounding is not a finding.</summary>
         public const float Slack = 0.5f;
 
-        /// <summary><see cref="Node.Lane"/> for a node with no scroll bar lane inside its slop on any side.</summary>
-        public static readonly Edges4 NoLane = new(-1f, -1f, -1f, -1f);
+        /// <summary><see cref="Node.Lane"/> for a node with no scroll bar lane over its hit rect on any side (negative infinity per side: a side's
+        /// stop is negative where the lane lies over the box itself).</summary>
+        public static readonly Edges4 NoLane = new(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity);
 
         /// <summary>The share of a text box one colour must hold to be its ground; under it the ground is busy (art, a gradient).</summary>
         public const float BusyShare = 0.45f;
@@ -414,9 +415,10 @@ public static partial class Diagnostics
             /// <summary>How far the engine's hit test reaches past the box (its own <c>HitSlop</c> plus the host's touch floor), per side.</summary>
             public Edges4 Slop { get; init; }
 
-            /// <summary>Where a scroll bar's lane starts inside the slop, per side, measured out from the box along its middle line (a press there is
-            /// the bar's before any target's): read at capture from the engine's <c>InputDispatcher.IsOverScrollbarLane</c>, so a replay cuts the slop
-            /// the same way. -1: no lane within the slop on that side (the top is never walked).</summary>
+            /// <summary>Where a scroll bar's lane starts on the target's hit rect, per side, measured out from the box edge along its middle line, from
+            /// the box's middle to the slop's end (a press there is the bar's before any target's): negative where the lane lies over the box itself.
+            /// Read at capture from the engine's <c>InputDispatcher.IsOverScrollbarLane</c>, so a replay cuts the hit rect the same way. Negative
+            /// infinity: no lane over that side's half of the hit rect (the top is never walked).</summary>
             public Edges4 Lane { get; init; } = NoLane;
 
             /// <summary>It carries a press handler (click, pointer, press, drag, gesture or context): a role alone (a pager's arrow on its first
@@ -442,7 +444,8 @@ public static partial class Diagnostics
             public bool Sticky { get; init; }
 
             /// <summary>The window y above which it takes no hits: a recyclable item of a virtual list whose pinned prefix (a sticky toolbar) covers the top
-            /// of the viewport (the engine's item band, <c>InputDispatcher.Hit</c> skips such items above it). Negative infinity: none.</summary>
+            /// of the viewport (the engine's item band, <c>InputDispatcher.Hit</c> skips such items above it), or a node under a sticky cut (`.StickyClip`).
+            /// Negative infinity: none.</summary>
             public float HitTop { get; init; } = float.NegativeInfinity;
 
             /// <summary>Its paint: a fill, a border, an image, a gradient (what makes a box ink, and a busy ground).</summary>
@@ -3173,15 +3176,15 @@ public static partial class Diagnostics
                     else continue;
                     if (by.Count < 3) by.Add("beside a target that paints nothing at " + F(o.X) + "," + F(o.Y));
                 }
-            // A scroll bar's lane takes a press before any target does: each side's slop stops where a lane starts (Node.Lane, read at capture
-            // along the target's middle line, so a replay cuts the same).
+            // A scroll bar's lane takes a press before any target does: each side of the hit rect stops where a lane starts, in its slop or over the
+            // box itself (Node.Lane, read at capture along the target's middle line, so a replay cuts the same).
             if (InView(s, n))
             {
                 Edges4 lane = n.Lane;
                 bool cut = false;
-                if (lane.Right >= 0f && rr > r.Right + lane.Right) { rr = r.Right + lane.Right; cut = true; }
-                if (lane.Left >= 0f && l < r.X - lane.Left) { l = r.X - lane.Left; cut = true; }
-                if (lane.Bottom >= 0f && b > r.Bottom + lane.Bottom) { b = r.Bottom + lane.Bottom; cut = true; }
+                if (float.IsFinite(lane.Right) && rr > r.Right + lane.Right) { rr = r.Right + lane.Right; cut = true; }
+                if (float.IsFinite(lane.Left) && l < r.X - lane.Left) { l = r.X - lane.Left; cut = true; }
+                if (float.IsFinite(lane.Bottom) && b > r.Bottom + lane.Bottom) { b = r.Bottom + lane.Bottom; cut = true; }
                 if (cut && by.Count < 4) by.Add("a scroll bar's lane");
             }
             cutBy = string.Join(", ", by);

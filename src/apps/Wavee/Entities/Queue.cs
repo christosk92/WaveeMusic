@@ -82,8 +82,10 @@ public enum QueueBucket : byte
 /// <summary>Where a queue row came from on the wire — the Connect protocol's own "context" / "queue" / "autoplay"
 /// tokens. Distinct from <see cref="QueueBucket"/>: an autoplay-station row is <c>NextUp</c> by position and
 /// <c>Autoplay</c> by provenance, and the rail renders the provenance. 0.2.9 carried both a <c>Provider</c> enum and a
-/// redundant <c>IsAutoplay</c> bool; here that bool is <c>Provider == Autoplay</c> and cannot disagree with itself.</summary>
-public enum QueueProvider : byte { Context = 0, Queue = 1, Autoplay = 2 }
+/// redundant <c>IsAutoplay</c> bool; here that bool is <c>Provider == Autoplay</c> and cannot disagree with itself.
+/// <para><see cref="Narration"/>: an AI DJ narration clip the DJ planner put in the queue (<c>Playback.Dj</c>, the wire's
+/// <c>narration/&lt;slot&gt;</c>): hidden in the queue panels, never history, never a wrap target.</para></summary>
+public enum QueueProvider : byte { Context = 0, Queue = 1, Autoplay = 2, Narration = 3 }
 
 /// <summary>WHERE IN THE QUEUE the session is (plan §4.7: "cursor = (bucket, index) into Edges.Queue"). A value, so
 /// `Playback.State` stays copyable and `Step` stays pure.
@@ -578,6 +580,17 @@ public static partial class Queue
     {
         int next = NextIndex(Rows, cursor.Index);
         row = next < 0 ? default : RefAt(next);
+        return next >= 0;
+    }
+
+    /// <summary><see cref="TryPeek(in QueueCursor, out EntityRef)"/> plus WHO put the next row there (#48 Mix: only the
+    /// context's own continuation is mixed; a row queued by the user or autoplay gets the base hand-off).</summary>
+    public static bool TryPeek(in QueueCursor cursor, out EntityRef row, out QueueProvider provider)
+    {
+        var rows = Rows;
+        int next = NextIndex(rows, cursor.Index);
+        row = next < 0 ? default : RefAt(next);
+        provider = next < 0 ? QueueProvider.Context : (QueueProvider)rows[next].Provider;
         return next >= 0;
     }
 

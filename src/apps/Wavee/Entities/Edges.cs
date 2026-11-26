@@ -737,8 +737,10 @@ public readonly record struct QueueEdge(ulong ItemId, byte Provider, byte Bucket
 public readonly record struct DiscographyEdge(byte Kind);
 
 /// <summary>One friend's current or last activity (§9.6 Q5, ch 21 G6). Five real handles where 0.2.9 carried five uri
-/// strings, so the panel's rows route through the ordinary factories and the string soup goes away.</summary>
-public readonly record struct FriendEdge(int UserSlot, long TimestampMs, int TrackSlot, int AlbumSlot, int ArtistSlot, int ContextSlot);
+/// strings, so the panel's rows route through the ordinary factories and the string soup goes away.
+/// <paramref name="TimestampMs"/> is when the activity STARTED (the wire's own time, never rewritten);
+/// <paramref name="Playing"/> is the wire's <c>isPlaying</c>: the friend is listening to it now.</summary>
+public readonly record struct FriendEdge(int UserSlot, long TimestampMs, int TrackSlot, int AlbumSlot, int ArtistSlot, int ContextSlot, bool Playing = false);
 
 // ── 5. merch: the one side table ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -857,6 +859,19 @@ public sealed partial class Edges
     /// <see cref="BeatGrid"/>), Count = Total = beat count. Parent = track slot; payload-only. An EMPTY Complete run means
     /// "the service has no grid for this track" and Pulse falls back to the tempo grid.</summary>
     public readonly EdgeTable<uint> TrackBeats = new();
+    /// <summary>#48 Mix: extension kind 28's chosen start and end cue and its smallest start and largest end candidate
+    /// (<see cref="Wavee.TrackCues"/>), at most one per track. Parent = track slot; payload-only; not persisted. An EMPTY
+    /// Complete run = "no cue points for this track".</summary>
+    public readonly EdgeTable<TrackCues> TrackCues = new();
+    /// <summary>#48 Mix: kind 28's candidate lists (fields 3 and 4) in answer order, <see cref="CueCandidate"/> packing, at most
+    /// <see cref="CueCandidate.Max"/>; they land with <see cref="TrackCues"/>. Parent = track slot; payload-only; not persisted.</summary>
+    public readonly EdgeTable<uint> TrackCueCandidates = new();
+    /// <summary>#48 Mix: kind 218's vocal activity frames (<see cref="VocalBlock"/>), asked in the kind 28 POST. Parent = track
+    /// slot; payload-only; not persisted. An EMPTY Complete run = "answered, no frames".</summary>
+    public readonly EdgeTable<VocalBlock> TrackVocals = new();
+    /// <summary>#48 Mix: kind 6's genre facts for the beatmatched Auto (one <see cref="Playback.MixGenres"/>, from every
+    /// descriptor's concept uri), landed by every kind 6 answer. Parent = track slot; payload-only; not persisted.</summary>
+    public readonly EdgeTable<Playback.MixGenres> TrackMixGenres = new();
     /// <summary>Extension kind 151: "playlists featuring this album", at most twelve (0.2.9's Take(12)). Parent = album
     /// slot, targets = playlist slots.</summary>
     public readonly EdgeTable<NoEdge> AlbumRecommendations = new();
@@ -1037,7 +1052,11 @@ public sealed partial class Staging
 /// <summary>Which trait relation a <see cref="StagedTraitRun"/> rewrites — the five names, and the tables they land
 /// in are fixed by it (parent and child), exactly as <see cref="Relation"/> fixes them for the generic runs.
 /// <c>TrackBeats</c> is APPENDED: the staged byte values of the first four do not move.</summary>
-public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations, TrackBeats }
+public enum TraitRelation : byte
+{
+    TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations, TrackBeats, TrackCues, TrackBeatsId, TrackCueCandidates,
+    TrackVocals, TrackMixGenres,
+}
 
 /// <summary>One staged trait member: a credit row, a version, a recommended playlist. A union read by the run's
 /// relation: credits read the three texts and <see cref="Target"/> (the artist); versions read <see cref="Target"/> and
@@ -1186,6 +1205,53 @@ public static partial class Entities
                         var beats = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(s.Utf8(run.Bytes));
                         if (beats.Length > s_waveTargets.Length) beats = beats[..s_waveTargets.Length];
                         edges.TrackBeats.Replace(parent, s_waveTargets.AsSpan(0, beats.Length), beats, EdgeState.Complete, beats.Length);
+                        break;
+                    }
+                case TraitRelation.TrackCues:
+                    {
+                        // #48: kind 28 (Spotify.Decode.Mix.cs). One payload or none; an empty run is the answer "none".
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var cues = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, TrackCues>(s.Utf8(run.Bytes));
+                        if (cues.Length > 1) cues = cues[..1];
+                        edges.TrackCues.Replace(parent, s_waveTargets.AsSpan(0, cues.Length), cues, EdgeState.Complete, cues.Length);
+                        break;
+                    }
+                case TraitRelation.TrackCueCandidates:
+                    {
+                        // #48: kind 28's candidate lists in answer order (Spotify.Decode.Mix.cs); empty = the answer had none.
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var list = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(s.Utf8(run.Bytes));
+                        if (list.Length > CueCandidate.Max) list = list[..CueCandidate.Max];
+                        edges.TrackCueCandidates.Replace(parent, s_waveTargets.AsSpan(0, list.Length), list, EdgeState.Complete, list.Length);
+                        break;
+                    }
+                case TraitRelation.TrackVocals:
+                    {
+                        // #48: kind 218 (Spotify.Decode.Mix.cs), header entry and frames; empty = answered, no frames.
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var blocks = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, VocalBlock>(s.Utf8(run.Bytes));
+                        if (blocks.Length > s_waveTargets.Length) blocks = blocks[..s_waveTargets.Length];
+                        edges.TrackVocals.Replace(parent, s_waveTargets.AsSpan(0, blocks.Length), blocks, EdgeState.Complete, blocks.Length);
+                        break;
+                    }
+                case TraitRelation.TrackMixGenres:
+                    {
+                        // #48: kind 6's genre facts (Spotify.Decode.Descriptors), one byte.
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        var g = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, Playback.MixGenres>(s.Utf8(run.Bytes));
+                        if (parent == Table.None || g.Length != 1) break;
+                        edges.TrackMixGenres.Replace(parent, s_waveTargets.AsSpan(0, 1), g, EdgeState.Complete, 1);
+                        break;
+                    }
+                case TraitRelation.TrackBeatsId:
+                    {
+                        // #48: kind 217's analysis id (32 hex), the grid a recipe pins (MixData.BeatsId).
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        var id = s.Utf8(run.Bytes);
+                        if (parent != Table.None && !id.IsEmpty) MixData.SetBeatsId(parent, System.Text.Encoding.ASCII.GetString(id));
                         break;
                     }
                 case TraitRelation.AlbumRecommendations:

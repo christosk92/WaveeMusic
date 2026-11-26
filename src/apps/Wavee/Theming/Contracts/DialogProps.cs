@@ -7,6 +7,7 @@
 //
 // WVTH006: sealed records, init-only members, no writable `Signal<T>` (an editable cell travels as a `Func<Signal<string>>`).
 
+using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
 namespace Wavee.Theming.Contracts;
@@ -37,6 +38,69 @@ public sealed record PlayLinkProps
 
     /// <summary>Ask the modules who can play the link.</summary>
     public required Action Submit { get; init; }
+}
+
+/// <summary>What the custom colours editor shows for its draft right now: every value already solved (#184). Read through binds, so a drag on
+/// the picker repaints the wells and the preview without re-rendering the card.</summary>
+/// <param name="Wells">The six wells' colours, in <see cref="ColourEditorProps.WellLabels"/>' order (a derived well shows the solver's value).</param>
+/// <param name="Hex">The six wells' colours as <c>#RRGGBB</c>, or the auto label for a derived well.</param>
+/// <param name="Ground">The preview's page.</param>
+/// <param name="Well">The preview's lower plate (the player bar, the pane).</param>
+/// <param name="Raised">The preview's cards.</param>
+/// <param name="Ink">The preview's primary text.</param>
+/// <param name="InkSecondary">The preview's secondary text.</param>
+/// <param name="InkTertiary">The preview's tertiary text.</param>
+/// <param name="AccentFill">The preview's accent fill (its button).</param>
+/// <param name="AccentInk">The preview's accent as text (its link).</param>
+/// <param name="OnAccent">The text on the accent fill.</param>
+/// <param name="Hairline">The preview's divider and card ring.</param>
+/// <param name="Note">What the floors changed ("Muted text was adjusted to stay readable."), or empty. Its line is reserved either way.</param>
+public sealed record ColourEditorDraft(ColorF[] Wells, string[] Hex, ColorF Ground, ColorF Well, ColorF Raised, ColorF Ink, ColorF InkSecondary,
+    ColorF InkTertiary, ColorF AccentFill, ColorF AccentInk, ColorF OnAccent, ColorF Hairline, string Note);
+
+/// <summary>The props of <see cref="ViewKeys.DialogColourEditor"/>. Built by the core card host (open-time words and the verbs); the live values
+/// travel as read signals.</summary>
+public sealed record ColourEditorProps
+{
+    /// <summary>"Custom dark colours".</summary>
+    public required string Title { get; init; }
+
+    /// <summary>The six wells' labels (Background, Surface, Text, Muted text, Accent, Second surface), resolved.</summary>
+    public required IReadOnlyList<string> WellLabels { get; init; }
+
+    /// <summary>The well the picker edits.</summary>
+    public required IReadSignal<int> Selected { get; init; }
+
+    /// <summary>Make <c>i</c> the edited well.</summary>
+    public required Action<int> Select { get; init; }
+
+    /// <summary>The solved draft, for binds.</summary>
+    public required IReadSignal<ColourEditorDraft> Draft { get; init; }
+
+    /// <summary>The picker's colour cell (the edited well's colour; a pick writes the draft).</summary>
+    public required Func<Signal<ColorF>> Picker { get; init; }
+
+    /// <summary>Bumped when the picker must re-seed from <see cref="Picker"/> (another well selected, a start-from, a reset): the body keys the
+    /// picker on it, since a colour picker seeds its hue and saturation once.</summary>
+    public required IReadSignal<int> PickerEpoch { get; init; }
+
+    /// <summary>The picker's own change (a drag, a typed hex).</summary>
+    public required Action<ColorF> Pick { get; init; }
+
+    /// <summary>"Start from" choices: the catalog's sets for this mode (proper nouns).</summary>
+    public required IReadOnlyList<string> StartFromChoices { get; init; }
+
+    /// <summary>Copy the seeds of start-from choice <c>i</c> into the draft.</summary>
+    public required Action<int> StartFrom { get; init; }
+
+    /// <summary>Put the draft back to what the editor opened with.</summary>
+    public required Action Reset { get; init; }
+
+    /// <summary>Close, discarding the draft.</summary>
+    public required Action Cancel { get; init; }
+
+    /// <summary>Store the draft as my own set for this mode, pick it and close.</summary>
+    public required Action Apply { get; init; }
 }
 
 /// <summary>One label and value row of the signature sheet.</summary>

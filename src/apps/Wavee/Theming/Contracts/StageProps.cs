@@ -363,7 +363,17 @@ public sealed record StageTransportProps
 /// <param name="PlayingFrom">The "Playing from X" label, empty with no source.</param>
 /// <param name="Source">The source's name, empty with no source.</param>
 public readonly record struct StageTransportFacts(bool Playing, bool PrimaryEnabled, bool CanTransport, bool PrevEnabled, bool NextEnabled,
-    bool Shuffle, bool RepeatOn, bool RepeatOne, bool Saved, Action? Like, string PlayingFrom, string Source);
+    bool Shuffle, bool RepeatOn, bool RepeatOne, bool Saved, Action? Like, string PlayingFrom, string Source)
+{
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ): the button draws disabled with this
+    /// tooltip. Null while it may be pressed. Appended.</summary>
+    public string? ShuffleLock { get; init; }
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>. Appended.</summary>
+    public string? RepeatLock { get; init; }
+    /// <summary>AI DJ plays here: "Let DJ pick" for the transport, and <see cref="Source"/> is its segment line ("DJ · Vibes"). Null otherwise.
+    /// Appended.</summary>
+    public DjChrome? Dj { get; init; }
+}
 
 /// <summary>The output device button's face.</summary>
 public readonly record struct StageDeviceFacts(string Glyph, string Name)

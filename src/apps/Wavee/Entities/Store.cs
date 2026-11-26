@@ -520,8 +520,11 @@ public static partial class Store
 {
     /// <summary>Bumped whenever the generated DDL changes shape in a way the fingerprint cannot see (it can see
     /// almost everything). Part of the fingerprint, and the fingerprint NAMES the file (<see cref="FileName"/>), so
-    /// bumping it moves every install onto a fresh file; the old one is left alone until the reaper removes it.</summary>
-    public const int SchemaVersion = 4;
+    /// bumping it moves every install onto a fresh file; the old one is left alone until the reaper removes it.
+    /// <para>5 (2026-11-25): a track's <c>avail_flags</c> carry the WITHHELD reason bits (<c>TrackFlags.WithheldMask</c>: region-locked,
+    /// Premium only). The columns did not change, so the fingerprint cannot see it — but every cached TRACK_V4 verdict was written
+    /// without them and reads as playable, so a region-locked row would stay unmarked until its row happened to refetch.</para></summary>
+    public const int SchemaVersion = 5;
 
     /// <summary>The cache file's name carries the schema it holds: <c>library.&lt;fingerprint as 16 hex&gt;.db</c>. A build
     /// with a different DDL opens a DIFFERENT file and never touches this one, so nothing is ever deleted to make room

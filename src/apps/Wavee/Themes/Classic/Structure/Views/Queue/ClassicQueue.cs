@@ -94,7 +94,7 @@ internal sealed class ClassicQueuePanel : Component
     readonly FluentGpu.Scene.ExtentTableVirtualLayout _layout = new();
     float[] _extents = new float[64];
     int[] _kinds = new int[64];   // per item: a lane slot position (>= 0), or one of the Item* kinds
-    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3;
+    const int ItemPlayingFrom = -1, ItemNow = -2, ItemVacancy = -3, ItemMix = -4;
     /// <summary>The lead's and the vacancy's estimates until their first measure.</summary>
     const float PlayingFromEstimate = 28f, NowEstimate = 72f, VacancyEstimate = 120f;
     /// <summary>The room under the last item.</summary>
@@ -165,6 +165,8 @@ internal sealed class ClassicQueuePanel : Component
         int n = 0;
         if (queue.PlayingFrom is not null) { _kinds[n] = ItemPlayingFrom; _extents[n++] = -PlayingFromEstimate; }
         if (!queue.NowPlaying.IsNone) { _kinds[n] = ItemNow; _extents[n++] = -NowEstimate; }
+        // #48 Mix: "Mixing · Rise · 2.9 s" between the playing card and the next row, while the playing pair will mix.
+        if (!queue.NowPlaying.IsNone && props.MixLine.Length > 0) { _kinds[n] = ItemMix; _extents[n++] = -PlayingFromEstimate; }
         int leadItems = n;
         for (int i = 0; i < lane.SlotCount; i++) { _kinds[n] = i; _extents[n++] = ExtentOf(lane.SlotAt(lane.ItemAt(i))); }
         if (queue.NothingPlaying) { _kinds[n] = ItemVacancy; _extents[n++] = -VacancyEstimate; }
@@ -188,15 +190,20 @@ internal sealed class ClassicQueuePanel : Component
                     Direction = 0, Wrap = true, Gap = ClassicQueueRules.PillGap, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
                     Children =
                     [
-                        Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), queue.Shuffle, _toggleShuffle),
-                        Pill(props.RepeatTrack ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat), props.RepeatOn, _cycleRepeat),
+                        // The pills the playing context forbids (the DJ's shuffle and repeat) draw disabled and say why, as the bar's buttons do.
+                        Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), queue.Shuffle, _toggleShuffle, locked: queue.ShuffleLock),
+                        Pill(props.RepeatTrack ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat), props.RepeatOn, _cycleRepeat, locked: queue.RepeatLock),
                         Pill("∞", Loc.Get(Strings.Player.Autoplay), queue.Autoplay.Enabled, _toggleAutoplay, glyphIsText: true),
                         // The "between songs" pair (design 5.4): Crossfade beside Autoplay, its length at rest as a link to the duration in
                         // Settings (the panel draws no slider). Wrapped together, so the length never strands on a line of its own.
                         new BoxEl
                         {
                             Key = "qp:crossfade", Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = _onCrossfade,
-                            Children = props.CrossfadeLength.Length == 0 || props.OpenCrossfadeLength is null
+                            // While a mixed playlist plays the note "Mix is on for this playlist" stands where the length rests (#48).
+                            Children = props.CrossfadeNote.Length > 0
+                                ? [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade),
+                                   new TextEl(props.CrossfadeNote) { Key = "qp:crossfade:note", Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Color = Tok.TextSecondary, MaxLines = 1 }]
+                                : props.CrossfadeLength.Length == 0 || props.OpenCrossfadeLength is null
                                 ? [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade)]
                                 : [Pill(Icons.Audio, Loc.Get(Strings.Player.Crossfade), props.Crossfade, _toggleCrossfade),
                                    LengthLink(props.CrossfadeLength, props.OpenCrossfadeLength, props.Crossfade)],
@@ -218,6 +225,7 @@ internal sealed class ClassicQueuePanel : Component
         {
             case ItemPlayingFrom: return PlayingFrom(props.Queue.PlayingFrom.GetValueOrDefault().Name, props.OpenPlayingFrom, _tier);
             case ItemNow: return NowPlayingCard(props, hairline);
+            case ItemMix: return MixLine(props.MixLine);
             case ItemVacancy:
                 return new BoxEl
                 {
@@ -227,7 +235,8 @@ internal sealed class ClassicQueuePanel : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return SectionHeader(props, slot.Section);
+        if (slot.Kind == QueueSlotKind.Header)
+            return props.Queue.SegmentOf(slot) is { } segment ? SegmentHeader(segment) : SectionHeader(props, slot.Section);
         if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? lane.Lane(item, Row(props, row, art, hairline), lane.RowKey("", row.ItemId, row.Index))
@@ -462,6 +471,28 @@ internal sealed class ClassicQueuePanel : Component
         ],
     };
 
+    /// <summary>AI DJ: a segment's header in the section header's grammar and height (the eyebrow, its words the segment's label), "Let DJ pick
+    /// starts here" in the accent at its end on the segment the button lands on (the queue by segment, plan-dj §2.8).</summary>
+    Element SegmentHeader(QueueSegment segment)
+    {
+        string mark = QueueProps.SegmentMark(segment);
+        var top = new List<Element>(3)
+        {
+            R.Type.Eyebrow(QueueProps.SegmentTitle(segment)) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            new BoxEl { Grow = 1f, MinWidth = 0f },
+        };
+        if (mark.Length > 0)
+            top.Add(new TextEl(mark) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1 });
+        return new BoxEl
+        {
+            Key = "hdr:" + segment.Key,
+            Direction = 1, Gap = Spacing.XXS, Height = ClassicQueueRules.HeaderExtentFor(_tier.Target),
+            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.XS),
+            Layout = LayoutTransition.Slide, BlocksDragArm = true,
+            Children = [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = _tier.AtLeast(ClassicQueueRules.HeaderRowH), Children = top.ToArray() }],
+        };
+    }
+
     Element SectionHeader(QueuePanelProps props, QueueSection section)
     {
         string title = ClassicQueue.SectionTitle(section);
@@ -494,6 +525,17 @@ internal sealed class ClassicQueuePanel : Component
                 : [eyebrowRow],
         };
     }
+
+    /// <summary>The Mix line (#48): a short accent stroke and "Mixing · Rise · 2.9 s" in the small ramp, between the playing card and the next row.</summary>
+    static Element MixLine(string text) => new BoxEl
+    {
+        Key = "qp:mix", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, 0f, Spacing.XS),
+        Children =
+        [
+            new BoxEl { Width = Spacing.M, Height = ClassicQueueRules.MixStrokeH, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.AccentTextPrimary },
+            new TextEl(text) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+        ],
+    };
 
     /// <summary>The crossfade's length ("6 s") in the "Clear" text button's grammar: a link to the duration in Settings, dimmer while crossfade is off.</summary>
     Element LengthLink(string length, Action open, bool on) => ToolTip.Wrap(new BoxEl
@@ -552,7 +594,7 @@ internal sealed class ClassicQueuePanel : Component
     /// (Workstream B's "Filter/mode toggles" grammar row) — stock checked = the chip accent, solid, never the raw
     /// grading. <paramref name="glyphIsText"/> is the autoplay "∞": a literal glyph, not an icon-font codepoint, so
     /// its <c>PartGlyph</c> node is overridden off the icon font.</summary>
-    Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false)
+    Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false, string? locked = null)
     {
         // The common (non-text-glyph) case reuses the shared cached RootNoShrink instance (no per-render
         // allocation); the text-glyph arm (autoplay's "∞") needs its own PartGlyph modifier too, so it builds a
@@ -565,8 +607,9 @@ internal sealed class ClassicQueuePanel : Component
             parts = new TemplateParts { [ToggleButton.PartRoot] = b => target > 0f ? b with { Shrink = 0f, MinHeight = target, Height = float.NaN } : b with { Shrink = 0f } };
             if (glyphIsText) parts.Set<TextEl>(ToggleButton.PartGlyph, t => t with { FontFamily = null, Weight = 600 });
         }
-        return ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
-            style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts);
+        var pill = ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
+            style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts, isEnabled: locked is null);
+        return locked is null ? pill : ToolTip.Wrap(pill, locked);
     }
 
     /// <summary>The heart's 26-wide lane (40 on a Compact window) — the hairline row's leading cell (<paramref name="height"/> its row) and

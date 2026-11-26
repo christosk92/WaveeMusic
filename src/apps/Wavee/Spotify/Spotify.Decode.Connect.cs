@@ -44,6 +44,11 @@ public static partial class Spotify
             /// <summary>Its capabilities say <c>supports_set_options_command</c> (field 25): shuffle and repeat may go to it as one
             /// <c>set_options</c> (the remote-play plan's step 3.2 reads it).</summary>
             public bool SupportsSetOptions;
+            /// <summary><c>audio_output_device_info</c> (field 24): where the device itself plays — its <c>device_name</c> (2, the
+            /// owner's own headphones' name) and <c>audio_output_device_type</c> (1: 1 built-in speaker, 2 line out, 3 bluetooth,
+            /// 4 airplay, …). Empty / 0 when it stated none.</summary>
+            public TextRef OutputName;
+            public byte OutputType;
         }
 
         /// <summary>Is a device's volume out of a controller's reach, by its capabilities? <c>disable_volume</c> (field 13 in the
@@ -68,6 +73,22 @@ public static partial class Spotify
             /// <summary>The owner plays the row as VIDEO (<c>track_player</c> / <c>media.type</c> = "video").</summary>
             public bool IsVideo;
             public long DurationMs;
+            /// <summary>AI DJ: the lexicon page this row came from (1 = the session's first real page; 0 = not a DJ row) and the DJ keys
+            /// its metadata carried (<c>narration.*</c>, <c>dj.*</c>, <c>segment</c>, …) as a <see cref="ClusterBuffer.Meta"/> range. Set
+            /// only by a lexicon decode (<see cref="ContextResolve"/> with a page), so an ordinary row keeps none of them.</summary>
+            public int DjPage, DjStart, DjCount;
+            /// <summary>AI DJ: the row's slot in its lexicon page's <c>tracks</c> (0-based, counted as the page lists them, so a row the
+            /// decode drops never moves the next one): the <c>track</c> of the Connect index a DJ player publishes (plan-dj §1.9).</summary>
+            public int DjSlot;
+            /// <summary>AI DJ: the row is a narration item (<c>metadata["is_narration"] == "true"</c>, dj-protocol §2.4), and its
+            /// <c>media.manifest</c> (base64 of the TTS fulfil request, the SSML at 1.1.4.2) when it carries one.</summary>
+            public bool Narration;
+            public TextRef Manifest;
+            /// <summary>AI DJ, as a DJ player publishes its rows (dj-protocol §2.3, §4): the row's segment id (<c>segment</c>), the segment's
+            /// label (<c>station_subtitle</c>, "Vibes") and whether "Let DJ pick" lands on it (<c>dj.jump_target</c>). What a controller draws
+            /// of another device's DJ (<c>Playback.Dj.NoteRemoteDj</c>).</summary>
+            public TextRef Segment, Subtitle;
+            public bool JumpTarget;
             /// <summary>The whole <c>ProvidedTrack</c> as the owner sent it — set for a cluster's <c>prev_tracks</c> /
             /// <c>next_tracks</c> rows only: what a forwarded <c>set_queue</c> echoes back whole, its metadata map, provider,
             /// removed/blocked lists and album/artist uris (remote-play plan 5.2, moreptions.saz 794). Empty elsewhere.</summary>
@@ -177,12 +198,30 @@ public static partial class Spotify
             public ClusterTrack Track;
             public bool IsPlaying, IsPaused, IsBuffering;
             public bool NoPrev, NoNext, NoSeek;
+            /// <summary>AI DJ (plan-dj §2.7): the owner's toggle restrictions, each its first reason (empty = allowed) — the player
+            /// restrictions' 8 / 9 / 10, else the context restrictions' — and whether it refuses a transfer (13: the DJ's
+            /// <c>narration</c> while it talks).</summary>
+            public TextRef NoRepeatContextReason, NoRepeatTrackReason, NoShuffleReason;
+            public bool NoTransfer;
             /// <summary>The ACTIVE device's volume cannot be set by a controller (<see cref="ClusterDevice.VolumeFixed"/>); false
             /// when nobody is active.</summary>
             public bool ActiveVolumeFixed;
+            /// <summary>The owner's <c>player_state.playback_quality</c> (field 32, <see cref="ReadQuality"/>): what the ACTIVE device
+            /// says it plays ("hifi", hi-fi on). Not <c>Present</c> when the cluster carried none.</summary>
+            public PlaybackQuality Quality;
             /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
             /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
             public byte VideoOffered, VideoDisallowed;
+            /// <summary>#48 M5: the Mix preview signals the owner offers (<c>signals</c>, field 33): 1 = automix-preview, 2 =
+            /// stop-automix-preview. What an editor on this controller may send it (Playback.MixPreview).</summary>
+            public byte MixOffered;
+            /// <summary>#48 M7: the owner's published transition out of its current track (<c>audio.fade_out_start_time</c> /
+            /// <c>audio.fade_out_duration</c> on the current track) and into its next one (<c>audio.fade_in_start_time</c> /
+            /// <c>audio.fade_in_duration</c> on <c>next_tracks[0]</c>); -1 when the cluster carried none.</summary>
+            public long FadeOutStartMs, FadeOutDurationMs, FadeInStartMs, FadeInDurationMs;
+            /// <summary>The owner states its <c>signals</c> (field 33) at all, and offers the AI DJ's <c>jump</c> among them ("Let DJ pick":
+            /// a DJ player lists it once its session is loaded, dj-protocol §4).</summary>
+            public bool SignalsStated, JumpOffered, JumpDisallowed;
             public bool Shuffling;
             public RepeatMode Repeat;
             public long PositionAsOfMs, TimestampMs, ServerTimestampMs, DurationMs, ActiveStartedPlayingAt;
@@ -252,6 +291,7 @@ public static partial class Spotify
             delta.PlaybackSpeed = 1.0;
             delta.OurVolume = -1;
             delta.ActiveVolume = -1;
+            delta.FadeOutStartMs = delta.FadeOutDurationMs = delta.FadeInStartMs = delta.FadeInDurationMs = -1;
             delta.DeviceStart = into.DeviceCount;
             if (proto.IsEmpty) return delta;
 
@@ -297,8 +337,8 @@ public static partial class Spotify
             {
                 if (info.IsEmpty && key.IsEmpty) return;
                 var d = new ProtoReader(info);
-                ReadOnlySpan<byte> id = default, name = default;
-                int volume = 0, type = 0, volumeSteps = 0;
+                ReadOnlySpan<byte> id = default, name = default, outputName = default;
+                int volume = 0, type = 0, volumeSteps = 0, outputType = 0;
                 bool hasCapabilities = false, disableVolume = false, setOptions = false;
                 while (d.Next())
                 {
@@ -325,6 +365,17 @@ public static partial class Spotify
                             }
                         case 7: type = d.Int32(); break;
                         case 10: id = d.Bytes(); break;
+                        case 24:                                   // audio_output_device_info: where the device plays
+                            {
+                                var o = d.Message();
+                                while (o.Next())
+                                {
+                                    if (o.Field == 1 && o.Wire == 0) outputType = o.Int32();
+                                    else if (o.Field == 2 && o.Wire == 2) outputName = o.Bytes();
+                                    else o.Skip();
+                                }
+                                break;
+                            }
                         default: d.Skip(); break;
                     }
                 }
@@ -337,6 +388,8 @@ public static partial class Spotify
                 row.Kind = us ? DeviceKind.ThisDevice : KindOf(type);
                 row.VolumeFixed = VolumeFixedBy(hasCapabilities, disableVolume, volumeSteps);
                 row.SupportsSetOptions = setOptions;
+                row.OutputName = into.AddText(outputName);
+                row.OutputType = (byte)Math.Clamp(outputType, 0, 255);
             }
 
             // `devices.proto`'s DeviceType ordinals, folded to the five shapes the picker draws (`ClusterMapper`).
@@ -357,6 +410,7 @@ public static partial class Spotify
             // The two lists are each a contiguous run in the buffer, but the wire's order between them is the
             // serializer's business (prev_tracks is field 19, next_tracks is 20), so each records its OWN start.
             int next = 0, nextStart = -1, prev = 0, prevStart = -1, metaStart = -1;
+            TextRef contextRepeatContext = default, contextRepeatTrack = default, contextShuffle = default;
 
             while (r.Next())
             {
@@ -364,6 +418,21 @@ public static partial class Spotify
                 {
                     case 1: delta.TimestampMs = (long)r.Varint(); break;
                     case 2: delta.ContextUri = into.AddText(r.Bytes()); break;
+                    case 4:                                        // context_restrictions: the toggles, when the player's own do not say
+                        {
+                            var x = r.Message();
+                            while (x.Next())
+                            {
+                                switch (x.Field)
+                                {
+                                    case 8: KeepFirst(ref contextRepeatContext, x.Bytes(), into); break;
+                                    case 9: KeepFirst(ref contextRepeatTrack, x.Bytes(), into); break;
+                                    case 10: KeepFirst(ref contextShuffle, x.Bytes(), into); break;
+                                    default: x.Skip(); break;
+                                }
+                            }
+                            break;
+                        }
                     case 5:                                        // PlayOrigin
                         {
                             var o = r.Message();
@@ -387,7 +456,9 @@ public static partial class Spotify
                             // The current track is the DELTA's own field, not a row in either list: decoded into a
                             // local so it never takes a slot in the buffer that a list would have to skip.
                             var track = default(ClusterTrack);
-                            Track(r.Message(), into, ref track);
+                            ReadOnlySpan<byte> current = r.Bytes();
+                            Track(new ProtoReader(current), into, ref track);
+                            FadeKeys(current, out delta.FadeOutStartMs, out delta.FadeOutDurationMs, outgoing: true);   // #48 M7
                             delta.Track = track;
                             delta.HasTrack = !track.Uri.IsEmpty;
                             break;
@@ -425,10 +496,18 @@ public static partial class Spotify
                                     case 3: delta.NoSeek |= !x.Bytes().IsEmpty; break;
                                     case 6: delta.NoPrev |= !x.Bytes().IsEmpty; break;
                                     case 7: delta.NoNext |= !x.Bytes().IsEmpty; break;
+                                    // AI DJ: the toggles (8 repeat context, 9 repeat track, 10 shuffle) by their first reason, and a
+                                    // refused transfer (13), as the DJ player states them (dj-protocol §4)
+                                    case 8: KeepFirst(ref delta.NoRepeatContextReason, x.Bytes(), into); break;
+                                    case 9: KeepFirst(ref delta.NoRepeatTrackReason, x.Bytes(), into); break;
+                                    case 10: KeepFirst(ref delta.NoShuffleReason, x.Bytes(), into); break;
+                                    case 13: delta.NoTransfer |= !x.Bytes().IsEmpty; break;
                                     case 29:                       // disallow_signals: map<string, Reasons{ repeated string reasons = 1 }>
                                         {
                                             x.Message().Fields(1, 2, out var signal, out var reasons);
-                                            if (!new ProtoReader(reasons).Bytes(1).IsEmpty) delta.VideoDisallowed |= SignalBit(signal);
+                                            if (new ProtoReader(reasons).Bytes(1).IsEmpty) break;
+                                            delta.VideoDisallowed |= SignalBit(signal);
+                                            delta.JumpDisallowed |= signal.SequenceEqual("jump"u8);   // AI DJ: "Let DJ pick" refused, with a reason
                                             break;
                                         }
                                     default: x.Skip(); break;
@@ -470,16 +549,56 @@ public static partial class Spotify
                         }
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
-                    case 33: delta.VideoOffered |= SignalBit(r.Bytes()); break;   // signals: what the owner offers a controller
+                    case 32: delta.Quality = ReadQuality(r.Bytes()); break;      // playback_quality (Spotify.Decode.Quality.cs)
+                    case 33:                                       // signals: what the owner offers a controller
+                        {
+                            ReadOnlySpan<byte> signal = r.Bytes();
+                            delta.VideoOffered |= SignalBit(signal);
+                            delta.MixOffered |= signal.SequenceEqual("automix-preview"u8) ? (byte)1 : signal.SequenceEqual("stop-automix-preview"u8) ? (byte)2 : (byte)0;
+                            delta.SignalsStated = true;
+                            delta.JumpOffered |= signal.SequenceEqual("jump"u8);   // AI DJ: "Let DJ pick" is accepted now
+                            break;
+                        }
                     default: r.Skip(); break;
                 }
             }
 
             delta.NextStart = nextStart < 0 ? 0 : nextStart;
             delta.NextCount = next;
+            delta.FadeInStartMs = delta.FadeInDurationMs = -1;
+            if (next > 0) FadeKeys(into.Utf8(into.Tracks(delta.NextStart, 1)[0].Raw), out delta.FadeInStartMs, out delta.FadeInDurationMs, outgoing: false);
             delta.PrevStart = prevStart < 0 ? 0 : prevStart;
             delta.PrevCount = prev;
             delta.MetaStart = metaStart < 0 ? 0 : metaStart;
+            // AI DJ: the player's own toggle restrictions win; a player state that states none falls back on its context's.
+            if (delta.NoRepeatContextReason.IsEmpty) delta.NoRepeatContextReason = contextRepeatContext;
+            if (delta.NoRepeatTrackReason.IsEmpty) delta.NoRepeatTrackReason = contextRepeatTrack;
+            if (delta.NoShuffleReason.IsEmpty) delta.NoShuffleReason = contextShuffle;
+        }
+
+        /// <summary>A repeated reason: the first non-empty one is kept, the rest only count as "restricted" already. Allocates arena
+        /// text once per list.</summary>
+        static void KeepFirst(ref TextRef first, ReadOnlySpan<byte> reason, ClusterBuffer into)
+        {
+            if (first.IsEmpty && !reason.IsEmpty) first = into.AddText(reason);
+        }
+
+        /// <summary>#48 M7: a <c>ProvidedTrack</c>'s published fade (protocol §6.3): <c>audio.fade_out_start_time</c> and
+        /// <c>audio.fade_out_duration</c> (<paramref name="outgoing"/>) or <c>audio.fade_in_start_time</c> and
+        /// <c>audio.fade_in_duration</c>; -1 each when the row carries none. Allocation-free.</summary>
+        static void FadeKeys(ReadOnlySpan<byte> track, out long startMs, out long durationMs, bool outgoing)
+        {
+            startMs = durationMs = -1;
+            var t = new ProtoReader(track);
+            while (t.Next())
+            {
+                if (t.Field != 3 || t.Wire != 2) { t.Skip(); continue; }
+                t.Message().Fields(1, 2, out var key, out var value);
+                if (key.SequenceEqual(outgoing ? "audio.fade_out_start_time"u8 : "audio.fade_in_start_time"u8)) startMs = MsOf(value);
+                else if (key.SequenceEqual(outgoing ? "audio.fade_out_duration"u8 : "audio.fade_in_duration"u8)) durationMs = MsOf(value);
+            }
+
+            static long MsOf(ReadOnlySpan<byte> text) => System.Buffers.Text.Utf8Parser.TryParse(text, out long v, out _) && v >= 0 ? v : -1;
         }
 
         /// <summary>A video signal's wire name → its <c>Playback.VideoSignals</c> bit (0 for any other signal).</summary>
@@ -533,16 +652,23 @@ public static partial class Spotify
             /// `next_track` decodes as <see cref="SkipNext"/>.</summary>
             NextTrack,
             /// <summary>BOTH WAYS: the `signal` endpoint — a controller asking the owner to switch the row it plays between its audio
-            /// and its music video (<see cref="RemoteCommand.Signal"/>; itsover.saz 772/793). Never refused: an unknown
+            /// and its music video (<see cref="RemoteCommand.Signal"/>; itsover.saz 772/793), or an AI DJ player for "Let DJ pick"
+            /// (<c>jump</c>, plan-dj §1.8). Never refused: an unknown
             /// <c>signal_id</c> is acked and dropped, because a refusal caches the sender out of the endpoint for good.</summary>
             Signal,
         }
 
-        /// <summary>The <c>signal_id</c> of a <see cref="RemoteCmd.Signal"/>: the two video switches, or one we do not act on.</summary>
-        public enum VideoSignal : byte { None, ToVideo, ToAudio }
+        /// <summary>The <c>signal_id</c> of a <see cref="RemoteCmd.Signal"/>: the two video switches, the AI DJ's <c>jump</c> ("Let DJ pick",
+        /// which a DJ player advertises in PlayerState f33), or one we do not act on.</summary>
+        public enum PlayerSignal : byte { None, ToVideo, ToAudio, Jump }
 
-        /// <summary>The wire spelling of a video signal. PURE.</summary>
-        public static string SignalId(VideoSignal signal) => signal == VideoSignal.ToAudio ? "switch-to-audio" : "switch-to-video";
+        /// <summary>The wire spelling of a signal. PURE.</summary>
+        public static string SignalId(PlayerSignal signal) => signal switch
+        {
+            PlayerSignal.ToAudio => "switch-to-audio",
+            PlayerSignal.Jump => "jump",
+            _ => "switch-to-video",
+        };
 
         /// <summary>One decoded remote command — a pure value, no strings (ported from `ConnectCommand.TryParse`).
         ///
@@ -563,7 +689,7 @@ public static partial class Spotify
         public readonly record struct RemoteCommand(
             RemoteCmd Kind, bool Ok, uint MessageId, long SeekToMs, bool BoolArg,
             EntityId Track, ulong SenderHash, ulong SessionHash, ulong DedupeKey,
-            ulong TrackUidItemId = 0, ulong TrackUidHash = 0, VideoSignal Signal = VideoSignal.None);
+            ulong TrackUidItemId = 0, ulong TrackUidHash = 0, PlayerSignal Signal = PlayerSignal.None);
 
         /// <summary>The dealer REQUEST body → a <see cref="RemoteCommand"/>. `Utf8JsonReader` over the raw bytes:
         /// no `JsonDocument`, no DOM, nothing allocated on a path that runs per controller keypress.</summary>
@@ -576,7 +702,7 @@ public static partial class Spotify
             long seek = 0;
             bool boolArg = false, ok = false;
             var track = default(EntityId);
-            var signal = VideoSignal.None;
+            var signal = PlayerSignal.None;
 
             while (r.Read())
             {
@@ -594,7 +720,7 @@ public static partial class Spotify
 
             static bool Command(ref System.Text.Json.Utf8JsonReader r, ref RemoteCmd kind, ref long seek,
                                 ref bool boolArg, ref ulong session, ref EntityId track, ref ulong uidItem, ref ulong uidHash,
-                                ref VideoSignal signal)
+                                ref PlayerSignal signal)
             {
                 if (r.TokenType != System.Text.Json.JsonTokenType.StartObject) { r.Skip(); return false; }
                 int depth = r.CurrentDepth;
@@ -605,10 +731,11 @@ public static partial class Spotify
                     else if (r.ValueTextEquals("signal_id"u8))
                     {
                         r.Read();
-                        signal = r.TokenType != System.Text.Json.JsonTokenType.String ? VideoSignal.None
-                            : r.ValueTextEquals("switch-to-video"u8) ? VideoSignal.ToVideo
-                            : r.ValueTextEquals("switch-to-audio"u8) ? VideoSignal.ToAudio
-                            : VideoSignal.None;
+                        signal = r.TokenType != System.Text.Json.JsonTokenType.String ? PlayerSignal.None
+                            : r.ValueTextEquals("switch-to-video"u8) ? PlayerSignal.ToVideo
+                            : r.ValueTextEquals("switch-to-audio"u8) ? PlayerSignal.ToAudio
+                            : r.ValueTextEquals("jump"u8) ? PlayerSignal.Jump
+                            : PlayerSignal.None;
                     }
                     else if (r.ValueTextEquals("position"u8) || r.ValueTextEquals("value"u8))
                     {

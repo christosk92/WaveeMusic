@@ -588,11 +588,15 @@ public static partial class Video
     {
         if (CurrentTrack() is not { } t || Entities.Current is not { } scope) return "";
         _ = scope.Tracks.Changed.Value;
-        return t.IsValid && t.Knows(TrackFields.Row) ? Entities.Strings.Resolve(t.ArtistLineId) : "";
+        return t.IsValid && t.Knows(TrackFields.Row) ? t.CreditLine : "";
     }
 
     /// <summary>The current track's cover url, or null. Subscribes.</summary>
-    static string? CurrentArtUrl() => CurrentTrack() is { } t ? Controls.ArtUrl(t.ImageId) : null;
+    static string? CurrentArtUrl() => CurrentTrack() is { } t ? Controls.ArtUrl(PosterOf(t)) : null;
+
+    /// <summary>The poster's picture: a video of mine (a linked video version, a local video file) shows the frame it wears; anything else its art.</summary>
+    static StringId PosterOf(Track t)
+        => (t.FlagBits & (uint)(TrackFlags.LinkedVideo | TrackFlags.LocalVideoFile)) != 0 && !t.VideoImageId.IsEmpty ? t.VideoImageId : t.ImageId;
 
     /// <summary>A module playable uri is 60+ characters differing only in the tail — a log line keeps the tail.</summary>
     static string Show(string? uri) => string.IsNullOrEmpty(uri) ? "(none)" : uri.Length <= 24 ? uri : "…" + uri[^24..];

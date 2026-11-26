@@ -1,0 +1,322 @@
+// ── Entities/Entities.Fake.Dj.cs — FAKE (AI DJ, plan-dj §2.9 "--fake") ────────────────────────────────────────────────
+//
+// One DJ list for --fake and the inspector, and the lexicon session provider's answers for it, in the shape the live service
+// answers (plan-dj §1.2–§1.3): a list whose format attributes carry `lexicon_set_type=your_dj` and a `lexicon_context_url`; a session
+// answer (root uri, url, the context metadata, one empty page naming the first real page, the three `dj-disallow` restrictions);
+// and pages of 5-track segments whose `next_page_url` names the next page, endlessly. Every id, segment, decision id, request id
+// and spoken line here is INVENTED; the tracks are the demo catalogue's own. `Playback.Dj.UseFake` (App.cs, --fake) serves
+// them as the response BODY of the lexicon GET, so the real resolver, the real decoder and the real paging run against them.
+// Route: pl:spotify:playlist:pldj.
+
+using System.Globalization;
+using System.Text.Json;
+
+namespace Wavee;
+
+public static partial class Entities
+{
+    internal static partial class LibrarySeed
+    {
+        /// <summary>The fake DJ list (never the live one's id: a DJ is known by its attributes, plan-dj §1.1).</summary>
+        public const string DjUri = "spotify:playlist:pldj";
+
+        /// <summary>Its <c>lexicon_context_url</c> attribute, as the rootlist and the list read carry it.</summary>
+        public const string DjLexiconUrl = "hm://lexicon-session-provider/context-resolve/v2/session?contextUri=" + DjUri;
+
+        static void StageDj(Staging s)
+        {
+            ref var row = ref s.Playlists.RowFor(Text(s, DjUri), Authority.Seed, (uint)PlaylistFields.Identity);
+            row.Title = Text(s, "DJ");
+            row.Description = Text(s, "Your own AI DJ: the music you love, and what you'll love next, with a voice between the songs.");
+            row.Image = Text(s, Cover(11));
+            row.OwnerUri = Text(s, SpotifyUserUri);
+            row.Flags = (uint)PlaylistFlags.YourDj;
+            row.FlagsMask = (uint)PlaylistFlags.YourDj;
+            row.LexiconUrl = Text(s, DjLexiconUrl);
+            row.DjAttributes = Text(s, DjAttributesJson);
+            // The card's words and colours (home.card.*), as the rootlist and the Home feed carry them (the bundled Home capture's DJ card is
+            // this list too: home.json names spotify:playlist:pldj, so its card plays the fake session).
+            row.DjTranscript = Text(s, "Hey, it's your DJ. Got a run of your favourites ready to go.");
+            row.DjColors = new DjCardColors(Background: 0xFF1B3A6Bu, Top: 0xFF3FD8A0u, Mid: 0xCB3FC8D0u, Bottom: 0x7F3F90D8u, Text: 0xFFFFFFFFu);
+        }
+
+        /// <summary>The list's format attributes as the rootlist states them (plan-dj §1.1), every value invented: what a DJ play names as
+        /// its context metadata (PutState f21, the controller's envelope).</summary>
+        public const string DjAttributesJson =
+            "{\"lexicon_set_type\":\"your_dj\",\"lexicon_context_url\":\"" + DjLexiconUrl + "\",\"automix.mode\":\"radio\","
+            + "\"add_context_load_reason\":\"true\",\"home.card.transcript_id\":\"fa4e0000-0000-0000-0000-00000000ca7d\","
+            + "\"home.card.transcript_text\":\"Your DJ is ready when you are.\",\"home.card.jellyfish_top_color\":\"#FF3FD8A0\","
+            + "\"home.card.jellyfish_mid_color\":\"#FF3FC8D0\",\"home.card.jellyfish_bottom_color\":\"#FF3F90D8\","
+            + "\"home.card.text_color\":\"#FFFFFFFF\"}";
+
+        /// <summary>The DJ list has no rows of its own (the service lists none): its membership is known and empty. The tracks its pages
+        /// serve get their kind 28 here (<see cref="SeedDjCues"/>).</summary>
+        static void LandDj()
+        {
+            var p = new global::Wavee.Playlist(SlotOf(EntityKind.Playlist, DjUri));
+            if (p.IsValid) Land(p, [], []);
+            SeedDjCues();
+        }
+
+        /// <summary>Kind 28 for the tracks the first <see cref="DjCuePages"/> fake pages serve (a track that already has cues, a Mix
+        /// fixture's, keeps them), invented to cover every talk-over and radio rule (plan-dj §1.6, §1.7) with the capture's cue values:
+        /// <list type="bullet">
+        /// <item>page 1's first track: a human cue at 8932 ms (the 24.5 s intro: the track starts 17.2 s into the voice, 7332 ms overlap);</item>
+        /// <item>page 2's: an ml cue at 13 250 ms, confidence 0.88 (its 4.9 s jump clip: the ml rule, the track 1.5 s into the voice);</item>
+        /// <item>page 3's and every odd page after: a human cue at 11 815 ms (a short intro fits before it: the track starts at once, later
+        /// in its file); the other even pages an ml cue at 3870 ms;</item>
+        /// <item>slot 2: ml 5570 ms at 0.90 (radio: pre-rolled to its cue); slot 3: ml 9000 ms at 0.21 (not confident: from 0 in A's last
+        /// 350 ms); slot 4: a human cue at 260 ms (its own position is the overlap); slot 5: ml 8370 ms at 0.88;</item>
+        /// <item>every end cue (700 + 300 × slot) ms before the end, the tempo 90 + 10 × slot BPM (radio fades of 8 beats: 4.8 to 3.4 s).</item>
+        /// </list></summary>
+        static void SeedDjCues()
+        {
+            var edges = Current.Edges;
+            for (int page = 1; page <= DjCuePages; page++)
+                for (int slot = 1; slot <= 5; slot++)
+                {
+                    int track = SlotOf(EntityKind.Track, TrackUri(DjPoolOffset + (page - 1) * 5 + (slot - 1)));
+                    if (track <= 0 || edges.TrackCues.Payload(track).Length > 0) continue;   // a Mix fixture keeps its own (and stays silent)
+                    long dur = new global::Wavee.Track(track).DurationMs;
+                    if (dur < 30_000) continue;
+                    (uint start, bool ml, double confidence) = slot switch
+                    {
+                        1 => page switch
+                        {
+                            1 => (8932u, false, 1.0),
+                            2 => (13_250u, true, 0.88),
+                            _ => page % 2 == 1 ? (11_815u, false, 1.0) : (3870u, true, 0.88),
+                        },
+                        2 => (5570u, true, 0.90),
+                        3 => (9000u, true, 0.21),
+                        4 => (260u, false, 1.0),
+                        _ => (8370u, true, 0.88),
+                    };
+                    uint end = (uint)(dur - (700 + 300 * slot));
+                    var cue = new[] { new TrackCues(start, end, (ushort)((90 + 10 * slot) * 10), Facts: TrackCues.FactsOf(ml, endMl: true, confidence)) };
+                    edges.TrackCues.Replace(track, new int[1], cue, EdgeState.Complete, 1);
+                    // ... and it plays as silent MP3 bytes of its length, so the pump can join into it (Playback.Audio.FakeTracks.cs).
+                    Playback.Audio.FakeAudible(Current.Tracks.Id[track], (int)dur);
+                }
+        }
+
+        /// <summary>Six pages: tracks 134 to 163 of the 166, so the pool never wraps onto the catalogue's head (whose tracks the other
+        /// fixtures play silent).</summary>
+        const int DjCuePages = 6;
+    }
+
+    // ── the lexicon session provider's answers (served by Playback.Dj.UseFake) ────────────────────────────────────
+
+    const string LexiconSessionPath = "/lexicon-session-provider/context-resolve/v2/session";
+    const string DjPagePath = LexiconSessionPath + "/00000000000000000000000000000000";
+    const int DjPoolOffset = 300;
+    const int DjSegmentBase = 4100;
+    static readonly string[] s_djSubtitles = ["Vibes", "From the past", "Based on recent listening", "Late-night picks"];
+
+    /// <summary>The inspector's `dj do=starve`: the fake service answers no more pages (a session answer still lands), so the deck runs out of
+    /// later segments.</summary>
+    public static bool FakeLexiconStarved { get; set; }
+
+    /// <summary>How many lexicon answers the fake has served (the inspector's evidence that a fetch happened).</summary>
+    public static int FakeLexiconServed { get; private set; }
+
+    /// <summary>The highest page served so far: a session answered again (a renewal past its expiry, a second start) begins after it,
+    /// so its rows carry new uids, segments and decision ids as a fresh session's do.</summary>
+    static int s_djHighestPage;
+
+    /// <summary>The fake service's answer to a GET of <paramref name="path"/> (the spclient path the resolver sends, query included),
+    /// or null for a path the fake does not serve. The session for the fake DJ list, and its page <c>n</c> (1-based, read back off the
+    /// request id the previous answer wrote) for any n: the session is endless. A session answer names the page after the highest
+    /// one served, so every page of every session is distinct.</summary>
+    internal static byte[]? FakeLexicon(string path)
+    {
+        if (!path.StartsWith(LexiconSessionPath, StringComparison.Ordinal)) return null;
+        if (path.IndexOf("contextUri=" + LibrarySeed.DjUri, StringComparison.Ordinal) < 0) return null;
+        if (FakeLexiconStarved && path.StartsWith(DjPagePath, StringComparison.Ordinal)) return null;
+        byte[]? body = path.StartsWith(DjPagePath, StringComparison.Ordinal) ? DjPage(PageOf(path))
+            : path.StartsWith(LexiconSessionPath + "?", StringComparison.Ordinal) ? DjSession(path) : null;
+        if (body is not null) FakeLexiconServed++;
+        return body;
+    }
+
+    /// <summary>The page a page url asks for: the request id the fake wrote (<see cref="RequestId"/>) ends in the page's number.</summary>
+    static int PageOf(string path)
+    {
+        int at = path.IndexOf("requestId=", StringComparison.Ordinal);
+        if (at < 0) return 0;
+        ReadOnlySpan<char> id = path.AsSpan(at + "requestId=".Length);
+        int end = id.IndexOf('&');
+        if (end >= 0) id = id[..end];
+        return id.Length > 8 && int.TryParse(id[^8..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int n) ? n : 0;
+    }
+
+    /// <summary>An invented 32-hex request id that names page <paramref name="page"/> (the service writes its own; the client never
+    /// builds one).</summary>
+    static string RequestId(int page) => "fa4ed1ce000000000000" + "0000" + page.ToString("x8", CultureInfo.InvariantCulture);
+
+    static string SegmentId(int page) => "FAKE-Segment-" + (DjSegmentBase + page).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The url of page <paramref name="page"/>: the first names no previous segment, the rest the one before.</summary>
+    static string DjPageUrl(int page, bool first = false)
+        => "hm:/" + DjPagePath + "?contextUri=" + LibrarySeed.DjUri
+           + (first ? "&opmPlayed=false" : "&previousSegmentId=" + SegmentId(page - 1))
+           + "&requestId=" + RequestId(page);
+
+    static string Hex(int value, int width) => value.ToString("x" + width.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+
+    static byte[] DjSession(string path)
+    {
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteString("uri", LibrarySeed.DjUri);
+            w.WriteString("url", "hm://" + path.TrimStart('/'));
+            w.WriteStartObject("metadata");
+            string now = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+            string expires = DateTimeOffset.UtcNow.AddHours(12).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+            w.WriteString("lexicon_set_type", "your_dj");
+            w.WriteString("agentic_product_type", "dj");
+            w.WriteString("context_description", "DJ");
+            w.WriteString("automix.mode", "radio");
+            w.WriteString("automix.talk_mode", "human_cuepoints_or_full_track");
+            w.WriteString("shuffle.algorithm", "none");
+            w.WriteString("autoplay_candidate", "false");
+            w.WriteString("end_of_context_action", "stop");
+            w.WriteString("add_context_load_reason", "true");
+            w.WriteString("lexicon_current_time", now);
+            w.WriteString("lexicon_expiration_time", expires);
+            w.WriteString("dj.interactivity_enabled", "true");
+            w.WriteString("dj.interactivity.localized_cta", "Your DJ here. What can I play for you?");
+            w.WriteString("dj.interactivity.localized_jump_button", "Let DJ pick");
+            w.WriteString("narration.background.color", "#FF1B3A6B");
+            w.WriteString("narration.jellyfish.top.color", "#FF3FD8A0");
+            w.WriteString("narration.jellyfish.mid.color", "#FF3FC8D0");
+            w.WriteString("narration.jellyfish.bottom.color", "#FF3F90D8");
+            w.WriteString("narration.jump.background.color", "#FF1B3A6B");
+            w.WriteString("narration.jump.border.color", "#FF1B3A6B");
+            w.WriteString("narration.jump.icon.color", "#FF3FD8A0");
+            // The narrations speak the fake TTS service's fixtures where one exists (Spotify.DjTts.Fake.cs), so the clips have their
+            // known lengths and deliveries: the welcome 3.4 s whole; page 1's intro the 24.5 s streamed MISS; page 2's jump 4.9 s;
+            // page 2's outro the broken one (its fulfil fails twice: dropped) and page 3's the flaky one (fails once, then plays).
+            Narration(w, "welcome", "Welcome", "dj~fa4e0000000000000000000000000000we1c", "", TtsFixture("welcome",
+                "<speak xml:lang=\"en-US\">Hey there, it's your DJ. Let's ease into it.</speak>"));
+            w.WriteEndObject();
+            w.WriteStartArray("pages");
+            w.WriteStartObject();
+            w.WriteString("next_page_url", DjPageUrl(s_djHighestPage + 1, first: true));
+            w.WriteStartArray("tracks");
+            w.WriteEndArray();
+            w.WriteEndObject();
+            w.WriteEndArray();
+            w.WriteStartObject("restrictions");
+            foreach (string key in (ReadOnlySpan<string>)["disallow_toggling_repeat_context_reasons", "disallow_toggling_repeat_track_reasons",
+                         "disallow_toggling_shuffle_reasons"])
+            {
+                w.WriteStartArray(key);
+                w.WriteStringValue("dj-disallow");
+                w.WriteEndArray();
+            }
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        return stream.ToArray();
+    }
+
+    /// <summary>Page <paramref name="page"/> (1-based): one 5-track segment of the demo catalogue, its first track the jump target
+    /// with the intro narration (and, from page 2 on, the jump narration), its last the outro.</summary>
+    static byte[] DjPage(int page)
+    {
+        page = Math.Max(1, page);
+        s_djHighestPage = Math.Max(s_djHighestPage, page);
+        string segment = SegmentId(page);
+        string decision = "ssp~fa4e" + Hex(page, 32);
+        string subtitle = s_djSubtitles[Wrap(page - 1, s_djSubtitles.Length)];
+        using var stream = new MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteString("next_page_url", DjPageUrl(page + 1));
+            w.WriteStartArray("tracks");
+            for (int slot = 1; slot <= 5; slot++)
+            {
+                int pool = DjPoolOffset + (page - 1) * 5 + (slot - 1);
+                w.WriteStartObject();
+                w.WriteString("uri", TrackUri(pool));
+                w.WriteString("uid", "df" + Hex(page, 10) + Hex(slot, 8));
+                w.WriteStartObject("metadata");
+                w.WriteString("station_title", "DJ");
+                w.WriteString("station_subtitle", subtitle);
+                w.WriteString("station_uri", "");
+                w.WriteString("segment", segment);
+                w.WriteString("source.components", "YourDJ," + segment);
+                w.WriteString("decision_id", decision);
+                w.WriteString("custom_reporting_attribution", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":"
+                                                               + slot.ToString(CultureInfo.InvariantCulture) + ":0");
+                w.WriteString("album_image_small", Cover(pool));
+                w.WriteString("album_image_large", Cover(pool));
+                w.WriteString("agentic_product_type", "dj");
+                if (slot == 1)
+                {
+                    w.WriteString("dj.jump_target", "true");
+                    w.WriteString("automix.talk_mode", "human_cuepoints_or_full_track");
+                    string introSsml = "<speak xml:lang=\"en-US\">Coming up, a run of " + subtitle.ToLowerInvariant()
+                        + " songs, starting with <entity type=\"artist\" uri=\"ar" + (page % 7).ToString(CultureInfo.InvariantCulture)
+                        + "\">one of your favourites</entity>.</speak>";
+                    Narration(w, "intro", "Up next", "dj~fa4e" + Hex(page, 28) + "1a7e", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":0:0",
+                        page == 1 ? TtsFixture("intro", introSsml) : introSsml);
+                    if (page >= 2)
+                    {
+                        string jumpSsml = "<speak xml:lang=\"en-US\">OK, let's switch it up. Here's something " + subtitle.ToLowerInvariant() + ".</speak>";
+                        Narration(w, "jump", "Up next", "dj~fa4e" + Hex(page, 28) + "0a1b", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":0:0",
+                            page == 2 ? TtsFixture("jump", jumpSsml) : jumpSsml);
+                    }
+                }
+                if (slot == 5)
+                {
+                    w.WriteString("automix.talk_mode", "human_cuepoints_or_full_track");
+                    string outroSsml = "<speak xml:lang=\"en-US\">That one closes out the set of " + subtitle.ToLowerInvariant() + ".</speak>";
+                    Narration(w, "outro", "Up next", "dj~fa4e" + Hex(page, 28) + "0b70", segment + ":" + (page - 1).ToString(CultureInfo.InvariantCulture) + ":6:0",
+                        page == 2 ? TtsFixture("broken", outroSsml) : page == 3 ? TtsFixture("flaky", outroSsml) : outroSsml);
+                }
+                w.WriteEndObject();
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteStartObject("metadata");
+            w.WriteString("correlation-id", decision);
+            w.WriteString("lastComponentId", segment);
+            w.WriteString("automix.mode", "radio");
+            w.WriteString("narration.background.color", "#FF1B3A6B");
+            w.WriteString("narration.jump.background.color", "#FF1B3A6B");
+            w.WriteString("narration.jump.border.color", "#FF1B3A6B");
+            w.WriteString("narration.jump.icon.color", "#FF3FD8A0");
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        return stream.ToArray();
+    }
+
+    /// <summary>The fake TTS service's fixture SSML of that name (Spotify.DjTts.Fake.cs), or <paramref name="fallback"/>.</summary>
+    static string TtsFixture(string name, string fallback) => Spotify.DjTts.Fake.FixtureNamed(name)?.Ssml ?? fallback;
+
+    /// <summary>One narration slot's keys (<c>narration.&lt;slot&gt;.*</c>, plan-dj §1.3), every value invented.</summary>
+    static void Narration(Utf8JsonWriter w, string slot, string title, string decision, string attribution, string ssml)
+    {
+        string p = "narration." + slot + ".";
+        w.WriteString(p + "ssml", ssml);
+        w.WriteString(p + "title", title);
+        w.WriteString(p + "artist", "DJ X");
+        w.WriteString(p + "album_title", "DJ");
+        w.WriteString(p + "image", Cover(11));
+        w.WriteString(p + "voice", "VOICE1");
+        w.WriteString(p + "tts_provider", "SONANTIC_FAST");
+        w.WriteString(p + "sample_rate", "44100");
+        w.WriteString(p + "loudness", "-16.0");
+        w.WriteString(p + "true_peak", "-3.0");
+        w.WriteString(p + "commentary_type", "NARRATION");
+        w.WriteString(p + "commentary_id", "");
+        w.WriteString(p + "decision_id", decision);
+        if (attribution.Length > 0) w.WriteString(p + "custom_reporting_attribution", attribution);
+    }
+}

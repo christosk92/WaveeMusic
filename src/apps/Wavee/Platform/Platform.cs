@@ -183,6 +183,29 @@ public static partial class Platform
         /// <summary>The playlists whose "Video" toggle is on (play their music videos): ONE capped blob, most recent first, the playlist uris
         /// joined by a space. Read and written ONLY through <see cref="PlaylistVideo"/>, which owns the format.</summary>
         public static readonly SettingKey<string> PlaylistVideoFirst = new("playlist.videoFirst", "");
+        /// <summary>The music folders on this PC (#240): their full paths joined by '|' (a character no Windows path holds). Read and
+        /// written ONLY through <see cref="LocalLibrary"/>, which owns the format.</summary>
+        public static readonly SettingKey<string> MusicFolders = new("local.musicFolders", "");
+        /// <summary>Settings › Storage › Music on this PC › "Watch folders for changes" (#240 S3): live updates on; off, folders
+        /// are scanned at start, on "Rescan now" and when a drive comes back.</summary>
+        public static readonly SettingKey<bool> MusicWatch = new("local.watch", true);
+        /// <summary>The subfolders the user left out of their music folders ("Can't read this folder" › Remove on a subfolder, #240 S11): full
+        /// paths joined by '|'. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<string> MusicSkip = new("local.skip", "");
+        /// <summary>Settings › Storage › Music on this PC › "Pause scanning on battery saver" (#240 S3): on, a scan holds while Windows battery
+        /// saver is on and picks up where it was when it turns off.</summary>
+        public static readonly SettingKey<bool> MusicPauseOnSaver = new("local.pauseOnSaver", true);
+        /// <summary>Settings › Storage › Music on this PC › "Read tags of cloud-only files (downloads them)" (#240 S3): off, a OneDrive placeholder
+        /// is listed by its file name and never opened.</summary>
+        public static readonly SettingKey<bool> MusicReadCloud = new("local.readCloud", false);
+        /// <summary>Settings › Storage › Music on this PC › "Keep missing songs for" (#240 S3): 30, 60 or 90 days.</summary>
+        public static readonly SettingKey<int> MusicMissingDays = new("local.missingDays", 60);
+        /// <summary>The local index's LocalId high-water mark (#240, LocalId safety): kept outside <c>localindex.bin</c>, so an index that
+        /// starts over (a corrupt or unreadable bin) never hands an id out twice. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<long> MusicIdMark = new("local.idMark", 0L);
+        /// <summary>The decoder set the local index's unplayable entries were last read with (#240): below <see cref="LocalLibrary.DecoderSet"/>,
+        /// they are read once more at start. Read and written ONLY through <see cref="LocalLibrary"/>.</summary>
+        public static readonly SettingKey<int> MusicDecoderSet = new("local.decoderSet", 0);
 
         // ── podcasts ──
         /// <summary>The podcast show page's filter + sort, for every show at once: ONE capped blob (`id:status:order;…`, most
@@ -238,11 +261,37 @@ public static partial class Platform
         public static readonly SettingKey<bool> PreviewSound = new("playback.preview.sound", false);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
         public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
+        /// <summary>#154: send LTC on a second output while the music plays (Settings > Sound > Timecode). Off by default, and the switch
+        /// is enabled only once <see cref="TimecodeLtcDeviceId"/> names an output.</summary>
+        public static readonly SettingKey<bool> TimecodeLtcEnabled = new("timecode.ltc.enabled", false);
+        /// <summary>The LTC output: a render endpoint id, never the music's output, "" = none chosen (no "Match Windows": LTC on the
+        /// speakers is a loud square wave).</summary>
+        public static readonly SettingKey<string> TimecodeLtcDeviceId = new("timecode.ltc.deviceId", "");
+        /// <summary>The LTC frame rate: 0 = 24, 1 = 25, 2 = 29.97 drop-frame, 3 = 30 (<see cref="LtcRate"/>).</summary>
+        public static readonly SettingKey<int> TimecodeLtcRate = new("timecode.ltc.rate", 3);
+        /// <summary>The hour every track starts at: 0 (00:00:00:00) or 1 (01:00:00:00, the usual show convention).</summary>
+        public static readonly SettingKey<int> TimecodeStartHour = new("timecode.startHour", 1);
+        /// <summary>The LTC level, dBFS (-24..0).</summary>
+        public static readonly SettingKey<int> TimecodeLtcLevelDb = new("timecode.ltc.levelDb", -12);
+        /// <summary>The timecode offset, ms (-500..+500): added to where the music is heard, for a device whose latency is reported wrong.</summary>
+        public static readonly SettingKey<int> TimecodeOffsetMs = new("timecode.offsetMs", 0);
+        /// <summary>#154: run the bundled CLX module (wavee.clx), which sends the playback timeline as CLX on this network.</summary>
+        public static readonly SettingKey<bool> TimecodeClxEnabled = new("timecode.clx.enabled", false);
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
         public static readonly SettingKey<string> EqualizerPreset = new("playback.eq.preset", "flat");
         public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");
         public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
         public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
+        /// <summary>#48 Mix: the local mirror of the account's "Listen without Mix" opt-outs (MixOptOut, Entities/Mix.cs): one line per
+        /// account and playlist, with whether Spotify has taken it yet. It replaces the per-PC `playback.mix.listenWithout` list, which
+        /// is sent once as opt-outs and removed.</summary>
+        public static readonly SettingKey<string> MixOptOuts = new("playback.mix.optOuts", "");
+        /// <summary>#48 Mix: the per-pair local overrides (No mix, Auto over a Spotify recipe, a local edit), Entities/Mix.Overrides.cs.</summary>
+        public static readonly SettingKey<string> MixOverrides = new("playback.mix.overrides", "");
+        /// <summary>#48 Mix menu: "Show transitions: Always" (chips in every seam); false = on hover.</summary>
+        public static readonly SettingKey<bool> MixShowTransitions = new("playback.mix.showTransitions", false);
+        /// <summary>#48 Mix menu: "Mix when shuffling" (Wavee's Auto on shuffled pairs); false = Spotify's behaviour (no mix while shuffled).</summary>
+        public static readonly SettingKey<bool> MixWhenShuffling = new("playback.mix.whenShuffling", true);
         public static readonly SettingKey<bool> AutoplayEnabled = new("playback.autoplay", true);
         /// <summary>A music video that ends in full screen counts down ("Up next in 5") before the next one plays (Playback.EndHold.cs).</summary>
         public static readonly SettingKey<bool> VideoEndCountdown = new("playback.video.endCountdown", true);
@@ -898,6 +947,10 @@ public static class SegoeGlyphs
     /// (<c>Icons.FullScreen</c>), is the APP's (the stage: the title bar's button, the player bar's rows), so the two never share
     /// a glyph (the owner, 2026-11-10).</summary>
     public static readonly string VideoFullScreen = Of(0xE9A6);
+    /// <summary>A drive over a network bar (Segoe "MapDrive"): a music folder on a NAS or a share (#240 S13).</summary>
+    public static readonly string NetworkFolder = Of(0xE8CE);
+    /// <summary>A gauge at half (Segoe "SpeedMedium"): a share that answers, but slowly (#240 S13).</summary>
+    public static readonly string SlowConnection = Of(0xEC49);
 }
 
 /// <summary>The app's font FILES, resolved next to the exe (assets/fonts/*, shipped by the csproj's assets Content
@@ -954,7 +1007,7 @@ public static partial class Platform
         public static bool FakeLiveClock { get; private set; }
 
         /// <summary>`--fake --fake-video &lt;path&gt;`: a local clip every fake-catalog track plays as its attached video
-        /// (<see cref="Video.Overrides.FakeClip"/>), exactly as a user's attached local video would. Null unless `--fake`
+        /// (<see cref="Video.LinkedVideos.FakeClip"/>), exactly as a user's attached local video would. Null unless `--fake`
         /// is on AND the file exists; in memory only, never written to the roster's persisted line store.</summary>
         public static string? FakeVideo { get; private set; }
 

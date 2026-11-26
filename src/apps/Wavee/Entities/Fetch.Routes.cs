@@ -81,6 +81,14 @@ public enum FetchEdge : byte
     /// <summary>The audio-analysis beat grid (<c>Edges.TrackBeats</c>): one spclient JSON read per track
     /// (<see cref="SpclientRoute.AudioAnalysis"/>), parent = track.</summary>
     TrackBeats,
+    /// <summary>#48 Mix: kind 217's beat grid into the same <c>Edges.TrackBeats</c>, plus its analysis id (the grid a
+    /// recipe pins). Asked for the tracks a mixed playlist is about to join; the JSON route above stays the visualizer's
+    /// until kind 217 is shown to be served outside a mixed list (plan O12).</summary>
+    TrackMixBeats,
+    /// <summary>#48 Mix: kind 28's cues and candidate lists (<c>Edges.TrackCues</c>, <c>TrackCueCandidates</c>), with kinds 218
+    /// (<c>TrackVocals</c>) and 6 (<c>TrackMixGenres</c>, and the chips) in the same POST (<see cref="FetchRoutes.EdgeKinds"/>):
+    /// the rest of what the beatmatched Auto reads.</summary>
+    TrackCues,
     // synthetic subjects' children
     /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>). A band's own cards are no relation here: the section
     /// row's <c>SectionFields.Whole</c> asks them, and the query layer walks them to the end.</summary>
@@ -176,8 +184,6 @@ public enum SpclientRoute : byte
     CollectionPage,
     /// <summary><c>/playlist/v2/list/recents/page</c> (and its <c>/diff</c> once a revision is held).</summary>
     Recents,
-    /// <summary><c>/presence-view/v2/init-friend-feed/&lt;connection&gt;</c>.</summary>
-    FriendFeed,
     /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;?playlist_limit=10&amp;artist_limit=10&amp;episode_limit=10&amp;market=from_token</c>
     /// on spclient.wg (protobuf): the profile's name, avatar, colour, counts, flags and the viewer's follow — AND its
     /// public playlists and recently played artists, which land their relations from the same answer.</summary>
@@ -224,6 +230,9 @@ public static class FetchRoutes
     /// <summary><c>CURATION_EXPERIENCE_TRAIT</c>: on a track it names the account's Liked Songs playlist
     /// (<c>Spotify.Connect.AskLikedPlaylist</c>). Asked on its own, never by a table's route.</summary>
     public const int CurationExperience = 246;
+    /// <summary>#48 Mix kinds (capture report §3.5): cue points, beats and vocal activity per track; mix state, auto lens and
+    /// the mixability trait per playlist.</summary>
+    public const int Cuepoints = 28, MixBeats = 217, MixVocals = 218, AutoLens = 170, MixState = 225, MixabilityTrait = 235;
 
     // ── the entity tables' routes, most capable first ──
 
@@ -284,7 +293,7 @@ public static class FetchRoutes
         // The v2 read is the one answer that carries the capability block; justified by it alone.
         FetchRoute.Spclient(SpclientRoute.PlaylistRead,
             (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities | PlaylistFields.Format
-                 | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning),
+                 | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning | PlaylistFields.Mix),
             primary: (uint)(PlaylistFields.Capabilities | PlaylistFields.Daylist | PlaylistFields.Chart | PlaylistFields.Tuning)),
         // The detail page's own facts justify the per-playlist pathfinder read; the ACCENT alone does not — it is the
         // cold-start colour a card already has from the home / search / library answer it came in, and a sidebar asking
@@ -297,6 +306,11 @@ public static class FetchRoutes
         FetchRoute.Metadata(ListMetadataV2, (uint)(PlaylistFields.Identity | PlaylistFields.Format)),
         FetchRoute.Spclient(SpclientRoute.PermissionBase, (uint)PlaylistFields.Visibility),
         FetchRoute.Spclient(SpclientRoute.Popcount, (uint)PlaylistFields.Saves),
+        // #48 Mix: the three playlist kinds the official client asks with the header (capture report §2 step 3). They
+        // ride the same batched extended-metadata POST as kind 205.
+        FetchRoute.Metadata(MixState, (uint)PlaylistFields.MixState),
+        FetchRoute.Metadata(AutoLens, (uint)PlaylistFields.MixLens),
+        FetchRoute.Metadata(MixabilityTrait, (uint)PlaylistFields.Mixability),
     ];
 
     static readonly FetchRoute[] s_show =
@@ -443,6 +457,21 @@ public static class FetchRoutes
         return n;
     }
 
+    /// <summary>The extension kinds a <see cref="RouteTransport.Metadata"/> edge's ONE POST asks for every parent: the route's own
+    /// kind, and for <see cref="FetchEdge.TrackCues"/> also kinds 218 and 6 (the beatmatched Auto's vocals and genres, which
+    /// land beside kind 28 in the same commit, so the pair re-plans once with all of them; the official client asks 6, 28, 217
+    /// and 218 together too, protocol §6.3). The kind count.</summary>
+    public static int EdgeKinds(FetchEdge edge, int offset, Span<int> into)
+    {
+        var route = ForEdge(edge, offset);
+        if (route.Transport != RouteTransport.Metadata || into.IsEmpty) return 0;
+        into[0] = route.Extension;
+        if (edge != FetchEdge.TrackCues || into.Length < 3) return 1;
+        into[1] = MixVocals;
+        into[2] = TrackDescriptor;
+        return 3;
+    }
+
     /// <summary>THE EDGE ROUTE: where a relation's children come from, for the page at <paramref name="offset"/>.
     /// <see cref="RouteTransport.None"/> for a relation this build cannot fetch on its own.</summary>
     public static FetchRoute ForEdge(FetchEdge edge, int offset = 0) => edge switch
@@ -451,7 +480,6 @@ public static class FetchRoutes
         FetchEdge.Liked or FetchEdge.SavedAlbums or FetchEdge.FollowedArtists or FetchEdge.SavedShows
             or FetchEdge.Pins => FetchRoute.Spclient(SpclientRoute.CollectionPage, 0),
         FetchEdge.Recents => FetchRoute.Spclient(SpclientRoute.Recents, 0),
-        FetchEdge.Friends => FetchRoute.Spclient(SpclientRoute.FriendFeed, 0),
         FetchEdge.PlaylistTracks => FetchRoute.Spclient(SpclientRoute.PlaylistRead, 0),
         // AlbumV4 carries every disc row in one answer; only a page past it (a 300-track box set through getAlbum's
         // own paging) goes to the pathfinder.
@@ -467,6 +495,8 @@ public static class FetchRoutes
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
         FetchEdge.TrackBeats => FetchRoute.Spclient(SpclientRoute.AudioAnalysis, 0),
+        FetchEdge.TrackMixBeats => FetchRoute.Metadata(MixBeats, 0),
+        FetchEdge.TrackCues => FetchRoute.Metadata(Cuepoints, 0),
         FetchEdge.TrackCanvas => FetchRoute.Metadata(CanvasV1, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
         FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),

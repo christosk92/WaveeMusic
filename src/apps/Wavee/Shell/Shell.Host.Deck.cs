@@ -81,19 +81,37 @@ public static partial class Shell
     static SessionDeckDto? DeckDto(in Playback.RestorePoint point)
     {
         if (point.IsEmpty || !point.Track.IsPlayable) return null;
+        // A DJ deck keeps the lexicon url it plays from: at the next launch the list's attributes are not read yet (AI DJ, D4).
+        if (point.ContextUrl is null && Entities.Current is not null && Playback.Dj.UrlFor(point.Context) is { Length: > 0 } djUrl)
+            return DeckDto(point with { ContextUrl = djUrl });
         ReadOnlySpan<int> packed = Entities.Current is null ? default : Queue.PackedRefs;
         ReadOnlySpan<QueueEdge> rows = Entities.Current is null ? default : Queue.Rows;
         int n = Math.Min(packed.Length, rows.Length);
         if (n == 0) return SessionDeck.ToDto(in point);
         EntityId[] ids = ArrayPool<EntityId>.Shared.Rent(n);
+        QueueEdge[] kept = ArrayPool<QueueEdge>.Shared.Rent(n);
         try
         {
-            for (int i = 0; i < n; i++) ids[i] = Queue.Unpack(packed[i]).Id;
-            ReadOnlySpan<EntityId> idSpan = ids.AsSpan(0, n);
-            int deck = SessionDeck.DeckIndex(idSpan, rows[..n], point.Track, point.CursorIndex);
-            return SessionDeck.ToDto(in point, idSpan, rows[..n], deck);
+            // An AI DJ narration row (a wavee:tts: clip of this session) is never persisted: the next launch has no such clip, and a DJ
+            // deck resumes from a fresh session anyway (Playback.Dj.Restore.cs). The cursor hint is re-based past the rows left out.
+            int m = 0, hint = point.CursorIndex;
+            for (int i = 0; i < n; i++)
+            {
+                EntityId id = Queue.Unpack(packed[i]).Id;
+                if (Playback.Dj.IsNarrationId(id)) { if (i < point.CursorIndex) hint--; continue; }
+                ids[m] = id;
+                kept[m++] = rows[i];
+            }
+            ReadOnlySpan<EntityId> idSpan = ids.AsSpan(0, m);
+            ReadOnlySpan<QueueEdge> keptRows = kept.AsSpan(0, m);
+            int deck = SessionDeck.DeckIndex(idSpan, keptRows, point.Track, hint);
+            return SessionDeck.ToDto(in point, idSpan, keptRows, deck);
         }
-        finally { ArrayPool<EntityId>.Shared.Return(ids); }
+        finally
+        {
+            ArrayPool<EntityId>.Shared.Return(ids);
+            ArrayPool<QueueEdge>.Shared.Return(kept);
+        }
     }
 
     /// <summary>A row's audio began (G-079): one play-log entry, stamping its album and billed artists in the recency
@@ -147,6 +165,7 @@ public static partial class Shell
                 DurationMs = Math.Max(0, point.DurationMs),
                 Shuffle = point.Shuffle,
                 Repeat = (int)point.Repeat,
+                ContextUrl = string.IsNullOrEmpty(point.ContextUrl) ? null : point.ContextUrl,
             };
             int n = Math.Min(ids.Length, rows.Length);
             if (n == 0) return dto;
@@ -212,7 +231,8 @@ public static partial class Shell
             RepeatMode repeat = dto.Repeat is >= (int)RepeatMode.Off and <= (int)RepeatMode.Track ? (RepeatMode)dto.Repeat : RepeatMode.Off;
             int cursor = Math.Max(-1, dto.CursorIndex);
             Playback.RestoreRow[]? rows = RowsOf(dto.Rows, ref cursor);
-            return new Playback.RestorePoint(track, context, cursor, position, duration, dto.Shuffle, repeat, rows);
+            return new Playback.RestorePoint(track, context, cursor, position, duration, dto.Shuffle, repeat, rows,
+                string.IsNullOrEmpty(dto.ContextUrl) ? null : dto.ContextUrl);
         }
 
         /// <summary>The persisted rows → identities and edges, in order, capped at <see cref="MaxRows"/>. A row whose
@@ -257,6 +277,7 @@ public static partial class Shell
                 && string.Equals(current.Context, next.Context, StringComparison.Ordinal)
                 && current.CursorIndex == next.CursorIndex && current.PositionMs == next.PositionMs
                 && current.DurationMs == next.DurationMs && current.Shuffle == next.Shuffle && current.Repeat == next.Repeat
+                && string.Equals(current.ContextUrl, next.ContextUrl, StringComparison.Ordinal)
                 && SameRows(current.Rows, next.Rows);
         }
 

@@ -57,17 +57,39 @@ public static partial class Spotify
             _ => CommandRoute.Mailbox,
         };
 
-        /// <summary>DEALER THREAD, after the ack.</summary>
-        static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
+        /// <summary>DEALER THREAD, after the ack (and the inspector's `dj do=signal`, which routes a made-up body as the glue does).</summary>
+        internal static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
         {
             switch (RouteOf(command.Kind))
             {
                 case CommandRoute.Load: HandOffLoad(in command, payload, epoch); break;
                 case CommandRoute.Options: EnqueueOptions(in command, payload, epoch); break;
                 case CommandRoute.QueueBody: HandOffQueue(in command, payload, epoch); break;
-                case CommandRoute.Mailbox: Enqueue(new Item(command, epoch)); break;
+                case CommandRoute.Mailbox:
+                    if (command.Kind == Decode.RemoteCmd.Signal && command.Signal == Decode.PlayerSignal.None) RouteMixPreview(payload);
+                    Enqueue(new Item(command, epoch));
+                    break;
                 default: Log.Warn("spotify", "connect command not understood — refused and dropped"); break;
             }
+        }
+
+        /// <summary>#48 M5: a <c>signal</c> that is not a video switch may be an editor's Mix preview (protocol §5): decoded here and handed
+        /// to the preview on the UI thread (Playback.MixPreview). The command item still folds (the PUT's attribution; the reducer drops
+        /// a signal it does not switch on).</summary>
+        static void RouteMixPreview(ReadOnlySpan<byte> payload)
+        {
+            Decode.MixPreviewSignal signal;
+            Decode.AutomixPreview? preview;
+            bool resume;
+            try { signal = Decode.MixPreviewCommand(payload, out preview, out resume); }
+            catch (Exception ex)
+            {
+                Log.Error("spotify", "automix signal decode faulted", ex);
+                return;
+            }
+            if (signal == Decode.MixPreviewSignal.Preview && preview is { } p) Post(() => Playback.MixPreview.Receive(p));
+            else if (signal == Decode.MixPreviewSignal.Stop) Post(() => Playback.MixPreview.ReceiveStop(resume));
+            else Log.Info("spotify", "connect signal not acted on (acked and dropped)");
         }
 
         /// <summary>G-071: rent, decode, hand over. The host owns the buffer from here and returns it once read. A body

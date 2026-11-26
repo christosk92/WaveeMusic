@@ -79,11 +79,41 @@ internal static class ZuneTrackDrawer
         for (int i = 0; i < entries.Count; i++)
         {
             var e = entries[i];
-            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks);
+            Element row = e.Reserved ? PendingVersionRow() : VersionRow(a, e.Version, e.Kind, e.RowKey, e.IsNow, e.Peaks, e.Label, e.Picture, e.Wide);
             body[2 + i] = ConnectedRow(e.RowKey, row, isLast: i == entries.Count - 1);
         }
+        if (a.Link is { } link) body = [.. body, LinkSection(link)];
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = body };
     }
+
+    // "Your files and Spotify" (F-G): a file's Spotify section under its versions, in Zune's voice: the heading as the versions', the core's line
+    // ("Linked to Savin' Me · Nickelback · Title, artist and length", "Not linked to Spotify") and its one verb as accent text, no plate.
+    static Element LinkSection(TrackDrawerLink l) => new BoxEl
+    {
+        Key = "drawer-link", Direction = 1, MinWidth = 0f,
+        Children =
+        [
+            R.Type.Eyebrow(l.Head) with
+            {
+                Color = Tok.TextTertiary, Case = R.Case.For(LabelKind.Heading), Margin = new Edges4(0f, Spacing.M, 0f, ZuneListRules.DrawerHeadBottom),
+            },
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Children =
+                [
+                    Icon(Icons.Link, ZuneListRules.DrawerLinkGlyph, l.Linked ? R.Ink.AccentAction : Tok.TextTertiary) with { Shrink = 0f },
+                    Meta(l.Line, Tok.TextSecondary) with { Key = "drawer-link:line", MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f },
+                    new BoxEl
+                    {
+                        Key = "drawer-link:act", Direction = 0, AlignItems = FlexAlign.Center, MinHeight = ZuneListRules.DrawerVerbH, Shrink = 0f,
+                        Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, OnClick = l.Act,
+                        Children = [Meta(l.ActionLabel, Tok.AccentTextPrimary) with { Case = R.Case.For(LabelKind.Command), HoverColor = Tok.TextPrimary, MaxLines = 1 }],
+                    },
+                ],
+            },
+        ],
+    };
 
     // ══ THE FORMAT SPLIT BUTTON ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -218,7 +248,7 @@ internal static class ZuneTrackDrawer
         var label = Meta(Loc.Get(Facts.LabelKey(kind)), Tok.TextTertiary);
         string? glyph = kind switch
         {
-            FactKind.Video => Icons.Movie, FactKind.LocalFile => Icons.Folder, FactKind.Unavailable => Icons.Info, _ => null,
+            FactKind.Video => Icons.Movie, FactKind.LocalFile => Icons.Folder, FactKind.Unavailable or FactKind.RegionLocked or FactKind.PremiumOnly => Icons.Info, _ => null,
         };
         if (glyph is null) return label;
         return new BoxEl
@@ -277,10 +307,13 @@ internal static class ZuneTrackDrawer
         ],
     };
 
-    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks)
+    static Element VersionRow(TrackDrawerBodyArgs a, Track version, byte kind, string rowKey, bool isNow, float[]? peaks, string? label = null,
+                              string? picture = null, bool wide = false)
     {
         Track parent = a.Track;
-        var meta = new List<Element>(6) { Meta(KindLabel(kind), Tok.TextTertiary) with { Case = R.Case.For(LabelKind.Label) } };
+        // #240 version cards: the card's menu (right-click, Shift+F10, the menu key, its "⋯"), F2, and an inline title for a version of mine.
+        TrackDrawerCardWiring? wire = a.VersionCard?.Invoke(version, parent, kind);
+        var meta = new List<Element>(6) { Meta(label ?? KindLabel(kind), Tok.TextTertiary) with { Case = R.Case.For(LabelKind.Label) } };
         if (version.Knows(TrackFields.Audio) && version.Tempo > 0)
         {
             if (version.CamelotColor != 0)
@@ -300,32 +333,55 @@ internal static class ZuneTrackDrawer
 
         return new BoxEl
         {
+            Focusable = wire is not null, OnContextRequested = wire?.Context, OnKeyDown = wire?.Keys,
             Key = "ver:" + rowKey, Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f, Grow = 1f,
             Height = DrawerRules.RowH, Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
             Fill = kind == DrawerRules.SelfRow ? Prop.Of(static () => R.Layer.RowHover) : (Prop<ColorF>)ColorF.Transparent,
             HoverFill = Prop.Of(static () => R.Layer.RowPressed),
             Children =
             [
-                Thumb(version, parent, kind, isNow, a.PlayVersion),
+                Thumb(version, parent, kind, isNow, a.PlayVersion, picture, wide),
                 new BoxEl
                 {
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = ZuneListRules.DrawerTextGap,
                     Children =
                     [
-                        R.Type.TrackTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
+                        TitleOf(wire, version, R.Type.TrackTitle(version.Knows(TrackFields.Title) ? version.Title : "") with
                         {
                             Color = ZuneListRules.RowInk(isNow, R.Ink.AccentDecor, Tok.TextPrimary),
                             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
+                        }),
                         new BoxEl { Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = meta.ToArray() },
                     ],
                 },
                 Embed.Comp(new WaveProps(peaks), static () => new WaveHost()) with { Key = "waveform-slot" },
+                MoreButton(wire),
                 a.FormatButton(version, parent, kind),
             ],
         };
     }
 
+
+    /// <summary>The version's title, through the card's wiring: an inline rename for a version of mine, the title as it is otherwise.</summary>
+    static Element TitleOf(TrackDrawerCardWiring? wire, Track version, TextEl look)
+        => wire is null ? look : wire.Title(look, version.Knows(TrackFields.Title) ? version.Title : "");
+
+    /// <summary>The card's "⋯" (#240 version cards), shown on the card's hover (a non-interactive wrapper rides it): a context-invoker, so it opens
+    /// the card's own menu, the one right-click and Shift+F10 open.</summary>
+    static Element MoreButton(TrackDrawerCardWiring? wire) => wire is null ? new BoxEl() : new BoxEl
+    {
+        Shrink = 0f, Opacity = 0f, HoverOpacity = 1f,
+        Children =
+        [
+            ToolTip.Wrap(new BoxEl
+            {
+                Key = "ver-more", Width = ZuneListRules.DrawerMoreBox, Height = ZuneListRules.DrawerMoreBox, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control),
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
+                Children = [Icon(Icons.More, ZuneListRules.DrawerMoreGlyph, Tok.TextSecondary)],
+            }, wire.MoreLabel),
+        ],
+    };
     sealed record WaveProps(float[]? Peaks);
 
     /// <summary>The waveform slot: the strip where the peaks are known and the content tier has the room, else nothing. The strip enters and leaves
@@ -365,12 +421,15 @@ internal static class ZuneTrackDrawer
 
     /// <summary>16:9 with a play badge for the video, the bare square otherwise, at the Cover radius; the now-playing overlay on the version
     /// that IS the deck's item.</summary>
-    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion)
+    // A video of mine (#240 version cards) wears its own frame in the music video's 16:9 thumbnail (the same slot height as the square, so the
+    // card keeps its height and the row's text column only starts further right), with the music video's play badge: one idiom for a video
+    // version in this list, whichever it is. While its frame is being made the slot is reserved (the no-art tile), so nothing moves when it lands.
+    static Element Thumb(Track version, Track parent, byte kind, bool isNow, Action<Track, Track, byte> playVersion, string? picture = null, bool wide = false)
     {
-        bool video = kind == DrawerRules.VideoKind;
+        bool video = kind == DrawerRules.VideoKind || wide;
         float w = video ? DrawerRules.VideoThumbW : DrawerRules.AudioThumb;
         float h = video ? DrawerRules.VideoThumbH : DrawerRules.AudioThumb;
-        string? url = Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
+        string? url = wide ? picture : Controls.ArtUrl(video && !parent.VideoImageId.IsEmpty ? parent.VideoImageId : version.ImageId);
         Element art = Controls.Artwork(url, w, h, R.Shape.Cover);
         if (!isNow && !video) return art;
         Element layer = isNow
@@ -400,6 +459,8 @@ internal static class ZuneTrackDrawer
     {
         DrawerRules.VideoKind => Loc.Get(Strings.Detail.Versions.MusicVideo),
         DrawerRules.AudioKind => Loc.Get(Strings.Detail.Versions.AlternateAudio),
+        DrawerRules.SpotifyKind => Loc.Get(Strings.LocalFiles.Link.OnSpotify),
+        DrawerRules.FileKind => Loc.Get(Strings.LocalFiles.Link.YourFile),
         _ => Loc.Get(Strings.Detail.Versions.ThisTrack),
     };
 }

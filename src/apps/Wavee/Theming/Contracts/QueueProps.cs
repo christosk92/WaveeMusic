@@ -46,18 +46,63 @@ public readonly record struct QueueAutoplay(bool Enabled, int Count, EntityRef P
 public readonly record struct QueueRowProps(ulong ItemId, int Index, EntityRef Ref, QueueSection Section, int Position,
     bool Removable, bool Draggable);
 
+/// <summary>One segment of an AI DJ continuation: its key (the segment's id, stable while its rows advance), its label (<c>station_subtitle</c>,
+/// "Vibes"), where its rows start in "Next up" and how many it lists, and whether "Let DJ pick" lands on its first row (the next segment).
+/// Appended (contract additive).</summary>
+public readonly record struct QueueSegment(string Key, string Label, int Start, int Count, bool NextPick);
+
 /// <summary>One track played before the current one ("played before this"): the row it plays as, its uri, the context it was played from (empty: a bare
 /// track play) and when it started (unix ms). Appended (contract 1.46).</summary>
 public readonly record struct QueueHistoryRow(EntityRef Ref, string Uri, string Context, long PlayedAtMs);
 
-/// <summary>What a queue surface draws. <see cref="Rows"/> lists the upcoming rows section by section in list order: the
-/// queue, the continuation, then the autoplay rows ONLY while the toggle is on.</summary>
+/// <summary>What a queue surface draws. <see cref="Rows"/> lists the upcoming rows in play order, section by section: the
+/// queue, the continuation, then the autoplay rows ONLY while the toggle is on; the continuation's first <see cref="Lead"/> rows (AI DJ)
+/// ahead of the queue.</summary>
 public sealed record QueueProps(bool Viewer, EntityRef NowPlaying, QueuePlayingFrom? PlayingFrom, QueueCounts Counts,
     QueueAutoplay Autoplay, bool Shuffle, RepeatMode Repeat, QueueRowProps[] Rows)
 {
     /// <summary>The tracks played before the current one, most recent first (at most <see cref="Shell.QueueModel.HistoryCap"/>; the play log the app already keeps, so a
     /// sign-out clears it). Filled by the stage's Up next host only; empty on the rail. Appended (contract 1.46).</summary>
     public QueueHistoryRow[] History { get; init; } = [];
+
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ's "Not available with DJ"): a surface's own shuffle
+    /// toggle draws disabled with this tooltip. Null while it may be pressed. Appended (contract additive).</summary>
+    public string? ShuffleLock { get; init; }
+
+    /// <summary>The repeat toggle's twin of <see cref="ShuffleLock"/>. Appended (contract additive).</summary>
+    public string? RepeatLock { get; init; }
+
+    /// <summary>AI DJ: the continuation ("Next up") grouped by the DJ's segments, in list order, each under its own label; empty for any other
+    /// context. A surface draws each segment's header where <see cref="QueueSlot"/> names one (a NextUp header whose <c>Pos</c> is the segment's
+    /// index) in place of the section's one header. Appended (contract additive).</summary>
+    public QueueSegment[] Segments { get; init; } = [];
+
+    /// <summary>AI DJ: how many of the continuation's first rows play before the user's queue: the track a narration on the deck leads into,
+    /// while songs queued during the clip wait behind it (<c>QueueOrder.Follow</c>). <see cref="Rows"/> lists them first and the slots
+    /// (<see cref="QueueSlots.Build"/>) draw them above "Next in queue", so the list reads in play order. 0 otherwise. Appended (contract
+    /// additive).</summary>
+    public int Lead { get; init; }
+
+    /// <summary>Where the row at <paramref name="position"/> of <paramref name="section"/> sits in <see cref="Rows"/> (play order, <see cref="Lead"/>
+    /// included); the section's count is not checked.</summary>
+    public int IndexOf(QueueSection section, int position) => section switch
+    {
+        QueueSection.Queue => Lead + position,
+        QueueSection.NextUp => position < Lead ? position : Counts.Queue + position,
+        _ => Counts.Queue + Counts.NextUp + position,
+    };
+
+    /// <summary>A row's place among the upcoming rows in play order, from 1 ("next in queue" 1, 2, "next up" 3...; a <see cref="Lead"/> row first).</summary>
+    public int Ordinal(in QueueRowProps row) => IndexOf(row.Section, row.Position) + 1;
+
+    /// <summary>The segment a header slot heads (<see cref="QueueSlot.IsSegmentHeader"/>), or null for a section's own header.</summary>
+    public QueueSegment? SegmentOf(QueueSlot slot) => slot.IsSegmentHeader && slot.Pos < Segments.Length ? Segments[slot.Pos] : null;
+
+    /// <summary>A segment header's words: its label, else the product's name ("DJ").</summary>
+    public static string SegmentTitle(QueueSegment segment) => segment.Label.Length > 0 ? segment.Label : FluentGpu.Localization.Loc.Get(Strings.Player.DjName);
+
+    /// <summary>The mark a segment header wears where "Let DJ pick" lands ("Let DJ pick starts here"), else "".</summary>
+    public static string SegmentMark(QueueSegment segment) => segment.NextPick ? FluentGpu.Localization.Loc.Get(Strings.Player.DjJumpsHere) : "";
 
     /// <summary>"Next in queue": the rows the user queued.</summary>
     public int NextInQueue => Counts.Queue;
@@ -75,16 +120,11 @@ public sealed record QueueProps(bool Viewer, EntityRef NowPlaying, QueuePlayingF
     /// section's rows follow each other in <see cref="Rows"/>, the autoplay rows listed only while the toggle is on).</summary>
     public bool TryRow(QueueSection section, int position, out QueueRowProps row)
     {
-        int start = section switch
-        {
-            QueueSection.Queue => 0,
-            QueueSection.NextUp => Counts.Queue,
-            _ => Counts.Queue + Counts.NextUp,
-        };
         int count = section == QueueSection.Autoplay && !Autoplay.Enabled ? 0 : Counts.Of(section);
-        if ((uint)position < (uint)count && start + position < Rows.Length)
+        int at = IndexOf(section, position);
+        if ((uint)position < (uint)count && at < Rows.Length)
         {
-            row = Rows[start + position];
+            row = Rows[at];
             return true;
         }
         row = default;
@@ -247,6 +287,14 @@ public sealed record QueuePanelProps
     /// <summary>Opens Settings at the crossfade's duration (the duration stays a Settings dial: the panel draws no slider); null for no link.
     /// Appended (contract 1.117).</summary>
     public Action? OpenCrossfadeLength { get; init; }
+
+    /// <summary>The Mix line between the playing row and the next one, "Mixing · Rise · 2.9 s", while the playing pair will mix (#48); "" for
+    /// none. Appended (Mix, #48).</summary>
+    public string MixLine { get; init; } = "";
+
+    /// <summary>The Crossfade row's note while a mixed playlist plays, "Mix is on for this playlist" (#48): drawn in place of the length link at
+    /// rest (Mix decides the playlist's own pairs; Crossfade still covers a queued song). "" for none. Appended (Mix, #48).</summary>
+    public string CrossfadeNote { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStagePane"/>: the fullscreen stage's Up next column (the stage's accent, scale and width
@@ -285,6 +333,14 @@ public sealed record QueueStagePaneProps
 
     /// <summary>Opens Settings at the crossfade's duration (it leaves the full screen first); null for no link. Appended (contract 1.117).</summary>
     public Action? OpenCrossfadeLength { get; init; }
+
+    /// <summary>The Mix line between the playing row and the next one, "Mixing · Rise · 2.9 s", while the playing pair will mix (#48); "" for
+    /// none. Appended (Mix, #48).</summary>
+    public string MixLine { get; init; } = "";
+
+    /// <summary>The Crossfade row's note while a mixed playlist plays, "Mix is on for this playlist" (#48): drawn in place of the length link at
+    /// rest (Mix decides the playlist's own pairs; Crossfade still covers a queued song). "" for none. Appended (Mix, #48).</summary>
+    public string CrossfadeNote { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.QueueStageShelf"/>: the stage's Up next SHELF over the music video (Video mode, Cinema): the next

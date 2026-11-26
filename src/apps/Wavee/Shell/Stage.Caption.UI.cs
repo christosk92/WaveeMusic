@@ -115,6 +115,8 @@ public static partial class Stage
             var track = ctx.RowValue();
             var doc = track.IsValid ? Lyrics.Store.Doc(track) : null;
             if (doc is not null && (!Lyrics.IsTimed(doc) || doc.Lines.Count == 0)) doc = null;
+            // AI DJ: while the DJ talks its words are the line (one line from 0, held for the clip; plan-dj §2.8), a new document per narration
+            doc ??= Lyrics.Spoken.Line(Playback.Dj.CaptionNow());
             if (!ReferenceEquals(doc, _doc)) { _doc = doc; _docGen++; _wipeLine = -1; _runLen = float.NaN; }
             bool playing = Playback.IsPlaying.Value;
             UseSignalEffect(() =>

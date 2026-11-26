@@ -2,7 +2,7 @@
 //
 // The ONLY entry points core uses to turn option values into a definition, metrics, policies and capabilities. The order
 // is fixed (plan 5.3):
-//   (1) style.Metrics(o.Style) and style.Definition(o.Style, osAccent);
+//   (1) style.Metrics(o.Style) and style.Definition(o.Style, inputs);
 //   (2) every composition option's effect, in declaration order;
 //   (3) FixedEffect last, so a FixedEffect formula sees the final metrics;
 //   (4) structure parameters = the declared defaults, then DefaultOverrides, then the option effects, then FixedEffect.
@@ -59,7 +59,7 @@ public sealed record ThemeComposition(
         public ImmutableArray<LayerOption> All;
         public ThemeOptionSchema? Exposed;
         public string? MemoSignature;
-        public AccentRamp MemoAccent;
+        public Colours.StyleInputs MemoInputs;
         public ThemeDefinition? MemoDefinition;
     }
 
@@ -207,15 +207,15 @@ public sealed record ThemeComposition(
         }
     }
 
-    /// <summary>The definition for these option values and the OS accent (see the file header for the order and the identity rule).</summary>
-    public ThemeDefinition Definition(ThemeOptionValues o, AccentRamp osAccent)
+    /// <summary>The definition for these option values and the style inputs (see the file header for the order and the identity rule).</summary>
+    public ThemeDefinition Definition(ThemeOptionValues o, in Colours.StyleInputs inputs)
     {
         ArgumentNullException.ThrowIfNull(o);
         var rt = State;
         string signature = o.Signature;
-        if (rt.MemoDefinition is { } memo && rt.MemoSignature == signature && rt.MemoAccent.Equals(osAccent)) return memo;
+        if (rt.MemoDefinition is { } memo && rt.MemoSignature == signature && rt.MemoInputs.Equals(inputs)) return memo;
 
-        ThemeDefinition def = Style.Definition(o.Style, osAccent);
+        ThemeDefinition def = Style.Definition(o.Style, inputs);
         WaveeStyleRoles? roles = def.AppRoles as WaveeStyleRoles;
         AccentRamp accent = def.Accent;
         bool changed = false;
@@ -231,7 +231,7 @@ public sealed record ThemeComposition(
             def = def with { Id = def.Id + "|" + Manifest.Id + "|" + signature, AppRoles = roles ?? def.AppRoles, Accent = accent };
 
         rt.MemoSignature = signature;
-        rt.MemoAccent = osAccent;
+        rt.MemoInputs = inputs;
         rt.MemoDefinition = def;
         return def;
     }

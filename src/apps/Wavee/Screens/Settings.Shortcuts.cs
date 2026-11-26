@@ -26,6 +26,8 @@ public static partial class Settings
             new("seekForwardFine", Strings.Settings.Keyboard.SeekForwardFine, null, "Shift+→"),
             new("volumeUp", Strings.Settings.Keyboard.VolumeUp, Strings.Settings.Keyboard.VolumeUpSub, "↑"),
             new("volumeDown", Strings.Settings.Keyboard.VolumeDown, Strings.Settings.Keyboard.VolumeDownSub, "↓"),
+            new("previousTrack", Strings.Settings.Keyboard.PreviousTrack, Strings.Settings.Keyboard.TrackSkipSub, "Ctrl+←"),
+            new("nextTrack", Strings.Settings.Keyboard.NextTrack, Strings.Settings.Keyboard.TrackSkipSub, "Ctrl+→"),
             new("search", Strings.Settings.Keyboard.Search, null, "Ctrl+F"),
             new("palette", Strings.Settings.Keyboard.Palette, null, "Ctrl+K"),
             new("settings", Strings.Settings.Keyboard.Settings, null, "Ctrl+,"),

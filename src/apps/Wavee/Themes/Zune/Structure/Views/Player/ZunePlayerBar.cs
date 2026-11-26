@@ -133,6 +133,17 @@ internal static partial class ZunePlayerBar
         var leftKids = new List<Element>(3) { art };
         if (v.ShowTitleBlock) leftKids.Add(meta);
         if (!mini && v.ShowLikeSlot) leftKids.Add(HeartSlot(props, v, look, likeNode));
+        // AI DJ: "let dj pick", a Zune word lit in the DJ's own colour, at the identity's end (it comes and goes with the line motion).
+        if (!mini && v.Dj is { } djPick)
+            leftKids.Add(new BoxEl
+            {
+                Key = "dj-pick", Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Animate = L.ItemMotion,
+                Children =
+                [
+                    ToolTip.Wrap(Word(djPick.Pick, djPick.Jump, djPick.CanPick, latched: true, look.Button, look.WordSize,
+                        latchedInk: djPick.PickInk != 0 ? ColorScience.ToColor(djPick.PickInk) : (ColorF?)null), djPick.PickTip),
+                ],
+            });
         BoxEl left = mini
             ? new BoxEl
             {
@@ -344,7 +355,7 @@ internal static partial class ZunePlayerBar
                 new BoxEl
                 {
                     Key = BarKey, Height = tier.BarH, Shrink = 0f, ZStack = true, Fill = R.Layer.PlayerBar,
-                    Animate = reduced ? null : ZunePlayerTiers.BarMotion,
+                    Animate = reduced ? null : ZunePlayerTiers.BarMotion, DropTarget = props.Verbs.OsDrop,
                     Children = layers.ToArray(),
                 },
             ],
@@ -393,6 +404,20 @@ internal static partial class ZunePlayerBar
             {
                 Key = "remote-device-line", Animate = L.ItemMotion, MinWidth = 0f,
                 Children = [Embed.Comp(new RemoteProps(props, look.FromSize, look.FromLine), static () => new ZuneRemoteLine())],
+            });
+        // AI DJ: the segment ("dj · vibes") where "playing on" stands, above the title, in the label case: Zune's type alone, no glyph.
+        else if (v.Dj is { } dj)
+            kids.Add(new BoxEl
+            {
+                Key = "dj-line", Animate = L.ItemMotion, MinWidth = 0f, Height = look.FromLine, Direction = 0, AlignItems = FlexAlign.Center, ClipToBounds = true,
+                Children =
+                [
+                    new TextEl(dj.Line)
+                    {
+                        Size = look.FromSize, LineHeight = look.FromLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
+                        MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
+                    },
+                ],
             });
         // The marquee (the desktop bar's, by the core's preference) and the trimmed title with its tip (the mini bar's) are two different trees: a
         // crossing between them cross-fades one keyed host per tree in place, the shared swap fade (never a bare remount of the title).
@@ -451,7 +476,8 @@ internal static partial class ZunePlayerBar
             kids.Add(new BoxEl
             {
                 Key = "times-sep", Animate = L.ItemMotion,
-                Children = [new TextEl(" · ") { Size = T.TimeSize, LineHeight = T.TimeLine, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap }],
+                // A narration's progress is suppressed: the labels read empty and the dot keeps its width unseen (no jump either way).
+                Children = [new TextEl(" · ") { Size = T.TimeSize, LineHeight = T.TimeLine, Color = v.ProgressSuppressed ? ColorF.Transparent : Tok.TextSecondary, Wrap = TextWrap.NoWrap }],
             });
         if (v.ShowTimesRemaining) kids.Add(new BoxEl { Key = "remaining", Animate = L.ItemMotion, Children = [props.TimeText(true)] });
         return new BoxEl

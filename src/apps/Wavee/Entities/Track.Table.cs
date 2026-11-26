@@ -333,9 +333,29 @@ public readonly partial struct Track
         public Func<Element?>? TuneStrip { get; init; }
         /// <summary>Is Tune lit (the mix is tuned, or its strip is open)? A tracked read. Appended (contract 1.120).</summary>
         public Func<bool>? TuneLit { get; init; }
+        /// <summary>#48 Mix: the list bar's Mix toggle (turn Mix on; listen with or without it on this PC); null = no toggle. It takes the Tune
+        /// slot when there is no Tune.</summary>
+        public Action? MixToggle { get; init; }
+        /// <summary>Is Mix on for this playlist on this PC? A tracked read: the toggle follows it.</summary>
+        public Func<bool>? MixLit { get; init; }
+        /// <summary>#48 Mix: open the Transitions list (on this playlist index, or −1); null = none.</summary>
+        public Action<int>? OpenTransitions { get; init; }
+        /// <summary>#48 Mix: the Mix menu's items (the split's chevron); null = no menu.</summary>
+        public Func<IReadOnlyList<MenuFlyoutItem>>? MixMenu { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
         /// by <see cref="RowMetrics.DrawerIndent"/>. Null = no chevron lane.</summary>
         public Func<Track, int, Element?>? Drawer { get; init; }
+        /// <summary>The body of a list KNOWN to be empty in place of "Nothing here yet" (Local Files' onboarding, #240 S4); null from it keeps the
+        /// table's own words. A tracked read: the body follows what it reads. While it answers an element the list is the page (the theme draws no
+        /// table chrome over it, as over an empty playlist's lead). Null member = the table's own words.</summary>
+        public Func<Element?>? EmptyBody { get; init; }
+        /// <summary>The <see cref="EmptyBody"/> IS the page's content, never an empty list's stand-in (the AI DJ list, whose rows are the session's):
+        /// while it shows, no theme draws table chrome over it (no toolbar of list commands, no column header), whatever the theme's own
+        /// <c>HidesChromeOnEmptyLead</c> says.</summary>
+        public bool EmptyBodyIsPage { get; init; }
+        /// <summary>A layer over the rows (Local Files' "4 new songs" pill, #240 S5), handed the list's scroll handle and the band the list pins at its
+        /// top. It floats: nothing in the list moves for it. Null = none.</summary>
+        public Func<FluentGpu.Scroll.Runtime.ScrollHandle, float, Element>? ListOverlay { get; init; }
 
         public static TableProfile From(Detail.Config config) => new()
         {
@@ -346,7 +366,7 @@ public readonly partial struct Track
         int Seams => (Editable is null ? 0 : 1) | (ContentFilterBar is null ? 0 : 2) | (LensHeader is null ? 0 : 4)
                      | (PlayFrom is null ? 0 : 8) | (Deposit is null ? 0 : 16) | (MoveRows is null ? 0 : 32)
                      | (RemoveRows is null ? 0 : 64) | (Recommendations is null ? 0 : 128) | (Tune is null ? 0 : 256)
-                     | (Drawer is null ? 0 : 512);
+                     | (Drawer is null ? 0 : 512) | (EmptyBody is null ? 0 : 1024) | (ListOverlay is null ? 0 : 2048);
 
         public bool Equals(TableProfile? other)
             => other is not null && (ReferenceEquals(this, other)
@@ -371,6 +391,10 @@ public readonly partial struct Track
         public bool ShowToolbar { get; init; } = true;
         /// <summary>Library master-detail pane (no hero, no recs).</summary>
         public bool Embedded { get; init; }
+        /// <summary>An <see cref="Embedded"/> table that spans a whole page's width (the "On this PC" Songs pivot), not a library pane's column: its rows
+        /// take the window tier's table form, as a playlist page's do (the Compact row: no column header, the 40 "…" lane), instead of the pane's
+        /// Standard form. False: the pane's form.</summary>
+        public bool PageWide { get; init; }
         /// <summary>HasTrailing body under the rows (album trailing, M Wave 5). Non-null on an <see cref="Embedded"/>
         /// table is also the opt-IN to the trailing geometry: the host keeps the profile's <c>HasTrailing</c> instead of
         /// dropping it, so the rows and this band share ONE scroller (<c>TableHost.ConfigOf</c>).</summary>
@@ -404,7 +428,7 @@ public readonly partial struct Track
             => other is not null && (ReferenceEquals(this, other)
                || (Source.Equals(other.Source) && Profile.Equals(other.Profile) && Equals(Vertical, other.Vertical)
                    && (Accent is null) == (other.Accent is null) && ShowToolbar == other.ShowToolbar
-                   && Embedded == other.Embedded && (Trailing is null) == (other.Trailing is null)
+                   && Embedded == other.Embedded && PageWide == other.PageWide && (Trailing is null) == (other.Trailing is null)
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && ReferenceEquals(Insights, other.Insights) && ReferenceEquals(ListCount, other.ListCount)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)
@@ -423,6 +447,19 @@ public readonly partial struct Track
 
     /// <inheritdoc cref="TableLive"/>
     public static readonly Context<TableLive?> TableLiveSlot = new(null);
+
+    /// <summary>What a strip in the list bar's slot (Tune, Mix's Transitions and Smart reorder) may ask of the table (#48): name the part to show when
+    /// the slot opens (<see cref="Focus"/>, set when that part realizes; else the slot's top shows), and <see cref="Reveal"/> a part later (Mix's
+    /// editor moving to a pair). Either glides only when the page has scrolled past the part's top. UI thread.</summary>
+    public sealed class BarSlot
+    {
+        public NodeHandle Focus;
+        internal Action<NodeHandle>? Reveal;
+        public void Show(NodeHandle node) => Reveal?.Invoke(node);
+    }
+
+    /// <inheritdoc cref="BarSlot"/>
+    public static readonly Context<BarSlot?> SlotContext = new(null);
 
     /// <summary>Embed.Comp(args, () => new TableHost()) — TableArgs/TableProfile gate on data, delegates late-bound.</summary>
     public static Element Table(TableArgs args) => Embed.Comp(args, static () => new TableHost());
@@ -576,7 +613,7 @@ public readonly partial struct Track
         readonly Signal<bool> _recsCapable = new(false);
         /// <summary>The list is empty and shows its recommendations lead (an owned, empty playlist): a theme that sets <c>HidesChromeOnEmptyLead</c> draws no table chrome over it.</summary>
         readonly Signal<bool> _emptyLead = new(false);
-        bool EmptyLeadHides => _listStyle?.Chrome.HidesChromeOnEmptyLead == true && _emptyLead.Value;
+        bool EmptyLeadHides => (_listStyle?.Chrome.HidesChromeOnEmptyLead == true || P.EmptyBodyIsPage) && _emptyLead.Value;
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -612,6 +649,8 @@ public readonly partial struct Track
         int _rampFirst = Design.RevealRamp.Chunk;
         /// <summary>The list column's measured height (<see cref="OnColumnBounds"/>): the cold reveal's first band and the skeleton's row count.</summary>
         float _lastH;
+        /// <summary>The list column's height, 4-DIP gated: the two-column arm's slot cap reads it (<see cref="TuneSlotCap"/>).</summary>
+        readonly Signal<float> _colH = new(0f);
         /// <summary>When the last COLD reveal released (the skeleton gave way to rows), and how many rows its band covers: a row slot that first
         /// mounts real inside <see cref="RevealWindowMs"/> of it, within the band, takes the band's staggered crossfade
         /// (<see cref="Design.RevealRamp.RowEnter"/>); a row realized later (a scroll) mounts as it always did, with no entrance.</summary>
@@ -660,11 +699,18 @@ public readonly partial struct Track
         /// <summary>A chrome slot whose height a crossing changes (the chips coming into the pinned chrome from the page bar): it eases through real layout,
         /// the rows under it riding it (audit B9). None under reduced motion.</summary>
         internal LayoutTransition? ChromeResize => Design.Reduced ? null : s_listResize;
+
+        /// <summary>The list bar's slot (Tune, Mix's Transitions and editor, Smart reorder): THE disclosure mode (Design.Reveal.Resize: layout lands once,
+        /// the presented height reveals) on the chrome's 280 ms clock, the one the header and rows under the slot ride, so its edge and what follows move
+        /// in lockstep (on the reveal spring the rows ran ahead of the edge and a gap opened between them, closing late). None under reduced motion.</summary>
+        internal LayoutTransition? SlotReveal => Design.Reduced ? null : s_slotReveal;
+        static readonly LayoutTransition s_slotReveal = Design.Reveal.Resize with { Dynamics = s_listResize.Dynamics };
         Snapshot _orderSeen;
         Track[] _curTracks = [], _prevTracks = [];
         StringId[] _curIds = [], _prevIds = [];
         int _curLen, _prevLen;
         EdgeState _curState;
+        uint _orderScope;   // the `Entities.ScopeEpoch` the order's slots belong to: a scope switch retires the table set they index
 
         // ── memos (hook-owned; assigned every render, read by the rows) ────────────────────────────────────────────
         Memo<Snapshot>? _snapshot;
@@ -840,8 +886,9 @@ public readonly partial struct Track
             // Two ladders, in order: the tier admits the lanes this WIDTH allows, then relief takes back the ones the
             // identity lanes cannot pay for. Relief only subtracts, so this can never widen the table.
             // The window tier's table form (the structure's record: the Compact row, the lanes a band never admits, the row floors). Tracked, so
-            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm).
-            var form = args.Embedded
+            // a crossing re-shapes on the frame it commits. An embedded table (a library pane) keeps the density's rows and every lane (Track.EmbeddedForm);
+            // one as wide as its page (TableArgs.PageWide) takes the tier's form, as the page's own table does.
+            var form = args.Embedded && !args.PageWide
                 ? Track.EmbeddedForm()
                 : ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table;
             var admitted = SetFor(in snap, args, TierNow(), form);
@@ -878,7 +925,7 @@ public readonly partial struct Track
                 Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact,
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3 && form.PlaysColumn,
                 // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
-                Heart: tier < 5 && !cfg.QuietRows && !compact && !hover && !form.HeartTrailing,
+                Heart: tier < 5 && !cfg.QuietRows && !cfg.LocalRows && !compact && !hover && !form.HeartTrailing,
                 Thumb: identity.Thumb,
                 Actions: (trailing.Actions && !hover) || compact,
                 Tier: tier,
@@ -886,7 +933,7 @@ public readonly partial struct Track
                 Expand: trailing.Expand && !compact && !hover && form.VersionsLane && (form.ListVersionsLane || cfg.Kind == DetailKind.Album),
                 Artist: identity.Artist && !compact,
                 Classic: s.Classic,
-                HeartTrailing: compact || (tier < 5 && (cfg.QuietRows || form.HeartTrailing) && !hover),
+                HeartTrailing: !cfg.LocalRows && (compact || (tier < 5 && (cfg.QuietRows || form.HeartTrailing) && !hover)),
                 Quiet: cfg.QuietRows,
                 Compact: compact,
                 // A list's Modern row drops its "#" where the tier says so (C-TrackList compact); an album's track number and the Classic row keep it.
@@ -915,6 +962,7 @@ public readonly partial struct Track
             if (r.W <= 0f) return;
             _lastW = r.W;
             _lastH = r.H;
+            if (MathF.Abs(_colH.Peek() - r.H) > 4f) _colH.Value = r.H;
             if (MathF.Abs(_colW.Peek() - r.W) > 4f) _colW.Value = r.W;
             if (r.W != _tableW.Peek()) _tableW.Value = r.W;
             if (VerticalArm)
@@ -1133,6 +1181,21 @@ public readonly partial struct Track
             int orig = OriginalOf(display);
             return orig >= 0 ? _latest.Source.At(orig) : default;
         }
+
+        /// <summary>#48 Mix: the playlist index a DISPLAY row shows (−1 past the end), for the seams (Entities/Mix.Seams.cs).</summary>
+        internal int OriginalAt(int display) => display < 0 ? -1 : OriginalOf(display);
+
+        /// <summary>#48 Mix: the playlist slot this table lists, or 0 (an album, Liked Songs, a queue). Read by the seam layer.</summary>
+        internal int MixPlaylistSlot()
+        {
+            var ctx = _latest.Source.Context;
+            if (ctx.Id.Kind != EntityKind.Playlist) return 0;
+            var p = Entities.Playlist(ctx);
+            return p.IsValid && p.MixOn ? p.Slot : 0;
+        }
+
+        /// <summary>#48 Mix: a seam was clicked: the profile's Transitions list opens on it.</summary>
+        internal void OpenSeam(int index) => _latest.Profile.OpenTransitions?.Invoke(index);
 
         internal StringId ItemIdAt(int display)
         {
@@ -1365,15 +1428,18 @@ public readonly partial struct Track
             var listState = Playlist.RowsStateOf(snap.State is EdgeState.Partial or EdgeState.Complete, snap.Count, visible);
             bool recsLive = recsCapable && listState is PlaylistRowsState.Rows or PlaylistRowsState.Empty;
             int listTotal = visible + (recsLive ? 1 : 0);
+            // An empty list the page gives a body of its own (Local Files' onboarding) is the page as the recommendations lead is: the same lead fact.
+            bool bodyLead = listState == PlaylistRowsState.Empty && P.EmptyBody?.Invoke() is not null;
+            bool emptyLead = (recsLive || bodyLead) && listState == PlaylistRowsState.Empty;
             UseLayoutEffect(() =>
             {
                 _visible.Value = visible;
                 _listCount.Value = listTotal;
                 _recsCapable.Value = recsCapable;
-                _emptyLead.Value = recsLive && listState == PlaylistRowsState.Empty;
-            }, DepKey.From(visible, listTotal, (recsLive ? 1 : 0) | (recsCapable ? 2 : 0), listState == PlaylistRowsState.Empty ? 1 : 0));
+                _emptyLead.Value = emptyLead;
+            }, DepKey.From(visible, listTotal, (recsLive ? 1 : 0) | (recsCapable ? 2 : 0) | (emptyLead ? 4 : 0), listState == PlaylistRowsState.Empty ? 1 : 0));
             UseEffect(PublishHeroHeight);
-            var listCount = CountNow(in snap, visible) with { EmptyLead = recsLive && listState == PlaylistRowsState.Empty };
+            var listCount = CountNow(in snap, visible) with { EmptyLead = emptyLead };
             UseEffect(() => { if (_latest.ListCount is { } target) target.Value = listCount; },
                       DepKey.From(listCount.Shown, listCount.Total, (int)(listCount.ShownMs / 1000L),
                                   (listCount.Filtered ? 1 : 0) | (listCount.DurationsKnown ? 2 : 0) | (listCount.EmptyLead ? 4 : 0)));
@@ -1426,6 +1492,13 @@ public readonly partial struct Track
                 ScrollScope = vertical && !trailing ? TableScope : null,
             };
 
+            // A layer over the rows (Local Files' pill, #240 S5): it floats over the list's own viewport, under the band the list pins while scrolled.
+            if (!trailing && P.ListOverlay is { } overlay)
+                listKeyed = new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
+                    Children = [listKeyed, overlay(_listScroll, vertical ? stickyInset : 0f)],
+                };
             Element body = trailing ? TrailingBody(listKeyed, vertical, stickyInset, in shape, chips, lens) : listKeyed;
             var column = new BoxEl
             {
@@ -1947,7 +2020,8 @@ public readonly partial struct Track
                 OnHeroMeasured: _onHeroMeasured,
                 Form: _latest.Form,
                 Columns: _latest.Columns,
-                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal);
+                ViewportHeight: Cfg.HasTrailing ? _trailScroll.ViewportSignal : _listScroll.ViewportSignal,
+                NoListBar: P.EmptyBodyIsPage && EmptyLeadHides);
         }
 
         // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
@@ -1987,6 +2061,9 @@ public readonly partial struct Track
                 float band = BandNow(), shortH = _heroShort.Value;
                 return shortH > 1f ? MathF.Min(band, shortH) : band;
             }
+            // A theme that draws no chrome over an empty lead (EmptyLeadHides) has no stuck stratum: the last measured header's height would clip the
+            // lead's top (the DJ page's first segment heading under Zune's two-column page).
+            if (EmptyLeadHides) return 0f;
             float h = _headH.Value;
             return h > 1f ? h : 0f;
         }
@@ -1999,7 +2076,19 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return InsetList(Chrome(in shape, chips, lens)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
+            Element chrome = InsetList(Chrome(in shape, chips, lens, tuneInline: false)).Sticky(StickLine(), TableScope, engaged: _compactInteractive);
+            if (P.TuneStrip is null || EmptyLeadHides) return chrome;
+            // #48: the slot under the list bar (Tune, Mix's Transitions, its editor, Smart reorder) is PAGE CONTENT here: it scrolls with the rows and
+            // is cut and feathered at the line the header pins at, so a strip taller than the window (the editor) is reached by scrolling and no row
+            // ever draws over it. Only the header pins, and it pins once the slot has gone past that line (the slot stands above it in the flow), so
+            // the slot never shows through it; at rest the slot's top is that line (the columns form's head foot), never cut.
+            Element slot = new BoxEl
+            {
+                Direction = 1, MinWidth = 0f, HitTestPassThrough = true,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
+                Children = [InsetList(TuneSlot(RowMetrics.PadXFor(shape.Set.Tier)))],
+            }.StickyClip(StickLine());
+            return new BoxEl { Direction = 1, MinWidth = 0f, HitTestPassThrough = true, Children = [slot, chrome] };
         }
 
         internal Element EmptyItem()
@@ -2066,6 +2155,8 @@ public readonly partial struct Track
         /// died), else the empty / no-match sentence. There is no error/offline arm inside the table (ch 04 W9).</summary>
         Element Placeholder(PlaylistRowsState state, in Shape shape)
         {
+            // The page's own body for a list known to be empty (Local Files' onboarding, #240 S4); a tracked read, so the body follows its facts.
+            if (state == PlaylistRowsState.Empty && P.EmptyBody?.Invoke() is { } body) return body;
             if (state == PlaylistRowsState.Loading)
             {
                 var geometry = shape;
@@ -2168,8 +2259,9 @@ public readonly partial struct Track
 
         // ══ 5. PLAYBACK ══════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a not-yet-out row is refused here, so
-        /// every path agrees with the dimmed row that withholds its play button (ch 04 §0.8).
+        /// <summary>The ONE activation funnel (the # transport, double-click, Enter): a withheld row (not out yet, or ruled unplayable:
+        /// region-locked, Premium only) is refused through <see cref="Track.Invoke"/> with its reason in a toast (<see cref="Track.RefuseWithheld"/>), so every path
+        /// agrees with the dimmed row that withholds its play button (ch 04 §0.8).
         /// <para>B2 (plan §3.2): dispatches on the row's kind first — an episode row plays through
         /// <see cref="Episode.Invoke"/> (the disc's toggle-current-else-start semantics), never <see cref="Track.Invoke"/>,
         /// which reads an invalid <see cref="Track"/> for that row.</para></summary>
@@ -2184,7 +2276,7 @@ public readonly partial struct Track
                 return;
             }
             var t = DisplayTrack(display);
-            if (!t.IsValid || t.NotYetOut(Store.ToUnix(Entities.Now))) return;
+            if (!t.IsValid) return;
             Track.Invoke(t, () => StartVisible(display));
         }
 
@@ -2699,25 +2791,43 @@ public readonly partial struct Track
                 source, source is null ? null : rows.ToArray());
         }
 
-        /// <summary>An OS file drag over a row attaches a local video override. The target only ACCEPTS a drop carrying an
-        /// .mp4, so any other file falls through to the shell's play-this-file target instead of being swallowed (ch 04 §6).</summary>
-        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => new(
+        /// <summary>An OS file drag over a row links the .mp4 to the row's track as its video version (the file joins the library:
+        /// Video.LinkedVideos.Attach). The target only ACCEPTS a drop carrying an .mp4, so any other file falls through to the shell's
+        /// play-this-file target instead of being swallowed (ch 04 §6). Only a row that can take a linked video accepts it (a Spotify track,
+        /// <see cref="Video.LinkedVideos.CanLink(EntityUri)"/>): a local file's row (Local files, On this PC) lets the .mp4 fall through to the
+        /// page's and the shell's targets, which add it to the library and play it as itself. The drop panel stays up over the row
+        /// (<see cref="DropAnywhere.KeepsPanel"/>): the row lights and leaves the scrim, the chip says "Link as this track's video", and the
+        /// panel's zones are still there when the pointer moves on.</summary>
+        DropTargetSpec VideoDrop(IReadSignal<int> index, int start) => DropAnywhere.KeepsPanel(new(
             [DropKinds.Files],
-            OnEnter: _ => _videoDropRow.Value = index.Peek(),
+            OnEnter: s => { _videoDropRow.Value = index.Peek(); s.Caption = s_linkCaption ??= Loc.Get(Strings.LinkedVideo.DropOnRow); },
+            OnOver: s => s.Caption = s_linkCaption,
             OnLeave: _ => { if (_videoDropRow.Peek() == index.Peek()) _videoDropRow.Value = -1; },
             OnDrop: session =>
             {
                 _videoDropRow.Value = -1;
-                if (session.Payload is not FileDropData files || Video.OverrideUx.FirstMp4(files.Paths) is not { } mp4) return;
+                if (session.Payload is not FileDropData files || Video.LinkedVideoUx.FirstMp4(files.Paths) is not { } mp4) return;
                 var t = DisplayTrack(index.Peek() - start);
                 if (!t.IsValid) return;
-                var result = Video.Overrides.Attach(t.Uri.Text, mp4, mp4, Store.ToUnix(Entities.Now));
-                Notify.Say(Loc.Get(result is null ? Strings.VideoOverride.RejectedNotFound : Strings.VideoOverride.Attached),
+                string uri = t.Uri.Text;
+                var result = Video.LinkedVideos.Attach(uri, mp4, mp4, Store.ToUnix(Entities.Now), out var refused);
+                // The file name only (paths hold the account name).
+                Log.Event(result is null ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "ui",
+                    result is null ? "linkedvideo.drop.rejected" : "linkedvideo.drop.attach",
+                    result is null ? "the dropped video was refused" : "linked a dropped video",
+                    fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("file", Path.GetFileName(mp4)), WaveeLogField.Of("reason", refused.ToString())]);
+                Notify.Say(result is null ? Video.LinkedVideos.RefusalText(refused) : Loc.Get(Strings.LinkedVideo.Attached),
                     result is null ? InfoBarSeverity.Error : InfoBarSeverity.Success);
             })
         {
-            CanAccept = static session => session.Payload is FileDropData f && Video.OverrideUx.FirstMp4(f.Paths) is not null,
-        };
+            CanAccept = session => session.Payload is FileDropData f && Video.LinkedVideoUx.FirstMp4(f.Paths) is not null
+                                   && Video.LinkedVideos.CanLink(DisplayTrack(index.Peek() - start).Uri),
+            // The row under the pointer is cut out of the panel's scrim, so its cue reads as the target it is.
+            VisualPolicy = DropTargetVisualPolicy.Spotlight,
+            SpotlightWhen = _ => _videoDropRow.Peek() == index.Peek(),
+        });
+
+        static string? s_linkCaption;
 
         // ══ 8. THE ROW SKIN, THE DRAWER, THE PRESENTATION ═══════════════════════════════════════════════════════════
 
@@ -2739,7 +2849,7 @@ public readonly partial struct Track
             var interact = scope.OnInteraction;
             bool classic = shape.Set.Classic;
             bool plain = !classic && VerticalArm && !ColumnsForm && !rowFlow;   // the hero form's STACKED flow: plain full-bleed rows
-            var drop = Video.Overrides.Present ? VideoDrop(index, start) : null;
+            var drop = Video.LinkedVideos.Present ? VideoDrop(index, start) : null;
             Func<bool> cue = drop is null ? _false : () => _videoDropRow.Value == index.Value;
 
             var templates = RowTemplatesFor(classic);
@@ -2942,7 +3052,12 @@ public readonly partial struct Track
             _curState = snap.State;
             _orderSeen = snap;
             _orderSeeded = true;
-            if (!membershipChanged) return;
+            // The baseline's slots index the table set it was read from: after a scope switch (the login's welcome) they name other rows or none,
+            // so the first membership in the new set re-seeds the order instead of being narrated against the old one.
+            uint scopeEpoch = Entities.ScopeEpoch.Peek();
+            bool sameScope = scopeEpoch == _orderScope;
+            _orderScope = scopeEpoch;
+            if (!membershipChanged || !sameScope) { if (!sameScope) _dropped.Clear(); return; }
             // The FLIP/fade reorder animation keys rows by Track identity (`MembershipDiff.Keys`) — an episode-
             // capable source (mixed Track/Episode) skips the choreography rather than mis-keying it; its rows still
             // reflow (Track.Table's plain layout pass), just without the fancy displacement narration.
@@ -3220,6 +3335,8 @@ public readonly partial struct Track
         bool _entranceTaken;
         LayoutTransition? _entrance;
         Track.BoundRow? _row;
+        Element? _seam;
+        Func<int>? _seamDisplay;
 
         static readonly LayoutTransition s_rampReveal = new(TransitionChannels.Opacity,
             TransitionDynamics.Tween(280f, Easing.FluentDecelerate), Enter: new EnterExit(Opacity: 0f, Active: true));
@@ -3299,6 +3416,16 @@ public readonly partial struct Track
             // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
             // Decided once, at the slot's first real render, and kept (the node's transition stays the one its entrance started on).
             if (!_entranceTaken) { _entranceTaken = true; _entrance = _latch == 1 ? s_rampReveal : host.RevealEntrance(display); }
+            // #48 Mix: the seam under this row rides the row's own bounds (Entities/Mix.Seams.cs), so the list's layout never moves for it.
+            if (host.MixPlaylistSlot() > 0)
+            {
+                _seam ??= Embed.Comp(() => new MixSeamLayer(_seamDisplay ??= () => _scope.Index.Value - _start, host.OriginalAt, host.MixPlaylistSlot,
+                    host.AccentRead, interactive: set.Tier <= 5, host.OpenSeam, shape.RowH)) with { Key = "mix:seam:host" };
+                return new BoxEl
+                {
+                    Key = "row:real", Direction = 0, Grow = 1f, ZStack = true, Animate = _entrance, Children = [body, _seam],
+                };
+            }
             return new BoxEl
             {
                 Key = "row:real", Direction = 0, Grow = 1f, Animate = _entrance, Children = [body],

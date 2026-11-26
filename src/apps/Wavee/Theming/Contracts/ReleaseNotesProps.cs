@@ -104,4 +104,10 @@ public sealed record AfterUpdatePlateProps
 
     /// <summary>The Store card's "Get it from the Microsoft Store".</summary>
     public required Action OpenStoreListing { get; init; }
+
+    /// <summary>The quiet door above the footer's buttons (a Store install: rate; any other: star), or null for none.</summary>
+    public RateDoorLine? RateDoor { get; init; }
 }
+
+/// <summary>The after-update plate's rate/star line: the sentence, its hyperlink button's label and what that button does.</summary>
+public sealed record RateDoorLine(string Line, string Button, Action Open);

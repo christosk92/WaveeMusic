@@ -46,7 +46,10 @@ public sealed record PlaylistCoverArtProps(float Size, int DecodePx, string[]? M
 /// <param name="Busy">A cover write is out for THIS playlist (the scrim stays up with its saving chip; read inside the render and the opacity binding).</param>
 /// <param name="Pick">The click: start the picker.</param>
 /// <param name="Apply">A JPEG / image file dropped on the cover: its path.</param>
-public sealed record PlaylistCoverEditorProps(PlaylistCoverArtProps Art, Func<bool> Busy, Action Pick, Action<string> Apply)
+/// <param name="TakesDrop">The cover's drop gate (its target's <c>CanAccept</c>): image files only, so a dragged song passes through to the drop
+/// panel instead of hiding it. Null: any file.</param>
+public sealed record PlaylistCoverEditorProps(PlaylistCoverArtProps Art, Func<bool> Busy, Action Pick, Action<string> Apply,
+    Func<DragSession, bool>? TakesDrop = null)
 {
     /// <inheritdoc />
     public bool Equals(PlaylistCoverEditorProps? other) => ReferenceEquals(this, other);
