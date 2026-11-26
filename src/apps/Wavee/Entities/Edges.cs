@@ -737,8 +737,10 @@ public readonly record struct QueueEdge(ulong ItemId, byte Provider, byte Bucket
 public readonly record struct DiscographyEdge(byte Kind);
 
 /// <summary>One friend's current or last activity (§9.6 Q5, ch 21 G6). Five real handles where 0.2.9 carried five uri
-/// strings, so the panel's rows route through the ordinary factories and the string soup goes away.</summary>
-public readonly record struct FriendEdge(int UserSlot, long TimestampMs, int TrackSlot, int AlbumSlot, int ArtistSlot, int ContextSlot);
+/// strings, so the panel's rows route through the ordinary factories and the string soup goes away.
+/// <paramref name="TimestampMs"/> is when the activity STARTED (the wire's own time, never rewritten);
+/// <paramref name="Playing"/> is the wire's <c>isPlaying</c>: the friend is listening to it now.</summary>
+public readonly record struct FriendEdge(int UserSlot, long TimestampMs, int TrackSlot, int AlbumSlot, int ArtistSlot, int ContextSlot, bool Playing = false);
 
 // ── 5. merch: the one side table ─────────────────────────────────────────────────────────────────────────────────────
 

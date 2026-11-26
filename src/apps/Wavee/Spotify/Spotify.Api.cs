@@ -2162,15 +2162,39 @@ public static partial class Spotify
         public static Result LikedContentFilters(string? etag, CancellationToken ct)
             => Send(LikedContentFiltersRoute, [], ct, etag);
 
-        /// <summary>The friend-activity seed, per dealer connection id. A 404 is an EMPTY feed, not a failure — the
-        /// service answers 404 for an account that follows nobody.</summary>
-        public static Result FriendFeed(string connectionId, CancellationToken ct)
+        /// <summary>The friend-activity feed (#277): every followed friend's latest listening, what the desktop client's
+        /// panel reads. A JSON POST with NO metrics or salt query: the service answers 404 to one that carries the default
+        /// <c>product=…&amp;country=…&amp;salt=…</c> (observed 2026-11-22; do not "fix" it back).</summary>
+        public static Result ListeningActivity(int limit, CancellationToken ct)
+            => PostEncoded("/listening-activity/v1/feed", ApiHost.Spclient, CommonJson,
+                Encoding.UTF8.GetBytes("{\"unused\":true,\"resultLimit\":" + limit.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}"),
+                "application/json", null, ct);
+
+        /// <summary>Subscribe this dealer connection to the listed friends' listening changes (#277), as the desktop
+        /// client does right after the feed: <c>{"subscriptions":[{"username":…,"pusher":{"connectionId":…}}]}</c>. The
+        /// answer repeats their activities and names the subscription's expiry (48 h in the capture); the changes then
+        /// arrive as dealer pushes on <paramref name="connectionId"/>.</summary>
+        public static Result ListeningSubscribe(string connectionId, string[] usernames, CancellationToken ct)
         {
-            Span<char> path = stackalloc char[256];
-            var w = new PathWriter(path);
-            w.Append("/presence-view/v2/init-friend-feed/");
-            w.AppendEscaped(connectionId);
-            return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
+            var body = new System.Buffers.ArrayBufferWriter<byte>(64 + usernames.Length * 96);
+            using (var w = new System.Text.Json.Utf8JsonWriter(body))
+            {
+                w.WriteStartObject();
+                w.WriteStartArray("subscriptions"u8);
+                foreach (string username in usernames)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("username"u8, username);
+                    w.WriteStartObject("pusher"u8);
+                    w.WriteString("connectionId"u8, connectionId);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+                w.WriteEndObject();
+            }
+            return PostEncoded("/listening-activity/v1/subscribe", ApiHost.Spclient, CommonJson, body.WrittenSpan.ToArray(),
+                "application/json", null, ct);
         }
 
         public static Result Notifications(int limit, CancellationToken ct)
@@ -2220,7 +2244,7 @@ public static partial class Spotify
         }
 
         /// <summary><c>/audio-attributes/v1/audio-analysis/{base62}</c> — the track's beat/bar grid as JSON (CommonJson, the
-        /// <see cref="FriendFeed"/> PathWriter shape). <paramref name="host"/> is <see cref="ApiHost.Spclient"/>
+        /// <see cref="ArtistTopTracksExtended"/> PathWriter shape). <paramref name="host"/> is <see cref="ApiHost.Spclient"/>
         /// (apresolve) for the data path; the probe also tries <see cref="ApiHost.SpclientWg"/>.</summary>
         public static Result AudioAnalysis(string trackId, ApiHost host, CancellationToken ct)
         {

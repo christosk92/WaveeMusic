@@ -2338,6 +2338,8 @@ public static partial class Entities
         // Recents is its own relation with its own payload (ch 16 §7.2) and rides after the edges for the same reason
         // the edges ride after the rows.
         CommitRecents(staging);
+        // The friend-activity run names users, tracks, albums, artists and playlists: after every row it points at (#277).
+        CommitFriends(staging);
         // Not an entity at all: the dark gradings extension kind 179 carries, keyed by the IMAGE (Palette.cs).
         CommitGradings(staging);
     }
@@ -2359,6 +2361,7 @@ public static partial class Entities
     static partial void CommitTraits(Staging s);
     static partial void CommitCanvas(Staging s);
     static partial void CommitRecents(Staging s);
+    static partial void CommitFriends(Staging s);
     static partial void CommitGradings(Staging s);
 
     /// <summary>Enqueue a table that changed in this drain. Called by <see cref="Publishable.MarkDirty"/> only.</summary>

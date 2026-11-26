@@ -20,7 +20,7 @@
 //   • `Rail.NpvDiagnostics` — the always-on `npv` log category. A preference written from several surfaces is only
 //     attributable if each write says which one it came from (CLAUDE.md: always-on logs, no env switches).
 //   • `Rail.Hero` / `Rail.Friends` (stage B) — the pinned hero's derived geometry (the W7b width ladder) and the friends
-//     feed's surface / live-window / relative-time / route rules plus its two host seams.
+//     feed's surface / relative-time / route rules plus its two host seams.
 //
 // Rules: no allocation after warm-up (P8); no LINQ, no closures, no async, no boxing (P9); UI thread only (C1).
 
@@ -296,15 +296,14 @@ public static partial class Rail
     // ── 6. the friends feed (stage B; FriendsPanel.cs, FriendsBridge.cs; ch 21 G6, §9.6 Q5) ─────────────────────────
 
     /// <summary>The friend-activity feed as the panel reads it: the rows are <c>Edges.Friends</c> under ONE synthetic
-    /// parent, and the coarse state and the two host verbs are seams the Spotify host fills. With no host attached the
-    /// feed reads OFFLINE — the 0.2.9 <c>NullFriendActivityService</c> answer `--fake` shows ("Sign in to see…").</summary>
+    /// parent, and the coarse state and the two host verbs are seams <c>Spotify.Friends</c> fills (#277): it loads the
+    /// listening-activity feed and subscribes to its changes. The state starts LOADING and reads OFFLINE ("Sign in to
+    /// see…") only while signed out; a row's "listening now" is the wire's own flag (<see cref="FriendEdge.Playing"/>).</summary>
     public static class Friends
     {
         /// <summary>The synthetic parent every friend edge hangs off (slot 0 is "none" everywhere).</summary>
         public const int Feed = 1;
-        /// <summary>"Listening now": activity at most this old shows the presence dot and the equalizer.</summary>
-        public const long LiveWindowMs = 120_000;
-        /// <summary>The relative-time / live-window refresh cadence while the panel is visible.</summary>
+        /// <summary>The relative-time refresh cadence while the panel is visible.</summary>
         public const float TickMs = 30_000f;
 
         public enum FeedState : byte { Idle, Loading, Ready, Offline, Error }
@@ -312,8 +311,9 @@ public static partial class Rail
         /// <summary>Which surface the panel shows.</summary>
         public enum Surface : byte { Rows, Skeleton, Empty, Offline, Error }
 
-        /// <summary>The coarse feed state. Written by the host; read by the panel.</summary>
-        public static readonly Signal<FeedState> State = new(FeedState.Offline);
+        /// <summary>The coarse feed state. Written by the host; read by the panel. Loading until the host knows better: a
+        /// signed-in launch must never flash "Sign in".</summary>
+        public static readonly Signal<FeedState> State = new(FeedState.Loading);
 
         /// <summary>Host seam: the panel is visible (true) / hidden (false) — mount/unmount drives it.</summary>
         public static Action<bool>? SetActive { get; set; }
@@ -329,10 +329,6 @@ public static partial class Rail
             FeedState.Idle or FeedState.Loading => Surface.Skeleton,
             _ => Surface.Empty,
         };
-
-        /// <summary>Is this activity "listening now"? A zero/unknown timestamp never is.</summary>
-        public static bool IsLive(long nowMs, long timestampMs)
-            => timestampMs > 0 && nowMs - timestampMs <= LiveWindowMs;
 
         public enum AgeUnit : byte { Now, Minutes, Hours, Days }
 

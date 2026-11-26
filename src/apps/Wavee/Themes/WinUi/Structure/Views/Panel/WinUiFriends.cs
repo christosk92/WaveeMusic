@@ -33,7 +33,7 @@ internal static class WinUiFriends
     {
         var user = new User(f.UserSlot);
         string name = props.ResolveString(user.NameId);
-        bool live = Rail.Friends.IsLive(now, f.TimestampMs);
+        bool live = f.Playing;
         string trackTitle = f.TrackSlot > 0 ? new Track(f.TrackSlot).Title : "";
         string artistName = f.ArtistSlot > 0 ? new Artist(f.ArtistSlot).Name : "";
         string albumTitle = f.AlbumSlot > 0 ? new Album(f.AlbumSlot).Title : "";
