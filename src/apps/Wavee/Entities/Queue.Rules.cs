@@ -78,13 +78,17 @@ public static class QueueSlots
 
     /// <summary>Flatten the three sections into <paramref name="dst"/>. A section with no rows contributes NOTHING,
     /// header included; autoplay rows are listed only while the toggle is on; <paramref name="headers"/> is false for the
-    /// stage's continuous list. Returns the slots written.</summary>
+    /// stage's continuous list. <paramref name="lead"/> (AI DJ, <c>QueueProps.Lead</c>): Next up's first rows play before the user's
+    /// queue, so they are listed first, under their own segment header; the rest of Next up follows the queue (its segments split there,
+    /// <c>Shell.QueueModel.WithSegments</c>). Returns the slots written.</summary>
     public static int Build(int queue, int shownQueue, int nextUp, int shownNextUp, int autoplay, int shownAutoplay,
-                            bool autoplayOn, bool headers, Span<QueueSlot> dst, ReadOnlySpan<int> segmentStarts = default)
+                            bool autoplayOn, bool headers, Span<QueueSlot> dst, ReadOnlySpan<int> segmentStarts = default, int lead = 0)
     {
         int n = 0;
+        lead = queue > 0 ? Math.Clamp(lead, 0, Math.Clamp(shownNextUp, 0, nextUp)) : 0;
+        if (lead > 0) Append(dst, ref n, QueueSection.NextUp, nextUp, shownNextUp, headers, segmentStarts, 0, lead);
         Append(dst, ref n, QueueSection.Queue, queue, shownQueue, headers);
-        Append(dst, ref n, QueueSection.NextUp, nextUp, shownNextUp, headers, segmentStarts);
+        Append(dst, ref n, QueueSection.NextUp, nextUp, shownNextUp, headers, segmentStarts, lead);
         if (autoplayOn) Append(dst, ref n, QueueSection.Autoplay, autoplay, shownAutoplay, headers);
         return n;
     }
@@ -92,15 +96,21 @@ public static class QueueSlots
     /// <summary>The most slots <see cref="Build"/> writes with <paramref name="segments"/> segment headers in place of Next up's one.</summary>
     public static int Capacity(int queue, int nextUp, int autoplay, int segments) => Capacity(queue, nextUp, autoplay) + Math.Max(0, segments - 1);
 
-    /// <summary>A section's slots. <paramref name="segmentStarts"/> (AI DJ, ascending positions in the section) puts one header before each
-    /// segment's first row in place of the section's one header: a header slot whose <see cref="QueueSlot.Pos"/> is the segment's index.</summary>
-    static void Append(Span<QueueSlot> dst, ref int n, QueueSection section, int count, int shown, bool header, ReadOnlySpan<int> segmentStarts = default)
+    /// <summary>A section's slots, its rows <paramref name="from"/> to <paramref name="until"/> (−1: to its end, then its "Show more").
+    /// <paramref name="segmentStarts"/> (AI DJ, ascending positions in the section) puts one header before each segment's first row in place
+    /// of the section's one header: a header slot whose <see cref="QueueSlot.Pos"/> is the segment's index.</summary>
+    static void Append(Span<QueueSlot> dst, ref int n, QueueSection section, int count, int shown, bool header, ReadOnlySpan<int> segmentStarts = default,
+        int from = 0, int until = -1)
     {
         if (count <= 0) return;
         int rows = Math.Clamp(shown, 0, count);
+        int end = until < 0 ? rows : Math.Min(until, rows);
+        if (from >= end && until >= 0) return;
         bool grouped = header && !segmentStarts.IsEmpty;
-        if (header && !grouped && n < dst.Length) dst[n++] = QueueSlot.Header(section);
-        for (int i = 0, segment = 0; i < rows && n < dst.Length; i++)
+        if (header && !grouped && from == 0 && n < dst.Length) dst[n++] = QueueSlot.Header(section);
+        int segment = 0;
+        while (segment < segmentStarts.Length && segmentStarts[segment] < from) segment++;
+        for (int i = from; i < end && n < dst.Length; i++)
         {
             while (grouped && segment < segmentStarts.Length && segmentStarts[segment] <= i)
             {
@@ -109,7 +119,7 @@ public static class QueueSlots
             }
             if (n < dst.Length) dst[n++] = QueueSlot.Row(section, i);
         }
-        if (count > rows && n < dst.Length) dst[n++] = QueueSlot.More(section);
+        if (until < 0 && count > rows && n < dst.Length) dst[n++] = QueueSlot.More(section);
     }
 }
 

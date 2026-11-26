@@ -315,12 +315,7 @@ internal sealed class ZuneStageUpNextColumn : Component
 
     /// <summary>The row's number on the page (Z-Queue-Page): its place among the upcoming rows, counted on across the sections ("next in queue" 1, 2,
     /// "next up" 3...), never its flat index in the queue, which counts the track on the deck.</summary>
-    int Ordinal(in QueueRowProps row) => row.Position + 1 + row.Section switch
-    {
-        QueueSection.Queue => 0,
-        QueueSection.NextUp => _queue.Counts.Queue,
-        _ => _queue.Counts.Queue + _queue.Counts.NextUp,
-    };
+    int Ordinal(in QueueRowProps row) => _queue.Ordinal(in row);
 
     Element Row(QueueStagePaneProps props, in QueueRowProps row)
     {

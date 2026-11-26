@@ -63,13 +63,12 @@ public static class DjPage
                 Playback.Current.Peek(), null);
             model = Shell.QueueModel.WithSegments(model, Playback.Dj.NextJumpTarget(Queue.Rows, state.Cursor.Index));
             var groups = new List<Element>(model.Segments.Length);
-            int start = model.Counts.Queue;
             foreach (QueueSegment seg in model.Segments)
             {
                 var kids = new List<Element>(seg.Count + 1) { Header(seg) };
                 for (int k = 0; k < seg.Count; k++)
                 {
-                    int at = start + seg.Start + k;
+                    int at = model.IndexOf(QueueSection.NextUp, seg.Start + k);
                     if (at >= model.Rows.Length) break;
                     kids.Add(Row(model.Rows[at], list));
                 }

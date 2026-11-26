@@ -496,7 +496,8 @@ public static partial class Queue
             if (_slots.Length < cap) _slots = new QueueSlot[Math.Max(cap, _slots.Length * 2)];
             Span<int> starts = segments.Length <= 32 ? stackalloc int[segments.Length] : new int[segments.Length];
             for (int i = 0; i < segments.Length; i++) starts[i] = segments[i].Start;
-            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots, starts);
+            _slotCount = QueueSlots.Build(counts.Queue, shownQueue, counts.NextUp, shownNextUp, counts.Autoplay, shownAutoplay, Autoplay, headers: true, _slots, starts,
+                Model.Lead);
         }
 
         /// <summary>Point the lane at THIS render's slots. A pointer lift whose gesture ended without telling the list (a

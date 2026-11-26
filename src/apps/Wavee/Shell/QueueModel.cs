@@ -121,17 +121,25 @@ public static partial class Shell
                 rows[k] = new QueueRowProps(itemId, i, refAt(i), section, k - start,
                     QueueRowRules.Removable(viewer, itemId) && i != djNext, QueueRowRules.RowDrags(viewer));
             }
+            // The DJ's next row plays before the songs queued during the clip: it leads the list (QueueProps.Lead), Rows in play order.
+            int lead = djNext >= 0 && user > 0 ? 1 : 0;
+            if (lead > 0)
+            {
+                QueueRowProps target = rows[user];
+                Array.Copy(rows, 0, rows, 1, user);
+                rows[0] = target;
+            }
             EntityRef preview = auto > 0 ? refAt(index[user + next]) : default;
             return new QueueProps(viewer, nowPlaying, playingFrom, new QueueCounts(user, next, auto),
-                new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
+                new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows) { Lead = lead };
         }
 
         /// <summary>AI DJ: while a narration is the deck, the track it leads into is the row right after it, bucketed with the user's queue so
         /// it stays ahead of anything queued during the clip (<c>QueueOrder.Follow</c>: a song added during a clip plays after the target). It
         /// is the DJ's next row, not one the user queued: it moves from the queue section to the head of the continuation (under its segment,
         /// <see cref="WithSegments"/>) and cannot be removed. Answers its flat index, or −1. PURE over the split.
-        /// <para>A song queued during the clip then lists above it in the "Next in queue" section while it plays after it, until the clip ends
-        /// (then the target is the deck and the list reads in play order again).</para></summary>
+        /// <para>A song queued during the clip plays after it: <see cref="Project"/> then lists the target first (<see cref="QueueProps.Lead"/>),
+        /// above "Next in queue", so the list reads in play order.</para></summary>
         static int DjNextRow(ReadOnlySpan<QueueEdge> edges, int divider, int[] index, ref int user, ref int next)
         {
             if (user == 0 || (uint)divider >= (uint)edges.Length || edges[divider].Provider != (byte)QueueProvider.Narration) return -1;
@@ -165,26 +173,40 @@ public static partial class Shell
         /// Narration rows (D2) never reach it: <see cref="Project"/> hides them first (<c>HideNarration</c>), and the book holds tracks only.</summary>
         public static QueueProps WithSegments(QueueProps model, int jumpTarget)
         {
-            int start = model.Counts.Queue, count = model.Counts.NextUp;
+            int count = model.Counts.NextUp;
             if (count == 0 || model.Viewer) return model;
             var rows = model.Rows;
             List<QueueSegment>? segments = null;
             string current = "";
-            for (int k = 0; k < count && start + k < rows.Length; k++)
+            for (int k = 0; k < count && model.IndexOf(QueueSection.NextUp, k) < rows.Length; k++)
             {
-                if (Playback.Dj.RowOf(rows[start + k].ItemId) is not { } dj) continue;
+                QueueRowProps row = rows[model.IndexOf(QueueSection.NextUp, k)];
+                if (Playback.Dj.RowOf(row.ItemId) is not { } dj) continue;
                 if (segments is not null && dj.Segment == current) continue;
                 segments ??= new List<QueueSegment>(4);
                 current = dj.Segment;
-                segments.Add(new QueueSegment("seg:" + dj.Segment, dj.Subtitle, k, 0, rows[start + k].Index == jumpTarget));
+                segments.Add(new QueueSegment("seg:" + dj.Segment, dj.Subtitle, k, 0, row.Index == jumpTarget));
             }
             if (segments is null) return model;
             if (segments[0].Start > 0) segments[0] = segments[0] with { Start = 0 };   // rows before the first booked one stay under it
+            // The lead rows (QueueProps.Lead: the DJ's next row, listed above the songs queued during the clip) close their segment there: the
+            // rest of it follows the queue under its own header, its label repeated.
+            int split = model.Lead;
+            if (split > 0 && split < count)
+            {
+                int at = segments.FindLastIndex(g => g.Start <= split);
+                if (at >= 0 && segments[at].Start < split)
+                    segments.Insert(at + 1, segments[at] with { Key = segments[at].Key + ":after", Start = split, NextPick = false });
+            }
             var shown = segments.ToArray();
             for (int i = 0; i < shown.Length; i++)
                 shown[i] = shown[i] with { Count = (i + 1 < shown.Length ? shown[i + 1].Start : count) - shown[i].Start };
             var still = (QueueRowProps[])rows.Clone();
-            for (int k = 0; k < count && start + k < still.Length; k++) still[start + k] = still[start + k] with { Draggable = false };
+            for (int k = 0; k < count; k++)
+            {
+                int at = model.IndexOf(QueueSection.NextUp, k);
+                if (at < still.Length) still[at] = still[at] with { Draggable = false };
+            }
             return model with { Rows = still, Segments = shown };
         }
 
