@@ -87,8 +87,8 @@ public static partial class Playback
             var key = new FollowKey(s.CurrentId, next.IsNone ? default : next.Id, s.Context, MixData.Version, MixOverrides.Version,
                 cur.Kind == EntityKind.Track ? edges.TrackBeats.Version(cur.Slot) : 0,
                 next.Kind == EntityKind.Track ? edges.TrackBeats.Version(next.Slot) : 0,
-                cur.Kind == EntityKind.Track ? edges.TrackCues.Version(cur.Slot) : 0,
-                next.Kind == EntityKind.Track ? edges.TrackCues.Version(next.Slot) : 0,
+                cur.Kind == EntityKind.Track ? BeatmatchFacts.Version(cur.Slot, edges) : 0,      // kinds 28, 218, 6 (and 217)
+                next.Kind == EntityKind.Track ? BeatmatchFacts.Version(next.Slot, edges) : 0,
                 pl > 0 ? edges.PlaylistTracks.Version(pl) : 0,
                 pl > 0 && MixOptOut.Is(new global::Wavee.Playlist(pl)));
             if (key == s_key) return;
@@ -288,7 +288,7 @@ public static partial class Playback
             var edges = Entities.Current.Edges;
             var fa = Facts(a, edges);
             var fb = Facts(b, edges);
-            return MixPlanner.Plan(in fa, edges.TrackBeats.Payload(cur.Slot), in fb, edges.TrackBeats.Payload(next.Slot), hasRecipe, in recipe);
+            return MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, cur.Slot, edges), in fb, BeatmatchFacts.Live(in fb, next.Slot, edges), hasRecipe, in recipe);
         }
 
         static PairFacts Facts(global::Wavee.Track t, Edges edges)
@@ -332,7 +332,7 @@ public static partial class Playback
             var edges = Entities.Current.Edges;
             var fa = Facts(a, edges);
             var fb = Facts(b, edges);
-            return MixPlanner.Plan(in fa, edges.TrackBeats.Payload(a.Slot), in fb, edges.TrackBeats.Payload(b.Slot), hasRecipe, in recipe);
+            return MixPlanner.Plan(in fa, BeatmatchFacts.Live(in fa, a.Slot, edges), in fb, BeatmatchFacts.Live(in fb, b.Slot, edges), hasRecipe, in recipe);
         }
     }
 
@@ -357,9 +357,10 @@ public static partial class Playback
         /// <summary>The local card's longest overlap and its Quick length (Mix.Card.cs, until the editor phase replaces the card).</summary>
         public const uint MaxOverlapMs = 16_000, ShortTargetMs = 2_500;
 
-        /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. Spans are the tracks' kind-217
-        /// grids in <see cref="BeatGrid"/> packing (may be empty), for <see cref="AutoBeatmatched"/>.</summary>
-        public static MixTiming Plan(in PairFacts a, ReadOnlySpan<uint> beatsA, in PairFacts b, ReadOnlySpan<uint> beatsB,
+        /// <summary>The plan of the join from A to B. A saved recipe wins; otherwise Spotify's Auto. <paramref name="ia"/> /
+        /// <paramref name="ib"/> are the tracks' analysis for <see cref="AutoBeatmatched"/> (<see cref="BeatmatchFacts.Live(in PairFacts, int, Edges)"/>;
+        /// default = none, the pair is not beatmatched).</summary>
+        public static MixTiming Plan(in PairFacts a, in BeatmatchFacts ia, in PairFacts b, in BeatmatchFacts ib,
             bool hasRecipe, in MixRecipe recipe)
         {
             if (a.IsLocal || b.IsLocal) return MixTiming.Refused(MixWhyNot.LocalFile);
@@ -367,8 +368,6 @@ public static partial class Playback
             if (hasRecipe && recipe.IsNoTransition) return MixTiming.Refused(MixWhyNot.NoTransition);
             if (a.DurationMs < MinTrackMs || b.DurationMs <= 0) return MixTiming.Refused(MixWhyNot.TooShort);
             if (hasRecipe) return Saved(in recipe, in a, in b);
-            var ia = BeatmatchFacts.Live(in a, beatsA);
-            var ib = BeatmatchFacts.Live(in b, beatsB);
             return AutoBeatmatched(in a, in ia, in b, in ib, out var matched) ? matched : Auto(in a, in b);
         }
 

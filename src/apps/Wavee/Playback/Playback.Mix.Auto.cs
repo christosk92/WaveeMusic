@@ -6,7 +6,7 @@
 //
 //   1. Windows. Per track, the downbeats of the kind 217 grid (a downbeat whose next downbeat is exactly 4 beats on, and
 //      the last one). A window is 2, 4, 8 or 16 bars from one downbeat to another: shorter than 35 s, bar lengths steady
-//      (variance of the bar durations < 0.0005 s²).
+//      (variance of the bar durations < 0.0005 s²), no weak downbeat on it (confidence ≤ 0.40, BeatGrid.WeakDownbeatBit).
 //   2. Pairs. A window of A and one of B with the same bar count whose lengths differ by at most 10 % (B's speed).
 //   3. Scores. r0 = the window's place: A's start late in A, B's end early in B (0 at the middle, 1 within the last / first
 //      15 % or 90 s, a window longer than 30 % of its track scores 0); a pair with r0 < 0.40 is dropped. r1 = the cue
@@ -22,9 +22,10 @@
 //      18, 8, 9, 10, 19} otherwise, indexed by the digest's first 8 bytes (little-endian) of uriA, uriB, bars, startA ms,
 //      startB ms.
 //
-// What Wavee has live: the kind 217 grid (downbeat flags), kind 222 Camelot, kind 28's best cues and its first start / last
-// end candidate. It does not fetch kind 218 (vocals) or kind 6 (descriptors), and keeps two of kind 28's candidates, so the
-// live answer is approximate (see BeatmatchFacts.Live); which pairs are beatmatched needs only the grids and is exact.
+// What Wavee has live is all of it: the kind 217 grid (downbeats, weak downbeats), kind 222 Camelot, kind 28's best cues
+// and both candidate lists in answer order, kind 218's vocal frames, kind 6's genre facts (Edges.TrackBeats, TrackCues,
+// TrackCueCandidates, TrackVocals, TrackMixGenres; BeatmatchFacts.Live reads them). A track whose kind 218 or kind 6 has not
+// landed plans without it (no vocals: r2 = 1; no genres: the short-window relation).
 //
 // Role: CORE (pure; values in, one plan out)
 
@@ -50,36 +51,52 @@ public static partial class Playback
     }
 
     /// <summary>One track's inputs to the beatmatched Auto beyond <see cref="PairFacts"/>: its kind 217 grid in
-    /// <see cref="BeatGrid"/> packing, kind 28's best cues (−1 when absent) and candidate lists in answer order, kind 218's
-    /// vocal frames and their rate, and its genre facts.</summary>
+    /// <see cref="BeatGrid"/> packing, kind 28's best cues (−1 when absent) and candidate lists in answer order
+    /// (<see cref="CueCandidate"/> packing, both lists in one span), kind 218's vocal frames and their rate, and its genre facts.</summary>
     public readonly ref struct BeatmatchFacts
     {
         public readonly ReadOnlySpan<uint> Beats;
         public readonly long BestStartMs, BestEndMs;
-        public readonly ReadOnlySpan<uint> StartCandidates, EndCandidates;
+        public readonly ReadOnlySpan<uint> Candidates;
         public readonly ReadOnlySpan<byte> Vocal;
         public readonly float VocalFps;
         public readonly MixGenres Genres;
 
-        public BeatmatchFacts(ReadOnlySpan<uint> beats, long bestStartMs, long bestEndMs, ReadOnlySpan<uint> startCandidates,
-            ReadOnlySpan<uint> endCandidates, ReadOnlySpan<byte> vocal, float vocalFps, MixGenres genres)
+        public BeatmatchFacts(ReadOnlySpan<uint> beats, long bestStartMs, long bestEndMs, ReadOnlySpan<uint> candidates,
+            ReadOnlySpan<byte> vocal, float vocalFps, MixGenres genres)
         {
-            Beats = beats; BestStartMs = bestStartMs; BestEndMs = bestEndMs; StartCandidates = startCandidates;
-            EndCandidates = endCandidates; Vocal = vocal; VocalFps = vocalFps; Genres = genres;
+            Beats = beats; BestStartMs = bestStartMs; BestEndMs = bestEndMs; Candidates = candidates;
+            Vocal = vocal; VocalFps = vocalFps; Genres = genres;
         }
 
-        /// <summary>What the app holds for a track: its grid, the best cues and the two candidates <see cref="TrackCues"/> keeps,
-        /// no vocals, no genres. On the reference set this picks the client's window for 19 of 72 beatmatched pairs (full
-        /// inputs: 72 of 72); it beatmatches exactly the pairs the client does.</summary>
-        public static BeatmatchFacts Live(in PairFacts f, ReadOnlySpan<uint> beats)
+        /// <summary>The inputs from what the app stores for a track (the decoders' own shapes): the grid, the best cues of
+        /// <paramref name="f"/>, the candidate lists, the <see cref="VocalBlock"/> run and the genre facts. On the reference set
+        /// this is the rule with full inputs (`mix autocheck`'s live line runs the decoders on the wire bytes and this).</summary>
+        public static BeatmatchFacts Live(in PairFacts f, ReadOnlySpan<uint> beats, ReadOnlySpan<uint> candidates,
+            ReadOnlySpan<VocalBlock> vocals, MixGenres genres)
         {
             var c = f.Cues;
-            bool answered = c.Candidates != CueCandidates.None;
-            return new BeatmatchFacts(beats, answered ? c.StartCueMs : -1, answered && c.EndCueMs > 0 ? c.EndCueMs : -1,
-                c.HasFirstStartCandidate ? new[] { c.FirstStartCandidateMs } : default,
-                c.HasLastEndCandidate ? new[] { c.LastEndCandidateMs } : default, default, 0f, MixGenres.Unknown);
+            var frames = VocalBlock.Read(vocals, out float fps);
+            return new BeatmatchFacts(beats, c.HasStartCue ? c.StartCueMs : -1, c.HasEndCue ? c.EndCueMs : -1, candidates, frames, fps, genres);
         }
+
+        /// <summary><see cref="Live(in PairFacts, ReadOnlySpan{uint}, ReadOnlySpan{uint}, ReadOnlySpan{VocalBlock}, MixGenres)"/>
+        /// over the track's stored analysis (UI thread; the spans are the edge tables' own, read them before the next commit).</summary>
+        public static BeatmatchFacts Live(in PairFacts f, int trackSlot, Edges edges)
+        {
+            var genres = edges.TrackMixGenres.Payload(trackSlot);
+            return Live(in f, edges.TrackBeats.Payload(trackSlot), edges.TrackCueCandidates.Payload(trackSlot),
+                edges.TrackVocals.Payload(trackSlot), genres.Length > 0 ? genres[0] : MixGenres.Unknown);
+        }
+
+        /// <summary>A version that moves whenever any input of a track's beatmatched Auto lands (the follow key's).</summary>
+        public static uint Version(int trackSlot, Edges edges)
+            => edges.TrackBeats.Version(trackSlot) * 31u + edges.TrackCues.Version(trackSlot) * 961u + edges.TrackVocals.Version(trackSlot) * 29791u
+               + edges.TrackMixGenres.Version(trackSlot) * 923521u + edges.TrackCueCandidates.Version(trackSlot);
     }
+
+    /// <summary>The scores of the window the beatmatched Auto chose (file header, step 3), for the inspector.</summary>
+    public readonly record struct BeatmatchScores(float R0, float R1, float R2, float R3, float R4, float Total, int Layer, int Kept, int Found);
 
     public static partial class MixPlanner
     {
@@ -112,8 +129,14 @@ public static partial class Playback
         /// <summary>Spotify's beatmatched Auto for A → B (file header): true with the plan when the client would beatmatch the
         /// pair, false when it would not (the caller takes <see cref="Auto"/>).</summary>
         public static bool AutoBeatmatched(in PairFacts a, in BeatmatchFacts ia, in PairFacts b, in BeatmatchFacts ib, out MixTiming timing)
+            => AutoBeatmatched(in a, in ia, in b, in ib, out timing, out _);
+
+        /// <inheritdoc cref="AutoBeatmatched(in PairFacts, in BeatmatchFacts, in PairFacts, in BeatmatchFacts, out MixTiming)"/>
+        public static bool AutoBeatmatched(in PairFacts a, in BeatmatchFacts ia, in PairFacts b, in BeatmatchFacts ib, out MixTiming timing,
+            out BeatmatchScores scores)
         {
             timing = default;
+            scores = default;
             if (a.DurationMs <= 0 || b.DurationMs <= 0 || ia.Beats.Length < 3 || ib.Beats.Length < 3) return false;
             var wa = Windows(in ia, outgoing: true);
             var wb = Windows(in ib, outgoing: false);
@@ -189,6 +212,7 @@ public static partial class Playback
                 if (d < 0) best = i;
             }
             var win = kept[best];
+            scores = new BeatmatchScores(win.R0, win.R1, win.R2, win.R3, win.R4, win.Total, layer[best], kept.Count, found.Count);
             ref readonly var wA = ref wa[win.A];
             ref readonly var wB = ref wb[win.B];
             float k = 0.001f;
@@ -230,8 +254,10 @@ public static partial class Playback
                     if (!BeatGrid.IsDownbeat(beats[i])) { i++; continue; }
                     int j = i + 1;
                     while (j < beats.Length && !BeatGrid.IsDownbeat(beats[j])) j++;
-                    if (j >= beats.Length) { down[nd++] = BeatGrid.StartMs(beats[i]); i++; continue; }
-                    if (j - i == 4) { down[nd++] = BeatGrid.StartMs(beats[i]); i += 4; continue; }
+                    // A downbeat kept with its weak flag (bit 31 of `down`): no window may touch it.
+                    uint kept = BeatGrid.StartMs(beats[i]) | (BeatGrid.IsWeakDownbeat(beats[i]) ? 0x8000_0000u : 0u);
+                    if (j >= beats.Length) { down[nd++] = kept; i++; continue; }
+                    if (j - i == 4) { down[nd++] = kept; i += 4; continue; }
                     i++;   // an irregular bar: the client's 2/4 paths are not modelled (no 2/4 grid in the reference set)
                 }
                 var list = new List<Window>();
@@ -239,20 +265,23 @@ public static partial class Playback
                 {
                     for (int s0 = 0; s0 + n < nd; s0++)
                     {
-                        float s = Seconds(down[s0]), e = Seconds(down[s0 + n]);
+                        float s = Seconds(down[s0] & BeatGrid.MsMask), e = Seconds(down[s0 + n] & BeatGrid.MsMask);
                         if (!((double)e - s < MaxWindowS)) continue;
+                        bool weak = false;
+                        for (int x = s0; x <= s0 + n && !weak; x++) weak = (down[x] & 0x8000_0000u) != 0;
+                        if (weak) continue;
                         double sum = 0, sq = 0;
                         for (int x = s0; x < s0 + n; x++)
                         {
-                            double bar = (double)Seconds(down[x + 1]) - Seconds(down[x]);
+                            double bar = (double)Seconds(down[x + 1] & BeatGrid.MsMask) - Seconds(down[x] & BeatGrid.MsMask);
                             sum += bar; sq += bar * bar;
                         }
                         double mean = sum / n;
                         if (!(sq / n - mean * mean < BarVariance)) continue;
                         list.Add(new Window
                         {
-                            Bars = n, StartMs = down[s0], EndMs = down[s0 + n], S = s, E = e,
-                            Cue = outgoing ? CueScore(f.BestEndMs, f.EndCandidates, s, e) : CueScore(f.BestStartMs, f.StartCandidates, s, e),
+                            Bars = n, StartMs = down[s0] & BeatGrid.MsMask, EndMs = down[s0 + n] & BeatGrid.MsMask, S = s, E = e,
+                            Cue = CueScore(outgoing ? f.BestEndMs : f.BestStartMs, f.Candidates, outgoing, s, e),
                             Vocal = VocalMask(f.Vocal, f.VocalFps, s, e),
                         });
                     }
@@ -262,7 +291,9 @@ public static partial class Playback
             finally { ArrayPool<uint>.Shared.Return(down); }
         }
 
-        static double CueScore(long bestMs, ReadOnlySpan<uint> candidates, float s, float e)
+        /// <summary>r1's half for one track (file header, step 3): the best cue, else the first candidate of the list (end
+        /// candidates for A, start candidates for B) in answer order that lands.</summary>
+        static double CueScore(long bestMs, ReadOnlySpan<uint> candidates, bool end, float s, float e)
         {
             double mid = s + ((double)e - s) * 0.5;
             float bestPos = -1f;
@@ -274,7 +305,8 @@ public static partial class Playback
             }
             foreach (uint c in candidates)
             {
-                float pos = Seconds(c);
+                if (CueCandidate.IsEnd(c) != end) continue;
+                float pos = Seconds(CueCandidate.Ms(c));
                 if (pos == bestPos) continue;
                 double r = At(pos, CueNonBest, mid, s, e);
                 if (r >= 0) return r;
@@ -359,13 +391,13 @@ public static partial class Playback
 
         /// <summary>The client's two genre groups (kind 6 descriptor concepts): a track carrying one of the first favours short
         /// windows, a pair both carrying one of the second favours long ones.</summary>
-        static readonly string[] ShortGenres =
+        internal static readonly string[] ShortGenres =
         [
             "spotify:concept:24pGOSaKeoU6bobuwqnMbJ", "spotify:concept:3LiuRrANWrpeGfMuENUG04", "spotify:concept:08Q9hhtRafUxsXWyH2Bo9V",
             "spotify:concept:6HmfjrBSjLZsidG2E8Iggk", "spotify:concept:3hvUlYaIyCcKNGFiVnqZaQ", "spotify:concept:0lLE9kiNdPuaXWpH2jhWUj",
             "spotify:concept:4UjCilZFeXnwJOPLmjiE42",
         ];
-        static readonly string[] LongGenres =
+        internal static readonly string[] LongGenres =
         [
             "spotify:concept:4NyuO3zCN13qIP8k4vNS0D", "spotify:concept:6Vwq57ZEeDu8TNVzd5b9rC", "spotify:concept:1J9pUDx6minjAWzoY3j9jv",
             "spotify:concept:0d5BcmOXdnNbXcgd7KiZrl",
@@ -375,12 +407,25 @@ public static partial class Playback
         public static MixGenres GenresOf(IEnumerable<string> concepts)
         {
             var g = MixGenres.Known;
-            foreach (string c in concepts)
-            {
-                if (Array.IndexOf(ShortGenres, c) >= 0) g |= MixGenres.Short;
-                if (Array.IndexOf(LongGenres, c) >= 0) g |= MixGenres.Long;
-            }
+            foreach (string c in concepts) g |= GenresOf(System.Text.Encoding.UTF8.GetBytes(c));
             return g;
+        }
+
+        /// <summary>The genre group one concept uri (UTF-8) belongs to: <see cref="MixGenres.Short"/>, <see cref="MixGenres.Long"/>
+        /// or none. No allocation (the kind 6 decoder's per-descriptor call).</summary>
+        public static MixGenres GenresOf(ReadOnlySpan<byte> concept)
+        {
+            var g = MixGenres.Unknown;
+            foreach (string c in ShortGenres) if (Same(concept, c)) g |= MixGenres.Short;
+            foreach (string c in LongGenres) if (Same(concept, c)) g |= MixGenres.Long;
+            return g;
+
+            static bool Same(ReadOnlySpan<byte> utf8, string ascii)
+            {
+                if (utf8.Length != ascii.Length) return false;
+                for (int i = 0; i < utf8.Length; i++) if (utf8[i] != ascii[i]) return false;
+                return true;
+            }
         }
 
         /// <summary>The preset (file header, step 5). Without the uris: 19, the reference set's commonest.</summary>

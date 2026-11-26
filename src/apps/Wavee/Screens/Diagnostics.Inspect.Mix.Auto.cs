@@ -8,13 +8,17 @@
 //                      {ms, bpm, ml, conf}, ms absent when 0), "10": {duration_ms}, "dur_ms" (whole seconds), "222": {bpm,
 //                      camelot}, "217": {beats: [[ms, position in bar]]}, "218": {rate, step, frames[]}, "6": {concepts[]}}};
 //                      the first file (by name) to give a uri's kind wins
+//   wire*.json         the same tracks' raw extension payloads: {uri: {"28" | "217" | "218" | "6": base64 of the Any value}},
+//                      what Wavee's own decoders read (the live line)
 //
 // Not beatmatched: each pair's inputs go through the real planner (MixPlanner.Plan, a pair with no saved recipe) and its
 // answer is compared with the client's startAMs and durationMs: once with A's kind 10 duration (exact, what Wavee plays
 // with) and once with A's duration taken as the client's own startAMs + durationMs. Beatmatched: every pair whose two
 // tracks have a grid and a kind 10 duration goes through MixPlanner.AutoBeatmatched with the full inputs (which pairs it
-// beatmatches, the window, speedB to the bit, the preset) and once more with only what the app holds live
-// (BeatmatchFacts.Live). Pairs are named by file, playlist and pair index, never by uri.
+// beatmatches, the window, speedB to the bit, the preset) and once more LIVE: the wire bytes of kinds 217, 28, 218 and 6 run
+// through Wavee's decoders (Spotify.Decode.ReadMixBeats, ReadCuepoints, ReadVocals, ReadMixGenres) into the shapes the edge
+// tables store, and BeatmatchFacts.Live reads those, as the app does. Pairs are named by file, playlist and pair index,
+// never by uri.
 //
 // Role: SHELL (diagnostics; reads files, needs no mount)
 
@@ -37,10 +41,17 @@ public static partial class Diagnostics
             public byte Camelot;
             public uint[]? Beats;
             public long BestStartMs = -1, BestEndMs = -1;
-            public uint[] StartCands = [], EndCands = [];
+            public uint[] Cands = [];
             public byte[]? Vocal;
             public float VocalFps;
             public Playback.MixGenres Genres;
+            // What the decoders make of the wire bytes (wire*.json), as the edge tables hold it.
+            public uint[]? WireBeats;
+            public bool WireCuesRead;
+            public TrackCues WireCues;
+            public uint[] WireCands = [];
+            public VocalBlock[] WireVocals = [];
+            public Playback.MixGenres WireGenres;
         }
 
         /// <summary>One pair of the dataset: where it is, its two tracks and the client's answer.</summary>
@@ -50,8 +61,8 @@ public static partial class Diagnostics
         /// <summary>The beatmatched fit over every pair with grids and kind 10 durations on both sides (`mix autocheck`).</summary>
         sealed class BeatmatchTally
         {
-            public int Pairs, Decided, MatchedPairs, Window, Speed, Preset, LiveWindow, LiveDecided;
-            public readonly List<string> Misses = [];
+            public int Pairs, Decided, MatchedPairs, Window, Speed, Preset, LiveWindow, LiveDecided, LiveSpeed, LivePreset, LiveNoWire;
+            public readonly List<string> Misses = [], LiveMisses = [];
         }
 
         static void CheckBeatmatched(in AutoPair p, AutoInput a, AutoInput b, BeatmatchTally t)
@@ -60,15 +71,12 @@ public static partial class Diagnostics
             t.Pairs++;
             var fa = new Playback.PairFacts(a.Kind10Ms, a.TempoX10, a.Camelot, a.Cues, true, false, p.A);
             var fb = new Playback.PairFacts(b.Kind10Ms, b.TempoX10, b.Camelot, b.Cues, true, false, p.B);
-            var ia = new Playback.BeatmatchFacts(a.Beats, a.BestStartMs, a.BestEndMs, a.StartCands, a.EndCands, a.Vocal, a.VocalFps, a.Genres);
-            var ib = new Playback.BeatmatchFacts(b.Beats, b.BestStartMs, b.BestEndMs, b.StartCands, b.EndCands, b.Vocal, b.VocalFps, b.Genres);
+            var ia = new Playback.BeatmatchFacts(a.Beats, a.BestStartMs, a.BestEndMs, a.Cands, a.Vocal, a.VocalFps, a.Genres);
+            var ib = new Playback.BeatmatchFacts(b.Beats, b.BestStartMs, b.BestEndMs, b.Cands, b.Vocal, b.VocalFps, b.Genres);
             bool matched = Playback.MixPlanner.AutoBeatmatched(in fa, in ia, in fb, in ib, out var m);
-            var la = Playback.BeatmatchFacts.Live(in fa, a.Beats);
-            var lb = Playback.BeatmatchFacts.Live(in fb, b.Beats);
-            bool liveMatched = Playback.MixPlanner.AutoBeatmatched(in fa, in la, in fb, in lb, out var lm);
             if (matched == p.Beatmatched) t.Decided++;
             else t.Misses.Add(p.Where + ": client " + (p.Beatmatched ? "beatmatches" : "does not beatmatch") + ", Wavee " + (matched ? "does" : "does not"));
-            if (liveMatched == p.Beatmatched) t.LiveDecided++;
+            CheckLive(in p, a, b, t);
             if (!p.Beatmatched || !matched) return;
             t.MatchedPairs++;
             bool window = m.OutStartMs == p.StartAMs && m.OutDurationMs == p.DurationMs && m.InStartMs == p.StartBMs && m.Bars == p.Bars;
@@ -76,11 +84,35 @@ public static partial class Diagnostics
             if (window) t.Window++;
             if (window && speed) t.Speed++;
             if (window && m.Preset == p.Preset) t.Preset++;
-            if (liveMatched && lm.OutStartMs == p.StartAMs && lm.OutDurationMs == p.DurationMs && lm.InStartMs == p.StartBMs && lm.Bars == p.Bars) t.LiveWindow++;
             if (!window || !speed || m.Preset != p.Preset)
                 t.Misses.Add(p.Where + ": client start=" + p.StartAMs + " dur=" + p.DurationMs + " in=" + p.StartBMs + " bars=" + p.Bars
                     + " speedB=" + p.SpeedB.ToString("R", CultureInfo.InvariantCulture) + " preset=" + p.Preset
                     + ", Wavee start=" + m.OutStartMs + " dur=" + m.OutDurationMs + " in=" + m.InStartMs + " bars=" + m.Bars
+                    + " speedB=" + m.SpeedB.ToString("R", CultureInfo.InvariantCulture) + " preset=" + m.Preset);
+        }
+
+        /// <summary>The live half of <see cref="CheckBeatmatched"/>: both tracks' wire bytes through the decoders, the stored shapes
+        /// through <see cref="Playback.BeatmatchFacts.Live(in Playback.PairFacts, ReadOnlySpan{uint}, ReadOnlySpan{uint}, ReadOnlySpan{VocalBlock}, Playback.MixGenres)"/>.</summary>
+        static void CheckLive(in AutoPair p, AutoInput a, AutoInput b, BeatmatchTally t)
+        {
+            if (a.WireBeats is null || b.WireBeats is null) { t.LiveNoWire++; return; }
+            var fa = new Playback.PairFacts(a.Kind10Ms, a.TempoX10, a.Camelot, a.WireCues, true, false, p.A);
+            var fb = new Playback.PairFacts(b.Kind10Ms, b.TempoX10, b.Camelot, b.WireCues, true, false, p.B);
+            var la = Playback.BeatmatchFacts.Live(in fa, a.WireBeats, a.WireCands, a.WireVocals, a.WireGenres);
+            var lb = Playback.BeatmatchFacts.Live(in fb, b.WireBeats, b.WireCands, b.WireVocals, b.WireGenres);
+            bool matched = Playback.MixPlanner.AutoBeatmatched(in fa, in la, in fb, in lb, out var m);
+            if (matched == p.Beatmatched) t.LiveDecided++;
+            else t.LiveMisses.Add(p.Where + ": client " + (p.Beatmatched ? "beatmatches" : "does not beatmatch") + ", live " + (matched ? "does" : "does not"));
+            if (!p.Beatmatched || !matched) return;
+            bool window = m.OutStartMs == p.StartAMs && m.OutDurationMs == p.DurationMs && m.InStartMs == p.StartBMs && m.Bars == p.Bars;
+            bool speed = BitConverter.SingleToInt32Bits(m.SpeedB) == BitConverter.SingleToInt32Bits(p.SpeedB);
+            if (window) t.LiveWindow++;
+            if (window && speed) t.LiveSpeed++;
+            if (window && m.Preset == p.Preset) t.LivePreset++;
+            if (!window || !speed || m.Preset != p.Preset)
+                t.LiveMisses.Add(p.Where + ": client start=" + p.StartAMs + " dur=" + p.DurationMs + " in=" + p.StartBMs + " bars=" + p.Bars
+                    + " speedB=" + p.SpeedB.ToString("R", CultureInfo.InvariantCulture) + " preset=" + p.Preset
+                    + ", live start=" + m.OutStartMs + " dur=" + m.OutDurationMs + " in=" + m.InStartMs + " bars=" + m.Bars
                     + " speedB=" + m.SpeedB.ToString("R", CultureInfo.InvariantCulture) + " preset=" + m.Preset);
         }
 
@@ -97,6 +129,7 @@ public static partial class Diagnostics
                 string file = Path.GetFileName(path);
                 if (file.Contains("inputs", StringComparison.OrdinalIgnoreCase)) { read.Add(file + ": " + ReadAutoInputs(path, inputs) + " tracks"); continue; }
                 if (file.StartsWith("auto-pairs", StringComparison.OrdinalIgnoreCase)) read.Add(file + ": " + ReadAutoPairs(path, file, pairs) + " pairs");
+                if (file.StartsWith("wire", StringComparison.OrdinalIgnoreCase)) read.Add(file + ": " + ReadAutoWire(path, inputs) + " tracks (wire bytes)");
             }
 
             // Not beatmatched: the exact rule. Beatmatched: what Wavee plans now (the rule; the fit is MixPlanner.AutoBeatmatched).
@@ -184,10 +217,15 @@ public static partial class Diagnostics
                 w.WriteString("window", fit.Window + " of " + fit.MatchedPairs + " (startAMs, durationMs, startBMs and bars equal)");
                 w.WriteString("speedB", fit.Speed + " of " + fit.Window + " (bit-exact, on the equal windows)");
                 w.WriteString("preset", fit.Preset + " of " + fit.Window + " (on the equal windows)");
-                w.WriteString("live", "which pairs " + fit.LiveDecided + " of " + fit.Pairs + ", window " + fit.LiveWindow + " of " + fit.MatchedPairs
-                    + " (BeatmatchFacts.Live: the grid, Camelot, the best cues and two candidates; no kind 218 vocals, no kind 6 genres)");
+                w.WriteString("live", "which pairs " + fit.LiveDecided + " of " + (fit.Pairs - fit.LiveNoWire) + ", window " + fit.LiveWindow + " of "
+                    + fit.MatchedPairs + ", speedB " + fit.LiveSpeed + " of " + fit.LiveWindow + ", preset " + fit.LivePreset + " of " + fit.LiveWindow
+                    + " (the wire bytes of kinds 217, 28, 218 and 6 through Wavee's decoders, BeatmatchFacts.Live over what they store"
+                    + (fit.LiveNoWire > 0 ? "; " + fit.LiveNoWire + " pairs without wire bytes" : "") + ")");
                 w.WriteStartArray("fitMisses");
                 foreach (var m in fit.Misses) w.WriteStringValue(m);
+                w.WriteEndArray();
+                w.WriteStartArray("liveMisses");
+                foreach (var m in fit.LiveMisses) w.WriteStringValue(m);
                 w.WriteEndArray();
                 w.WriteString("clientBars", string.Join(", ", bmBars.Select(kv => kv.Key + " bars: " + kv.Value)));
                 w.WriteString("clientPresets", string.Join(", ", bmPresets.OrderByDescending(kv => kv.Value).Select(kv => kv.Key + ": " + kv.Value)));
@@ -222,8 +260,9 @@ public static partial class Diagnostics
                     input.Cues = new TrackCues(start, end, 0, has, has.HasFlag(CueCandidates.Start) ? first : 0, last);
                     input.BestStartMs = cues.TryGetProperty("start", out var bs) && bs.ValueKind == JsonValueKind.Object ? CueMs(bs) : -1;
                     input.BestEndMs = cues.TryGetProperty("end", out var be) && be.ValueKind == JsonValueKind.Object ? CueMs(be) : -1;
-                    input.StartCands = sc.ValueKind == JsonValueKind.Array ? [.. sc.EnumerateArray().Select(CueMs)] : [];
-                    input.EndCands = ec.ValueKind == JsonValueKind.Array ? [.. ec.EnumerateArray().Select(CueMs)] : [];
+                    // Both lists in one span, start candidates then end candidates (each list's order is what the rule reads).
+                    input.Cands = [.. (sc.ValueKind == JsonValueKind.Array ? sc.EnumerateArray().Select(CueMs) : Enumerable.Empty<uint>()),
+                        .. (ec.ValueKind == JsonValueKind.Array ? ec.EnumerateArray().Select(c => CueMs(c) | CueCandidate.EndBit) : Enumerable.Empty<uint>())];
                 }
                 if (input.Beats is null && v.TryGetProperty("217", out var k217) && k217.ValueKind == JsonValueKind.Object
                     && k217.TryGetProperty("beats", out var bl) && bl.ValueKind == JsonValueKind.Array)
@@ -268,6 +307,37 @@ public static partial class Diagnostics
             return n;
 
             static uint CueMs(JsonElement cue) => cue.TryGetProperty("ms", out var ms) && ms.ValueKind == JsonValueKind.Number ? ms.GetUInt32() : 0;
+        }
+
+        /// <summary>One wire file into <paramref name="into"/>: each track's kind 217, 28, 218 and 6 payloads through the decoders'
+        /// pure readers (the staged decoders call the same ones), kept in the shapes the edge tables store. The track count.</summary>
+        static int ReadAutoWire(string path, Dictionary<string, AutoInput> into)
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+            int n = 0;
+            var beats = new uint[BeatGrid.MaxBeats];
+            var cands = new uint[CueCandidate.Max];
+            foreach (var track in doc.RootElement.EnumerateObject())
+            {
+                if (track.Value.ValueKind != JsonValueKind.Object) continue;
+                n++;
+                if (!into.TryGetValue(track.Name, out var input)) into[track.Name] = input = new AutoInput();
+                var v = track.Value;
+                if (input.WireBeats is null && Wire(v, "217") is { } k217)
+                    input.WireBeats = beats.AsSpan(0, Spotify.Decode.ReadMixBeats(k217, beats, out _)).ToArray();
+                if (!input.WireCuesRead && Wire(v, "28") is { } k28)
+                {
+                    input.WireCuesRead = true;
+                    int c = Spotify.Decode.ReadCuepoints(k28, out input.WireCues, cands);
+                    input.WireCands = cands.AsSpan(0, c).ToArray();
+                }
+                if (input.WireVocals.Length == 0 && Wire(v, "218") is { } k218) input.WireVocals = Spotify.Decode.ReadVocals(k218);
+                if (input.WireGenres == Playback.MixGenres.Unknown && Wire(v, "6") is { } k6) input.WireGenres = Spotify.Decode.ReadMixGenres(k6);
+            }
+            return n;
+
+            static byte[]? Wire(JsonElement track, string kind)
+                => track.TryGetProperty(kind, out var b64) && b64.ValueKind == JsonValueKind.String ? Convert.FromBase64String(b64.GetString() ?? "") : null;
         }
 
         /// <summary>One auto-pairs file into <paramref name="into"/>. The pair count.</summary>

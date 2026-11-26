@@ -75,9 +75,10 @@ public static class MixEdit
         var beatsB = edges.TrackBeats.Payload(b.Slot);
         var cuesA = edges.TrackCues.Payload(a.Slot);
         var cuesB = edges.TrackCues.Payload(b.Slot);
-        var fa = new Playback.PairFacts(a.DurationMs, a.Tempo, a.Camelot, cuesA.Length > 0 ? cuesA[0] : default, true, false);
-        var fb = new Playback.PairFacts(b.DurationMs, b.Tempo, b.Camelot, cuesB.Length > 0 ? cuesB[0] : default, true, false);
-        var auto = Playback.MixPlanner.Plan(in fa, beatsA, in fb, beatsB, false, default);
+        var fa = new Playback.PairFacts(a.DurationMs, a.Tempo, a.Camelot, cuesA.Length > 0 ? cuesA[0] : default, true, false, a.Uri.Text);
+        var fb = new Playback.PairFacts(b.DurationMs, b.Tempo, b.Camelot, cuesB.Length > 0 ? cuesB[0] : default, true, false, b.Uri.Text);
+        var auto = Playback.MixPlanner.Plan(in fa, Playback.BeatmatchFacts.Live(in fa, a.Slot, edges), in fb,
+            Playback.BeatmatchFacts.Live(in fb, b.Slot, edges), false, default);
         var now = Playback.Mix.PlanListPair(playlistSlot, index, index + 1);
         bool local = MixOverrides.TryGet(p.Id.Text, itemA, itemB, out var rec);
         bool grid = beatsA.Length >= 16;

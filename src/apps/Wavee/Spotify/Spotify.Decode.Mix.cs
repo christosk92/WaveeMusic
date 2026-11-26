@@ -1,11 +1,14 @@
 // ── Spotify/Spotify.Decode.Mix.cs — CORE (#48 Mix, plan §3.2, §3.3) ───────────────────────────────────────────────────
 //
-// The read side of Spotify's Mix, shapes from the capture report (§3.1, §3.5, §4.1). Five extension kinds and the
+// The read side of Spotify's Mix, shapes from the capture report (§3.1, §3.5, §4.1). Seven extension kinds and the
 // mix lens of a playlist v2 read:
 //
-//   217 beats        {1 beats/bar, 2[] {1 float s, 3 pos-in-bar 1..4, 4 conf, 5 1.0 = downbeat}, 3 "32-hex id"}
+//   217 beats        {1 beats/bar, 2[] {1 float s, 3 pos-in-bar 1..4, 4 float conf, 5 float downbeat conf}, 3 "32-hex id"}
 //   28  cue points   {1 start cue, 2 end cue, 3[] start candidates, 4[] end candidates}, cue = {1 ms, 2 float bpm, 3 1, 4 double}
-//                    (kept: the two cues, the smallest start candidate and the largest end candidate)
+//                    (kept: the two cues, every candidate in answer order)
+//   218 vocals       {1 float 22050, 2 1, 4 315, 5 packed frames} (one byte per frame, 70 fps)
+//   6   descriptors  {1[] {1 text, 2 float weight, 3 bytes, 4 concept uri, 5 display}}: the chips (Spotify.Decode.cs) and,
+//                    here, the genre facts the beatmatched Auto reads
 //   225 mix state    {1 1} when mixed, empty when not
 //   170 auto lens    {1 "mix"} or empty
 //   235 mixability   {1 1}
@@ -15,7 +18,7 @@
 //                    contents.5[] {1 "mix-state", 2 {1 "mix"}} the list's mix-state signal template (lens reads only)
 //
 // The item flags (attribute 14 present = editable transition, not-mixable) are read where the item edge is staged
-// (Spotify.Decode.cs, ItemAttributes). Never throws, never allocates beyond the staging arena.
+// (Spotify.Decode.cs, ItemAttributes). Never throws; kind 218 allocates its frames once per answer.
 
 namespace Wavee;
 
@@ -23,8 +26,7 @@ public static partial class Spotify
 {
     public static partial class Decode
     {
-        /// <summary>Kind 217 → <see cref="Edges.TrackBeats"/> in <see cref="BeatGrid"/>'s packing (start ms in bits 0..30,
-        /// bit 31 = downbeat: f5 = 1.0, or position 1 in the bar when f5 is absent) and the analysis id (f3) as a
+        /// <summary>Kind 217 → <see cref="Edges.TrackBeats"/> in <see cref="BeatGrid"/>'s packing and the analysis id (f3) as a
         /// <see cref="TraitRelation.TrackBeatsId"/> run. An answer with no beats lands an empty grid: that is an answer.</summary>
         public static void MixBeats(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
@@ -33,30 +35,7 @@ public static partial class Spotify
             uint[] beats = System.Buffers.ArrayPool<uint>.Shared.Rent(BeatGrid.MaxBeats);
             try
             {
-                int n = 0;
-                ReadOnlySpan<byte> analysisId = default;
-                for (var r = new ProtoReader(proto); r.Next();)
-                {
-                    if (r.Field == 2 && r.Wire == 2)
-                    {
-                        float seconds = -1f, downbeat = -1f;
-                        long position = 0;
-                        for (var b = r.Message(); b.Next();)
-                        {
-                            if (b.Field == 1 && b.Wire == 5) seconds = BitConverter.UInt32BitsToSingle(b.Fixed32());
-                            else if (b.Field == 3 && b.Wire == 0) position = (long)b.Varint();
-                            else if (b.Field == 5 && b.Wire == 5) downbeat = BitConverter.UInt32BitsToSingle(b.Fixed32());
-                            else b.Skip();
-                        }
-                        if (seconds < 0 || n >= BeatGrid.MaxBeats) continue;
-                        long ms = (long)(seconds * 1000.0 + 0.5);
-                        if (ms is < 0 or > BeatGrid.MsMask) continue;
-                        bool isDown = downbeat >= 0 ? downbeat >= 0.5f : position == 1;
-                        beats[n++] = (uint)ms | (isDown ? BeatGrid.DownbeatBit : 0u);
-                    }
-                    else if (r.Field == 3 && r.Wire == 2) analysisId = r.Bytes();
-                    else r.Skip();
-                }
+                int n = ReadMixBeats(proto, beats.AsSpan(0, BeatGrid.MaxBeats), out var analysisId);
                 ref var run = ref s.TraitRuns.Add();
                 run.Parent = track;
                 run.Relation = TraitRelation.TrackBeats;
@@ -76,16 +55,81 @@ public static partial class Spotify
             finally { System.Buffers.ArrayPool<uint>.Shared.Return(beats); }
         }
 
-        /// <summary>Kind 28 → one <see cref="TrackCues"/> on <see cref="Edges.TrackCues"/>: the chosen start cue (f1) and
-        /// end cue (f2), the tempo the start cue states, and of the candidate lists the smallest start candidate (f3, min ms)
-        /// and the largest end candidate (f4, max ms), the two Spotify's Auto reads. A cue's ms is absent when 0.</summary>
+        /// <summary>Kind 217's beats into <paramref name="into"/>, as the client reads them (reference §7.2): ms = the FLOAT
+        /// product of f1 and 1000 rounded half up (f1 absent = a beat at 0.0 s, proto3's default, kept); a downbeat is position 1
+        /// in the bar (f3); a downbeat whose confidence round(f4 × 100) × round(f5 × 100) / 10⁴ is at most 0.40 also carries
+        /// <see cref="BeatGrid.WeakDownbeatBit"/>. The beat count; <paramref name="analysisId"/> = f3 of the answer. PURE: the
+        /// staged decoder, `mix autocheck` and the fake seed call it alike.</summary>
+        public static int ReadMixBeats(ReadOnlySpan<byte> proto, Span<uint> into, out ReadOnlySpan<byte> analysisId)
+        {
+            int n = 0;
+            analysisId = default;
+            for (var r = new ProtoReader(proto); r.Next();)
+            {
+                if (r.Field == 2 && r.Wire == 2)
+                {
+                    float seconds = 0f, confidence = 0f, downbeat = 0f;
+                    long position = 0;
+                    for (var b = r.Message(); b.Next();)
+                    {
+                        if (b.Field == 1 && b.Wire == 5) seconds = BitConverter.UInt32BitsToSingle(b.Fixed32());
+                        else if (b.Field == 3 && b.Wire == 0) position = (long)b.Varint();
+                        else if (b.Field == 4 && b.Wire == 5) confidence = BitConverter.UInt32BitsToSingle(b.Fixed32());
+                        else if (b.Field == 5 && b.Wire == 5) downbeat = BitConverter.UInt32BitsToSingle(b.Fixed32());
+                        else b.Skip();
+                    }
+                    if (!(seconds >= 0f) || n >= into.Length) continue;
+                    float product = seconds * 1000f;
+                    double ms = Math.Floor(product + 0.5);
+                    if (ms > BeatGrid.MsMask) continue;
+                    uint beat = (uint)ms;
+                    if (position == 1)
+                    {
+                        beat |= BeatGrid.DownbeatBit;
+                        float c = (float)(Math.Round(confidence * 100.0) * Math.Round(downbeat * 100.0) * 1e-4);
+                        if (c <= 0.4f) beat |= BeatGrid.WeakDownbeatBit;
+                    }
+                    into[n++] = beat;
+                }
+                else if (r.Field == 3 && r.Wire == 2) analysisId = r.Bytes();
+                else r.Skip();
+            }
+            return n;
+        }
+
+        /// <summary>Kind 28 → one <see cref="TrackCues"/> on <see cref="Edges.TrackCues"/> and the candidate lists on
+        /// <see cref="Edges.TrackCueCandidates"/> (<see cref="ReadCuepoints"/>).</summary>
         public static void Cuepoints(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var track = Identity(s, entityUri);
             if (track.IsEmpty) return;
+            Span<uint> list = stackalloc uint[CueCandidate.Max];
+            int n = ReadCuepoints(proto, out var cue, list);
+            ref var run = ref s.TraitRuns.Add();
+            run.Parent = track;
+            run.Relation = TraitRelation.TrackCues;
+            run.Start = s.Traits.Count;
+            run.Length = 0;
+            if (cue.Candidates != CueCandidates.None)   // answered with no cue: the empty run says so
+                run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<TrackCues>(in cue)));
+            ref var lists = ref s.TraitRuns.Add();
+            lists.Parent = track;
+            lists.Relation = TraitRelation.TrackCueCandidates;
+            lists.Start = s.Traits.Count;
+            lists.Length = 0;
+            if (n > 0) lists.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(list[..n]));
+        }
+
+        /// <summary>Kind 28: the chosen start cue (f1) and end cue (f2), the tempo the start cue states, which fields the answer
+        /// carried, the smallest start candidate (f3, min ms) and the largest end candidate (f4, max ms) into <paramref name="cue"/>;
+        /// every candidate in answer order into <paramref name="candidates"/> (<see cref="CueCandidate"/> packing, the first
+        /// <see cref="CueCandidate.Max"/>). A cue's ms is absent when 0. The candidate count. PURE (see <see cref="ReadMixBeats"/>).</summary>
+        public static int ReadCuepoints(ReadOnlySpan<byte> proto, out TrackCues cue, Span<uint> candidates)
+        {
             uint start = 0, end = 0, firstStart = uint.MaxValue, lastEnd = 0;
-            var candidates = CueCandidates.None;
+            var has = CueCandidates.None;
             float bpm = 0f;
+            int n = 0;
             for (var r = new ProtoReader(proto); r.Next();)
             {
                 if (r.Field is >= 1 and <= 4 && r.Wire == 2)
@@ -95,29 +139,109 @@ public static partial class Spotify
                     float cueBpm = 0f;
                     for (var c = r.Message(); c.Next();)
                     {
-                        if (c.Field == 1 && c.Wire == 0) ms = (uint)Math.Min(c.Varint(), uint.MaxValue);
+                        if (c.Field == 1 && c.Wire == 0) ms = (uint)Math.Min(c.Varint(), CueCandidate.MsMask);
                         else if (c.Field == 2 && c.Wire == 5) cueBpm = BitConverter.UInt32BitsToSingle(c.Fixed32());
                         else c.Skip();
                     }
                     switch (field)
                     {
-                        case 1: start = ms; if (cueBpm > 0) bpm = cueBpm; break;
-                        case 2: end = ms; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; break;
-                        case 3: candidates |= CueCandidates.Start; firstStart = Math.Min(firstStart, ms); break;
-                        default: candidates |= CueCandidates.End; lastEnd = Math.Max(lastEnd, ms); break;
+                        case 1: start = ms; has |= CueCandidates.StartCue; if (cueBpm > 0) bpm = cueBpm; break;
+                        case 2: end = ms; has |= CueCandidates.EndCue; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; break;
+                        case 3: has |= CueCandidates.Start; firstStart = Math.Min(firstStart, ms); break;
+                        default: has |= CueCandidates.End; lastEnd = Math.Max(lastEnd, ms); break;
                     }
+                    if (field >= 3 && n < candidates.Length) candidates[n++] = ms | (field == 4 ? CueCandidate.EndBit : 0u);
                 }
                 else r.Skip();
             }
+            cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0, has,
+                (has & CueCandidates.Start) != 0 ? firstStart : 0, lastEnd);
+            return n;
+        }
+
+        /// <summary>Kind 218 → <see cref="Edges.TrackVocals"/> (<see cref="ReadVocals"/>). An answer with no frames lands an empty
+        /// run: that is an answer.</summary>
+        public static void MixVocals(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
+        {
+            var track = Identity(s, entityUri);
+            if (track.IsEmpty) return;
+            var blocks = ReadVocals(proto);
             ref var run = ref s.TraitRuns.Add();
             run.Parent = track;
-            run.Relation = TraitRelation.TrackCues;
+            run.Relation = TraitRelation.TrackVocals;
             run.Start = s.Traits.Count;
             run.Length = 0;
-            if (start == 0 && end == 0 && candidates == CueCandidates.None) return;   // answered, but no cue: the empty run says so
-            var cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0, candidates,
-                (candidates & CueCandidates.Start) != 0 ? firstStart : 0, lastEnd);
-            run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<TrackCues>(in cue)));
+            if (blocks.Length > 0) run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(blocks.AsSpan()));
+        }
+
+        /// <summary>Kind 218 <c>VocalActivity {1 float sample rate, 2 uint, 3 uint, 4 uint hop, 5 packed frames}</c> as
+        /// <see cref="VocalBlock"/> entries: the frame rate f1 / f4 (22050 / 315 = 70 fps on every captured answer) and one byte per
+        /// frame (each packed varint clamped to 255; the wire's are below 128). Empty for an answer with no frames or no rate; at
+        /// most <see cref="BeatGrid.MaxBeats"/> entries (about 2 hours at 70 fps). PURE (see <see cref="ReadMixBeats"/>).</summary>
+        public static VocalBlock[] ReadVocals(ReadOnlySpan<byte> proto)
+        {
+            float rate = 0f;
+            ulong hop = 0;
+            ReadOnlySpan<byte> packed = default;
+            for (var r = new ProtoReader(proto); r.Next();)
+            {
+                if (r.Field == 1 && r.Wire == 5) rate = BitConverter.UInt32BitsToSingle(r.Fixed32());
+                else if (r.Field == 4 && r.Wire == 0) hop = r.Varint();
+                else if (r.Field == 5 && r.Wire == 2) packed = r.Bytes();
+                else r.Skip();
+            }
+            if (packed.IsEmpty || !(rate > 0f) || hop == 0) return [];
+            int frames = 0;
+            foreach (byte b in packed) if (b < 0x80) frames++;
+            frames = Math.Min(frames, (BeatGrid.MaxBeats - 1) * VocalBlock.Frames);
+            if (frames == 0) return [];
+            var blocks = new VocalBlock[VocalBlock.Entries(frames)];
+            var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(blocks.AsSpan());
+            System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes, rate / hop);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes[4..], frames);
+            var into = bytes[VocalBlock.Frames..];
+            ulong value = 0;
+            int shift = 0, i = 0;
+            foreach (byte b in packed)
+            {
+                if (shift < 64) value |= (ulong)(b & 0x7F) << shift;
+                shift += 7;
+                if (b >= 0x80) continue;
+                if (i < frames) into[i++] = (byte)Math.Min(value, 255UL);
+                value = 0;
+                shift = 0;
+            }
+            return blocks;
+        }
+
+        /// <summary>Kind 6's genre facts for the beatmatched Auto: every descriptor's (f1) concept uri (its f4) against the client's
+        /// two genre groups (<see cref="Playback.MixPlanner.GenresOf(ReadOnlySpan{byte})"/>). Always <see cref="Playback.MixGenres.Known"/>
+        /// (an answer with no descriptors is one). PURE (see <see cref="ReadMixBeats"/>).</summary>
+        public static Playback.MixGenres ReadMixGenres(ReadOnlySpan<byte> proto)
+        {
+            var g = Playback.MixGenres.Known;
+            for (var r = new ProtoReader(proto); r.Next();)
+            {
+                if (r.Field != 1 || r.Wire != 2) { r.Skip(); continue; }
+                for (var d = r.Message(); d.Next();)
+                {
+                    if (d.Field == 4 && d.Wire == 2) g |= Playback.MixPlanner.GenresOf(d.Bytes());
+                    else d.Skip();
+                }
+            }
+            return g;
+        }
+
+        /// <summary>Kind 6's genre facts → <see cref="Edges.TrackMixGenres"/>, beside the descriptor chips (<see cref="Descriptors"/>).</summary>
+        static void MixGenres(ReadOnlySpan<byte> proto, in StagedId track, Staging s)
+        {
+            var g = ReadMixGenres(proto);
+            ref var run = ref s.TraitRuns.Add();
+            run.Parent = track;
+            run.Relation = TraitRelation.TrackMixGenres;
+            run.Start = s.Traits.Count;
+            run.Length = 0;
+            run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<Playback.MixGenres>(in g)));
         }
 
         /// <summary>Kinds 225, 170 and 235 on a PLAYLIST → its <see cref="PlaylistMixFlags"/> XM bit (each kind speaks only
