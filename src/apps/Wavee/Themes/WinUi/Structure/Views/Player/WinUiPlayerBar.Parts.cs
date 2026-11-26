@@ -17,6 +17,7 @@ using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using Wavee.Theming.Roles;
 
 using PL = Wavee.Themes.WinUi.WinUiPlayerLayout;
@@ -105,16 +106,12 @@ internal static partial class WinUiPlayerBar
     }
 
     /// <summary>"Let DJ pick" (AI DJ): a transport button in the shuffle slot while the DJ plays (the DJ locks shuffle), the bar's own button
-    /// (transparent at rest, the subtle fill on hover) with the sparkle in the DJ's icon colour (<c>narration.jump.icon.color</c>; the accent ink when
-    /// none is stated), disabled while the next segment is still on its way. The tooltip names it, or says why it waits.</summary>
+    /// (transparent at rest, the subtle fill on hover) carrying the DJ's mark (<see cref="CommonDjMark"/>: the disc and ring in the session's own
+    /// colours), greyed while the next segment is still on its way. The tooltip names it, or says why it waits.</summary>
     internal static Element DjPick(DjChrome dj, CanvasInk ink = default)
     {
-        ColorF glyph = !dj.CanPick ? Tok.TextDisabled : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Tok.AccentTextPrimary;
         var button = Button(Icons.RefineSparkle, dj.Jump, dj.CanPick, false, PL.TransportW, PL.TransportH, PL.Glyph, ink: ink);
-        return ToolTip.Wrap(button with
-        {
-            Children = [new TextEl(Icons.RefineSparkle) { Size = PL.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = glyph }],
-        }, dj.CanPick ? dj.Pick : dj.PickTip);
+        return ToolTip.Wrap(button with { Children = [CommonDjMark.Create(dj, PL.DjMark)] }, dj.CanPick ? dj.Pick : dj.PickTip);
     }
 
     /// <summary>The DJ's segment line ("DJ · Vibes"): the "playing on" line's look and place (the secondary ink under the artists), the sparkle in the
