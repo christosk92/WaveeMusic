@@ -338,8 +338,6 @@ public readonly partial struct Track
         public Action? MixToggle { get; init; }
         /// <summary>Is Mix on for this playlist on this PC? A tracked read: the toggle follows it.</summary>
         public Func<bool>? MixLit { get; init; }
-        /// <summary>#48 Mix: open the Transitions list (on this playlist index, or −1); null = none.</summary>
-        public Action<int>? OpenTransitions { get; init; }
         /// <summary>#48 Mix: the Mix menu's items (the split's chevron); null = no menu.</summary>
         public Func<IReadOnlyList<MenuFlyoutItem>>? MixMenu { get; init; }
         /// <summary>Expanded-row BODY (Track.Drawer.cs, M Wave 5), handed the row's track and DISPLAY index; the host pads it
@@ -715,6 +713,14 @@ public readonly partial struct Track
         // ── memos (hook-owned; assigned every render, read by the rows) ────────────────────────────────────────────
         Memo<Snapshot>? _snapshot;
         Memo<Shape>? _shape;
+        /// <summary>#48 Mix: the list shows its pairs' transitions inline (<see cref="SeamsShown"/>).</summary>
+        Memo<bool>? _seams;
+        /// <summary>#48 Mix: the lane height the shape last answered, whether it has answered, and when the lanes last arrived or left.</summary>
+        float _seamWas;
+        bool _seamShaped;
+        long _seamFlipAtMs = long.MinValue;
+        /// <summary>How long after the lanes arrive a lane that mounts still draws itself in (the rows on screen mount in the flip's own flush).</summary>
+        const long SeamRevealWindowMs = 400;
         Memo<TableView>? _viewMemo;
         Memo<int>? _selectedCount;
         Memo<bool>? _checksVisible;
@@ -794,7 +800,7 @@ public readonly partial struct Track
             _leavesLive = item => _exit.ContainsKey(item - TrackStart);
             _newIndexOf = NewItemIndexOf;
             _onMembership = OnMembership;
-            _trackOrderNow = () => { if (_snapshot is { } snap && _shape is { } shape) TrackOrder(snap.Peek(), shape.Peek().RowH); };
+            _trackOrderNow = () => { if (_snapshot is { } snap && _shape is { } shape) TrackOrder(snap.Peek(), shape.Peek().Pitch); };
             _onVisibleRange = (first, last) => { _liveFirst = first; _liveLast = last; };
             _leadInset = () => InsetsNow().Lead;
             _trailInset = () => InsetsNow().Trail;
@@ -819,13 +825,19 @@ public readonly partial struct Track
 
         /// <summary>The ACTIVE geometry: one column set, one TrackSize[] (the row's per-(set, art) cached instance — header
         /// and rows read the same array), art, row height, density. Tracks compare by VALUE so a cache miss that rebuilt an
-        /// identical array does not re-render every row.</summary>
-        internal readonly record struct Shape(ColumnSet Set, TrackSize[] Tracks, float Art, float RowH, int Density, float EpisodeRowH = 0f, bool NarrowEpisode = false)
+        /// identical array does not re-render every row.
+        /// <para><see cref="SeamH"/> (#48 Mix): the transition lane under every row while the list shows a mixed playlist's transitions inline
+        /// (Entities/Mix.Seams.cs), 0 otherwise. A row draws at <see cref="RowH"/>; the list lays its rows out at <see cref="Pitch"/>.</para></summary>
+        internal readonly record struct Shape(ColumnSet Set, TrackSize[] Tracks, float Art, float RowH, int Density, float EpisodeRowH = 0f, bool NarrowEpisode = false,
+            float SeamH = 0f)
         {
+            /// <summary>The list's row extent: the row and the transition lane under it.</summary>
+            public float Pitch => RowH + SeamH;
+
             public bool Equals(Shape other)
             {
                 if (!Set.Equals(other.Set) || Art != other.Art || RowH != other.RowH || Density != other.Density
-                    || EpisodeRowH != other.EpisodeRowH || NarrowEpisode != other.NarrowEpisode) return false;
+                    || EpisodeRowH != other.EpisodeRowH || NarrowEpisode != other.NarrowEpisode || SeamH != other.SeamH) return false;
                 var a = Tracks; var b = other.Tracks;
                 if (ReferenceEquals(a, b)) return true;
                 if (a is null || b is null || a.Length != b.Length) return false;
@@ -833,7 +845,7 @@ public readonly partial struct Track
                 return true;
             }
 
-            public override int GetHashCode() => HashCode.Combine(Set, Art, RowH, Density, Tracks?.Length ?? 0);
+            public override int GetHashCode() => HashCode.Combine(Set, Art, RowH, Density, Tracks?.Length ?? 0, SeamH);
         }
 
         Snapshot ComputeSnapshot()
@@ -891,7 +903,7 @@ public readonly partial struct Track
             var form = args.Embedded && !args.PageWide
                 ? Track.EmbeddedForm()
                 : ShellPolicy.Tracked.DetailTiers.For(TiersNow()).Table;
-            var admitted = SetFor(in snap, args, TierNow(), form);
+            var admitted = SetFor(in snap, args, TierNow(), form, _seams!.Value);
             var set = TableRules.ApplyRelief(in admitted, ReliefStepFor(in admitted));
             var rows = RowMetrics.Rows();   // the style's density (M3)
             float art = form.ArtFor(set.Classic ? rows.ClassicArt : rows.ModernArt);
@@ -900,13 +912,24 @@ public readonly partial struct Track
             if (form.OneLineTrim > 0f && !set.Compact && !set.Thumb && snap.Config.Kind == DetailKind.Album) rowH = MathF.Max(0f, rowH - form.OneLineTrim);
             // A list's two-line rows may add air of their own (DetailTableTier.ListRowAir: WinUI's 2, a 50 pitch at the standard density); albums and the Classic skin keep theirs.
             if (form.ListRowAir > 0f && !set.Classic && !set.Compact && snap.Config.Kind != DetailKind.Album) rowH += form.ListRowAir;
-            return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode);
+            // #48 Mix: a mixed playlist in its own order shows each pair's transition inline, in a lane under the row (a sort or a filter breaks
+            // the pairs: no lane). The lane answer is its own memo, so a playlist write elsewhere re-shapes nothing.
+            bool lane = _seams!.Value && snap.Sort == SortSpec.Default && snap.Query.Length == 0 && snap.Filters.IsDefault;
+            float seam = lane ? MixSeams.LaneHeight(touch: set.Compact) : 0f;
+            // The lanes arriving (Mix turned on, a sort cleared) or leaving: the rows make room through ReRow's FLIP and the lanes mounting in
+            // the next frames draw their timeline in, staggered down the screen (SeamRevealDelay). The shape's first answer is the page's own.
+            if (_seamShaped && (seam > 0f) != (_seamWas > 0f)) _seamFlipAtMs = Environment.TickCount64;
+            _seamShaped = true;
+            _seamWas = seam;
+            return new Shape(set, Track.TracksFor(in set, art), art, rowH, rows.Rung, rows.EpisodeRow, rows.NarrowEpisode, seam);
         }
 
         /// <summary>The committed table tier (0 the widest); the widest before the hook has run.</summary>
         int TierNow() => _tierSig is { } t ? global::Wavee.Theming.DetailLadders.TierOf(t.Value) : 0;
 
-        static ColumnSet SetFor(in Snapshot s, TableArgs args, int tier, global::Wavee.Theming.DetailTableTier form)
+        /// <summary>The lanes the tier admits. <paramref name="mixed"/> (#48 Mix: the list shows its transitions inline): the BPM · Key lane stands in for
+        /// Date added, as Spotify's Mix view puts BPM where the date was.</summary>
+        static ColumnSet SetFor(in Snapshot s, TableArgs args, int tier, global::Wavee.Theming.DetailTableTier form, bool mixed)
         {
             var cfg = s.Config;
             var src = args.Source;
@@ -922,14 +945,14 @@ public readonly partial struct Track
                 Album: cfg.ShowAlbumColumn && tier < 2 && form.AlbumColumn,
                 By: src.HasAddedBy && tier < 1 && !compact,
                 // A quiet list (Liked) keeps its date wherever the width does (C-TrackList small: "Added" on Liked only).
-                Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact,
+                Date: src.HasDateAdded && tier < 3 && (form.DateColumn || cfg.QuietRows) && !compact && !(mixed && cfg.ShowTempo),
                 Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3 && form.PlaysColumn,
                 // A quiet list (Liked, D16) states its heart in the trailing lane, before the duration (board C-TrackList, liked).
                 Heart: tier < 5 && !cfg.QuietRows && !cfg.LocalRows && !compact && !hover && !form.HeartTrailing,
                 Thumb: identity.Thumb,
                 Actions: (trailing.Actions && !hover) || compact,
                 Tier: tier,
-                Tempo: cfg.ShowTempo && s.TempoColumn && !compact,
+                Tempo: cfg.ShowTempo && (s.TempoColumn || mixed) && !compact,
                 Expand: trailing.Expand && !compact && !hover && form.VersionsLane && (form.ListVersionsLane || cfg.Kind == DetailKind.Album),
                 Artist: identity.Artist && !compact,
                 Classic: s.Classic,
@@ -1182,7 +1205,7 @@ public readonly partial struct Track
             return orig >= 0 ? _latest.Source.At(orig) : default;
         }
 
-        /// <summary>#48 Mix: the playlist index a DISPLAY row shows (−1 past the end), for the seams (Entities/Mix.Seams.cs).</summary>
+        /// <summary>#48 Mix: the playlist index a DISPLAY row shows (−1 past the end), for the transition chips (Entities/Mix.Seams.cs).</summary>
         internal int OriginalAt(int display) => display < 0 ? -1 : OriginalOf(display);
 
         /// <summary>#48 Mix: the playlist slot this table lists, or 0 (an album, Liked Songs, a queue). Read by the seam layer.</summary>
@@ -1194,8 +1217,37 @@ public readonly partial struct Track
             return p.IsValid && p.MixOn ? p.Slot : 0;
         }
 
-        /// <summary>#48 Mix: a seam was clicked: the profile's Transitions list opens on it.</summary>
-        internal void OpenSeam(int index) => _latest.Profile.OpenTransitions?.Invoke(index);
+        /// <summary>#48 Mix: the transition lane's height, the connector's x (the rows' artwork centre), the chip's lead (the artwork's left edge),
+        /// how far the connector reaches into the rows around the lane, and whether the rows are the touch form (tracked: the lane re-renders when the
+        /// shape moves).</summary>
+        internal MixSeams.Geometry SeamGeometry()
+        {
+            var shape = _shape!.Value;
+            var set = shape.Set;
+            float centre = RowMetrics.ArtCentreIndent(in set, shape.Art);
+            bool art = set.Thumb && shape.Art > 0f;
+            return new MixSeams.Geometry(shape.SeamH, centre, art ? centre - shape.Art * 0.5f : centre, art ? MathF.Max(0f, (shape.RowH - shape.Art) * 0.5f) : 0f, set.Compact);
+        }
+
+        /// <summary>#48 Mix: the delay a lane mounting at <paramref name="display"/> draws its timeline in after (staggered from the first row on
+        /// screen, Design.Entrance's capped cadence), or −1 when it is born at rest (the page opened with Mix on; a lane scrolled into view). Untracked.</summary>
+        internal float SeamRevealDelay(int display)
+        {
+            if (Environment.TickCount64 - _seamFlipAtMs > SeamRevealWindowMs) return -1f;
+            float pitch = _shape!.Peek().Pitch;
+            int first = pitch > 0f ? Math.Max(0, (int)((_listCtl.ScrollOffset - _heroH.Peek()) / pitch)) : 0;
+            return Design.Entrance.DelayMs(display - first);
+        }
+
+        /// <summary>#48 Mix: does this table list a mixed playlist whose transitions this account hears (Mix on, not "Listen without Mix", Premium)?
+        /// Then its rows carry the transition lane (<see cref="Shape.SeamH"/>). Its own memo: only a flip re-shapes the table.</summary>
+        bool SeamsShown()
+        {
+            var ctx = _args.Value!.Source.Context;
+            if (ctx.Id.Kind != EntityKind.Playlist) return false;
+            _ = Entities.Current.Playlists.Changed.Value;   // the mix flags and the local opt-out (its write bumps the row)
+            return MixMenu.Lit(Entities.Playlist(ctx));
+        }
 
         internal StringId ItemIdAt(int display)
         {
@@ -1304,6 +1356,7 @@ public readonly partial struct Track
             // The structure's table ladder (themes plan 3.6; Classic: Tiers.Detail.cs); it freezes at mount like every hook's inputs.
             _tierSig = UseTier(global::Wavee.Theming.DetailLadders.Of(ShellPolicy.Now.Tiers, global::Wavee.Theming.DetailLadders.Table),
                 TierSource.Measured(_listW, _listSeed));
+            _seams = UseComputed(SeamsShown);
             _shape = UseComputed(ComputeShape);
             _hotSettled = UseComputed(ComputeHotSettled);
             _rowItems = UseMemo(() => BoundItems.Project(_snapshot!,
@@ -1382,7 +1435,7 @@ public readonly partial struct Track
                 bool together = vertical && !trailing && ShellPolicy.Tracked.Lists.RowsRevealTogether;
                 // The first step covers every row on screen (the owner's recording: rows 13-15 a frame after 1-12, through a grey placeholder);
                 // only the overscan past the screen ramps on.
-                int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+                int band = Design.RevealRamp.FirstBand(_lastH, shape.Pitch);
                 if ((_sawUnknown || trailing) && !together) { _rampPending = true; _rampEpoch++; _rampFirst = band; }
                 // A cold reveal (the list stood on its skeleton): the rows on screen crossfade in, top-down (TableRowContent).
                 if (_sawUnknown) { _revealAtMs = Environment.TickCount64; _revealBand = band; }
@@ -1394,12 +1447,12 @@ public readonly partial struct Track
             // list mounted and is a no-op for a snapshot the observer already took.
             int resetBefore = _resetEpoch;
             int dealBefore = _dealEpoch;
-            TrackOrder(in snap, shape.RowH);
+            TrackOrder(in snap, shape.Pitch);
             if (_latest.Form != _formSeen) { _formSeen = _latest.Form; _formChangedAtMs = Environment.TickCount64; }
-            ReDeal(shape.Set.Tier, shape.RowH);
+            ReDeal(shape.Set.Tier, shape.Pitch);
             // A row-height change no deal narrates glides the rows to their new places (a deal, or a membership change, owns the rows when one ran).
-            if (_dealEpoch == dealBefore && !_dealtThisFrame) ReRow(shape.RowH, trailing);
-            else _rowHSeen = shape.RowH;
+            if (_dealEpoch == dealBefore && !_dealtThisFrame) ReRow(shape.Pitch, trailing);
+            else _rowHSeen = shape.Pitch;
             _dealtThisFrame = false;
             // The list reads the version in THIS flush, so its seeds land on the frame that lays the deal out (from a layout effect they landed a
             // frame late: the rows stood at their new places for one frame, then jumped back to glide). This render never reads the signal.
@@ -1447,7 +1500,7 @@ public readonly partial struct Track
             // The first screen's covers decode with the track data, ahead of the rows' reveal (the owner's recording: empty squares, then pictures).
             UseEffect(_prefetchArt);
 
-            float rowH = shape.RowH;
+            float rowH = shape.Pitch;
             // An episode-capable source has rows of more than one height, so the fixed `MeasuredStackVirtualLayout`
             // (every row = `rowH`) gives way to `RepeatLayout.VariableList` (an estimate, then measured per realized
             // slot); a pure track list keeps the fixed layout untouched.
@@ -1579,7 +1632,7 @@ public readonly partial struct Track
             src.Subscribe();
             _ = Entities.Current.Tracks.Changed.Value;
             if (!src.Context.Equals(_prefetchFor)) { _prefetchFor = src.Context; _prefetched = 0; }
-            int n = Math.Min(src.PrefetchCount, Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH));
+            int n = Math.Min(src.PrefetchCount, Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().Pitch));
             for (int i = _prefetched; i < n; i++)
             {
                 var t = src.At(i);
@@ -1614,7 +1667,7 @@ public readonly partial struct Track
         /// that gate crossfades in with the band when it opens (<see cref="Design.RevealRamp.RowEnter"/>), the rows on screen top-down. Untracked.</summary>
         internal LayoutTransition? GatedEntrance(int displayIndex)
         {
-            int band = Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().RowH);
+            int band = Design.RevealRamp.FirstBand(_lastH, _shape!.Peek().Pitch);
             return (uint)displayIndex < (uint)band ? Design.RevealRamp.RowEnter(displayIndex) : null;
         }
 
@@ -1938,7 +1991,7 @@ public readonly partial struct Track
                 // WinUI's per-notch distance (15 % of the viewport, floored at 48 DIP) snapped to a whole number of
                 // rows at the live density, so a notch lands on a row boundary instead of slicing one in half. Dynamic
                 // on purpose — the density control changes RowH under the same viewport.
-                ScrollLineDip = shape.RowH,
+                ScrollLineDip = shape.Pitch,
                 EdgeCues = vertical ? ScrollEdgeCues.None : ScrollEdgeCues.Auto,
             };
         }
@@ -2208,7 +2261,7 @@ public readonly partial struct Track
             // rows landed: "About this album", owner video 2026-10-25), else every row the screen shows: the skeleton stands wherever a row on screen
             // will land (it stopped at 12, and rows 13-15 landed below it on bare ground, owner video 2026-11-15).
             int expected = _latest.Source.ExpectedRows;
-            int band = Design.RevealRamp.FirstBand(_lastH, shape.RowH);
+            int band = Design.RevealRamp.FirstBand(_lastH, shape.Pitch);
             var rows = new Element[expected > 0 ? Math.Min(expected, band) : band];
             for (int i = 0; i < rows.Length; i++)
             {
@@ -2545,7 +2598,7 @@ public readonly partial struct Track
         void CorrectDrawerExtents(string previous, string next)
         {
             Span<DrawerExtentWrite> writes = stackalloc DrawerExtentWrite[2];
-            int n = DrawerExtentRule.For(previous, next, DisplayOfKey, ShapeValue.RowH, 0f, writes);
+            int n = DrawerExtentRule.For(previous, next, DisplayOfKey, ShapeValue.Pitch, 0f, writes);
             for (int i = 0; i < n; i++)
             {
                 int index = TrackStart + writes[i].Index;
@@ -3251,6 +3304,7 @@ public readonly partial struct Track
         readonly bool _narrate = narrate;
         IReadSignal<Track>? _trackItem;
         IReadSignal<Episode.RowItem>? _episodeItem;
+        Element? _seam;
 
         public override Element Render()
         {
@@ -3304,15 +3358,24 @@ public readonly partial struct Track
                 var group = UseComputed(() => _host.GroupHeadAt(_scope.Index.Value - _start));
                 head = _host.GroupHeader(() => group.Value, in shape);
             }
-            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = head is null ? [row] : [head.Value, row] };
-            var t = _trackItem!.Peek();
-            int display = _scope.Index.Peek() - _start;
-            Element drawer = _host.DrawerBox(t, display, in shape, _scope.Index, _start);
-            return new BoxEl
+            // #48 Mix: a mixed playlist's rows carry the transition lane under them (Shape.SeamH; Entities/Mix.Seams.cs), outside the row's skin:
+            // the row keeps its height, plate and gestures, and the pair's chip sits in the lane on the connector to the next row.
+            Element? seam = null;
+            if (shape.SeamH > 0f)
             {
-                Direction = 1, MinWidth = 0f,
-                Children = head is null ? [row, drawer] : [head.Value, row, drawer],
-            };
+                var shost = _host;
+                var sscope = _scope;
+                int sstart = _start;
+                // Mix off: the lane fades out as the rows close over it (ReRow's FLIP); its arrival is drawn by the lane itself (MixSeamProps.Reveal).
+                seam = _seam ??= Embed.Comp(() => new MixSeamLane(() => sscope.Index.Value - sstart, shost.OriginalAt, shost.MixPlaylistSlot, shost.SeamGeometry,
+                    shost.SeamRevealDelay)) with { Key = "mix:seam:host", Layout = MixSeams.LaneExit };
+            }
+            var kids = new List<Element>(4);
+            if (head is not null) kids.Add(head.Value);
+            kids.Add(row);
+            if (isOpen) kids.Add(_host.DrawerBox(_trackItem!.Peek(), _scope.Index.Peek() - _start, in shape, _scope.Index, _start));
+            if (seam is not null) kids.Add(seam);
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids.ToArray() };
         }
     }
 
@@ -3335,8 +3398,6 @@ public readonly partial struct Track
         bool _entranceTaken;
         LayoutTransition? _entrance;
         Track.BoundRow? _row;
-        Element? _seam;
-        Func<int>? _seamDisplay;
 
         static readonly LayoutTransition s_rampReveal = new(TransitionChannels.Opacity,
             TransitionDynamics.Tween(280f, Easing.FluentDecelerate), Enter: new EnterExit(Opacity: 0f, Active: true));
@@ -3416,16 +3477,6 @@ public readonly partial struct Track
             // mounts real in a cold reveal's band takes the band's staggered crossfade (Design.RevealRamp.RowEnter).
             // Decided once, at the slot's first real render, and kept (the node's transition stays the one its entrance started on).
             if (!_entranceTaken) { _entranceTaken = true; _entrance = _latch == 1 ? s_rampReveal : host.RevealEntrance(display); }
-            // #48 Mix: the seam under this row rides the row's own bounds (Entities/Mix.Seams.cs), so the list's layout never moves for it.
-            if (host.MixPlaylistSlot() > 0)
-            {
-                _seam ??= Embed.Comp(() => new MixSeamLayer(_seamDisplay ??= () => _scope.Index.Value - _start, host.OriginalAt, host.MixPlaylistSlot,
-                    host.AccentRead, interactive: set.Tier <= 5, host.OpenSeam, shape.RowH)) with { Key = "mix:seam:host" };
-                return new BoxEl
-                {
-                    Key = "row:real", Direction = 0, Grow = 1f, ZStack = true, Animate = _entrance, Children = [body, _seam],
-                };
-            }
             return new BoxEl
             {
                 Key = "row:real", Direction = 0, Grow = 1f, Animate = _entrance, Children = [body],

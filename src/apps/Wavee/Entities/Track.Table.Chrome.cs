@@ -815,12 +815,15 @@ public readonly partial struct Track
                     else ToggleOverlay(overlay, anchor, handle,
                         () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
                 }
-                var kids = new List<Element>(2)
+                var split = UseRef<NodeHandle>(default);
+                var kids = new List<Element>(3)
                 {
                     ToolTip.Wrap(h.Kit.MixCommand(Loc.Get(Strings.Mix.Label), Loc.Get(Strings.Mix.LabelOn), on, Toggle), Loc.Get(Strings.Mix.Label)),
                 };
                 if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n) with { Key = "cmd:mix:menu" }, Loc.Get(Strings.Mix.Menu)));
-                return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
+                // The Mix lesson's one-time offer points at the split (a zero box after the keyed children: it moves nothing).
+                kids.Add(Hints.Pointer(HintSurfaces.MixBar, () => split.Value));
+                return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, OnRealized = n => split.Value = n, Children = kids.ToArray() };
             }
         }
 

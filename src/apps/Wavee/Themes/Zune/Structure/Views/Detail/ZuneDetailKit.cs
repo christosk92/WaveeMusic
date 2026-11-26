@@ -511,13 +511,14 @@ internal static class ZuneDetailKit
             return new BoxEl
             {
                 Width = width, Height = reserve, Direction = 1, Shrink = 0f, MinWidth = 0f,
+                // A meta that changes in place (Mix turning on: "· mixed · 7 of 9 transitions edited") hands its words over instead of snapping.
                 Children =
                 [
-                    R.Type.DenseMeta(text) with
+                    Controls.TextHandOver(text, R.Type.DenseMeta(text) with
                     {
                         Size = lay.MetaSize, LineHeight = lay.MetaLine, Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label),
                         Width = width, MinWidth = 0f, MaxLines = lines, Wrap = TextWrap.WrapWholeWords, Trim = TextTrim.CharacterEllipsis,
-                    },
+                    }),
                 ],
             };
         }

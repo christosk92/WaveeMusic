@@ -201,6 +201,8 @@ internal static class ClassicPanel
         PanelMode.Queue => props.QueueBody(),
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ClassicVideoPanelBody()),
+        // The Mix transition editor heads itself (title, Save, expand, close).
+        PanelMode.Transition => props.TransitionBody?.Invoke() ?? new BoxEl { Grow = 1f },
         _ => Embed.Comp(props.NowPlaying, static () => new ClassicNowPlayingBody()),
     };
 
@@ -541,6 +543,7 @@ internal sealed class ClassicPanelFrame : Component
         else
         {
             Element header = body == PanelMode.Lyrics ? Slots.View(ViewKeys.PanelLyricsHeader, props.LyricsHeader)
+                : body == PanelMode.Transition ? new BoxEl { Key = "panel:head:none", Shrink = 0f }
                 : ClassicPanel.Header(props, body, sheet ? ClassicPanelTiers.SheetHeaderButton : Controls.IconButtonSize);
             Element bodySlot = ClassicPanel.GrowSlot(bodyLive ? ClassicPanel.Body(props, body) : new BoxEl { Grow = 1f, HitTestVisible = false });
             arm = sheet

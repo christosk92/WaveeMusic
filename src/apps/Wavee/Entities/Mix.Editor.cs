@@ -410,7 +410,7 @@ public static class MixEdit
         settled?.Invoke(state);
     }
 
-    /// <summary>A local record changed: bump the playlist's row, which the seams, the Transitions rows, the meta line and the editor read.</summary>
+    /// <summary>A local record changed: bump the playlist's row, which the list's transition chips, the meta line and the editor read.</summary>
     static void Repaint(int playlistSlot) => Entities.Current.Playlists.Bump(playlistSlot);
 
     /// <summary>Reset to Auto. A pair that <see cref="Pair.Writes"/>: `set-transition` with no payload when Spotify holds a recipe for it

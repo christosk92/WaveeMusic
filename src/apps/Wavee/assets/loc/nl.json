@@ -1545,7 +1545,6 @@
       "mixOut": "Uitmixen {time}",
       "in": "In {time}",
       "lengthBars": "{seconds} s · {bars} maten",
-      "customize": "Aanpassen",
       "volume": "Volume",
       "eq": "EQ",
       "filter": "Filter",
@@ -1559,9 +1558,6 @@
       "hearIt": "Beluisteren",
       "stop": "Stoppen",
       "save": "Opslaan",
-      "cancel": "Annuleren",
-      "previous": "Vorige overgang",
-      "next": "Volgende overgang",
       "saveHere": "Opslaan op deze pc",
       "duplicateBody": "Dupliceer de mix om deze overgang te bewaren: de kopie is van jou, met je wijziging erin.",
       "duplicating": "Mix dupliceren…"

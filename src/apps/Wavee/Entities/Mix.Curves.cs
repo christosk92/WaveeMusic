@@ -55,7 +55,7 @@ public enum MixWhyNot : byte
 }
 
 /// <summary>One join's plan: the recipe's timing when the pair was edited, else Spotify's Auto, and the styles it plays. The
-/// Transitions view's row, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this
+/// list's transition chip, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this
 /// value. A's and B's curves start at the same instant (B after <see cref="InDelayMs"/>) and run over their own lengths
 /// (<see cref="OutDurationMs"/>, <see cref="InDurationMs"/>). Every lane the styles move is resolved here, including the ones the
 /// engine cannot render yet (<see cref="Playback.MixRender"/> renders every lane the engine has; only a looping or jog-wheel style the

@@ -1534,7 +1534,7 @@
       "system": { "startup": "Startup", "window": "Window and notification area", "language": "Language", "links": "Links", "graphics": "Graphics" },
       "storage": { "music": "Music on this PC", "onThisPc": "On this PC", "playbackCache": "Playback cache", "metadataCache": "Metadata cache", "reset": "Reset" },
       "account": { "signedIn": "Account", "privacy": "Privacy", "crashReports": "Crash reports" },
-      "help": { "about": "About Wavee", "support": "Support Wavee", "feedback": "Feedback", "shortcuts": "Keyboard shortcuts", "diagnostics": "Diagnostics", "developer": "Developer", "links": "Links and licenses" }
+      "help": { "about": "About Wavee", "support": "Support Wavee", "feedback": "Feedback", "shortcuts": "Keyboard shortcuts", "diagnostics": "Diagnostics", "developer": "Developer", "links": "Links and licenses", "learn": "Learn" }
     },
     "search": {
       "$comment": "The settings search (Screens/SettingsSearch.cs, design 4). stopWords leave a query (never a phrase); intentWords are soft (they add when they match and never have to). breadcrumb is where a result lives; the rest are the results page's no-match and close-match lines (phase 4 draws them; the inspector's settings verb prints them).",
@@ -1740,6 +1740,7 @@
       "help.receipts": "memory cpu fps performance uptime",
       "help.showSummaryAgain": "whats+new update+summary",
       "help.whatsNew": "whats+new release+notes changelog",
+      "help.learn.mix": "lesson tutorial learn mix transition editor beatmatch fade dj guide",
       "help.feedback.report": "bug issue github contact support crash",
       "help.feedback.suggest": "feature+request idea github",
       "help.feedback.ask": "question help support",
@@ -3135,6 +3136,7 @@
     }
   },
   "nav": {
+    "learnMix": "Learn Mix",
     "home": "Home",
     "forward": "Forward",
     "search": "Search",
@@ -5566,8 +5568,6 @@
       "afterglow": "Afterglow",
       "mix": "Mix"
     },
-    "transition": "Transition",
-    "transitions": "Transitions",
     "listenWithout": "Listen without Mix",
     "turnOffForEveryone": "Turn off Mix for everyone",
     "offForEveryone": "Mix is off for everyone. Your transitions are kept.",
@@ -5577,13 +5577,9 @@
     "onFailed": "Couldn't turn on Mix. Try again.",
     "onOffline": "You're offline. Turn on Mix once you're back online.",
     "optOutPending": "Kept on this PC for now. It reaches your Spotify account the next time Wavee connects.",
-    "showTransitions": "Show transitions",
-    "onHover": "On hover",
-    "always": "Always",
     "whenShuffling": "Mix when shuffling",
     "menu": "Mix options",
     "close": "Close",
-    "stateEdited": "Edited",
     "stateThisPc": "This PC",
     "queueLine": "Mixing · {style}",
     "crossfadeNote": "Mix is on for this playlist",
@@ -5602,16 +5598,22 @@
     "retry": "Retry",
     "stateNotSaved": "Not saved",
     "resetToAuto": "Reset to auto",
-    "pairOf": "{n} of {count}",
     "cardNoPair": "This pair can't be edited (a local file or an episode).",
+    "seam": {
+      "name": "Edit transition: {label}"
+    },
     "editor": {
+      "title": "Edit transition",
+      "expand": "Expand",
+      "collapse": "Back to the panel",
+      "presets": "Presets",
+      "tempo": "{bpm} BPM",
       "noTransition": "No transition",
       "custom": "Custom",
       "more": "More",
       "mixOut": "Mix out {time}",
       "in": "In {time}",
       "lengthBars": "{seconds} s · {bars} bars",
-      "customize": "Customize",
       "volume": "Volume",
       "eq": "EQ",
       "filter": "Filter",
@@ -5625,9 +5627,6 @@
       "hearIt": "Hear it",
       "stop": "Stop",
       "save": "Save",
-      "cancel": "Cancel",
-      "previous": "Previous transition",
-      "next": "Next transition",
       "saveHere": "Save on this PC",
       "duplicateBody": "Duplicate the mix to keep this transition: the copy is yours, with your edit in it.",
       "duplicating": "Duplicating the mix…"
@@ -5738,7 +5737,219 @@
     "duplicateOffline": "You're offline. Duplicate the mix once you're back online.",
     "upsellTitle": "Mix needs Spotify Premium",
     "upsellBody": "Mixed playlists blend each song into the next. To play them or make your own, you need Spotify Premium.",
-    "upsellCta": "See Premium"
+    "upsellCta": "See Premium",
+    "lesson": {
+      "eyebrow": "Wavee · Learn Mix",
+      "title": "Let's build this transition together.",
+      "lead": "Night Drive flows into Sunrise with five layers moving at once. Listen first. Then we take it apart and build it back, one layer at a time.",
+      "listen": "Listen first",
+      "stop": "Stop",
+      "showMe": "Show me",
+      "soundNote": "**Turn your sound on.** The two songs are made on this PC for this lesson. It takes about 4 minutes.",
+      "stepsTitle": "Build it, one layer at a time",
+      "stepsCount": "{n} steps",
+      "stepOf": "Step {n} of {total}",
+      "close": "Close the lesson",
+      "setForYou": "Set for you",
+      "next": "Next: {step}",
+      "nextHint": "or finish the steps above",
+      "restart": "Start over",
+      "songA": "Night Drive",
+      "songB": "Sunrise",
+      "factsA": "124 BPM · 8A",
+      "factsB": "128 BPM · 8B",
+      "heardCaption": "What you hear",
+      "layersCaption": "Layers",
+      "bar": "bar {n}",
+      "hardCut": "Hard cut",
+      "dragHere": "Drag here",
+      "done": "Done",
+      "khz": "{v} kHz",
+      "hzWord": "{v} Hz",
+      "learn": "Learn how",
+      "pair": "{a} → {b}",
+      "note": {
+        "lowsOnly": "Only the lows play",
+        "muted": "Sunrise is muted for now"
+      },
+      "layer": {
+        "volume": "Volume",
+        "bass": "Bass",
+        "filter": "Filter",
+        "echo": "Echo",
+        "tempo": "Tempo"
+      },
+      "handle": {
+        "vol": "Where the fade starts",
+        "eq": "Where the bass swaps",
+        "filter": "How far the filter closes",
+        "echo": "How many echo repeats",
+        "tempo": "Sunrise's tempo while both play"
+      },
+      "status": {
+        "finished": "The finished transition",
+        "hardCut": "Hard cut · every layer off",
+        "yours": "Your transition · 5 layers",
+        "takingApart": "Taking it apart…",
+        "layerOff": "Taking it apart… {layer} off",
+        "layer": "Layer {n} · {layer}",
+        "together": "Layers 1–{n} together",
+        "alone": "{layer} on its own"
+      },
+      "readout": {
+        "hardCut": "Hard cut",
+        "noFade": "No fade yet",
+        "fade": "Fade, {bars} bars",
+        "swap": "Swap on bar {bar}",
+        "bothBasses": "Both basses",
+        "closes": "Closes to {hz}",
+        "open": "Open",
+        "repeats": "{n} repeats",
+        "repeat": "1 repeat",
+        "off": "Off",
+        "tempo": "Sunrise at {bpm}"
+      },
+      "value": {
+        "vol": "Fade starts on bar {bar} → 5",
+        "eq": "Swap on bar {bar} → 7",
+        "filter": "Closes to {hz} → 500 Hz",
+        "echo": "{n} repeats → 6",
+        "tempo": "Sunrise at {bpm} BPM → 124"
+      },
+      "step": {
+        "cut": {
+          "title": "Take it apart",
+          "sub": "Start from a hard cut",
+          "say": "This is where we start. Every layer is off, so Night Drive stops dead on bar 7 and Sunrise starts at full volume. That is a **hard cut**.",
+          "listen": "Hear the hard cut",
+          "listenFor": "Listen for the jolt on bar 7.",
+          "done": "That jolt is what the layers remove."
+        },
+        "vol": {
+          "title": "Volume",
+          "sub": "Fade one song into the other",
+          "say1": "**Volume** is how loud each song plays.",
+          "say2": "When mixing songs, we can fade one out while the next fades in, so that they overlap instead of crashing into each other.",
+          "task": "Drag the white handle in the **Volume** lane left, onto the [[marker]] at bar 5.",
+          "listen": "Hear the fade",
+          "listenFor": "Night Drive gets quieter while Sunrise grows.",
+          "done": "Volume is set: the songs now overlap."
+        },
+        "eq": {
+          "title": "Bass",
+          "sub": "Hand over the low end",
+          "say1": "**Bass** is the low end of a song: the kick drum and bassline you feel more than hear.",
+          "say2": "When mixing songs, we can hand the bass from one song to the other in one moment, so that the two basslines never pile up into mud.",
+          "task": "Drag the yellow line in the **Bass** lane onto the [[marker]] at bar 7, where the fades cross.",
+          "alone": "Hear just the bass",
+          "aloneFor": "Only the lows play: one bassline, then the other. Never both.",
+          "together": "Now hear it with the fade",
+          "togetherFor": "The fade from step 1, now with a clean low end.",
+          "done": "Bass is set: one bassline at a time."
+        },
+        "filter": {
+          "title": "Filter",
+          "sub": "Let Night Drive drift away",
+          "say1": "A **filter** removes part of the sound. A low-pass filter keeps the lows and cuts the highs, like music through a wall.",
+          "say2": "When mixing songs, we can close it on the song that is leaving, so that it sounds like it is moving away.",
+          "task": "Drag the purple dot in the **Filter** lane down, onto the [[marker]].",
+          "alone": "Hear just the filter",
+          "aloneFor": "Only Night Drive plays, and it gets darker and further away.",
+          "together": "Now hear it with everything",
+          "togetherFor": "Night Drive slips behind Sunrise instead of fighting it.",
+          "done": "Filter is set: Night Drive drifts away."
+        },
+        "echo": {
+          "title": "Echo",
+          "sub": "Let the last beat ring out",
+          "say1": "An **echo** repeats a sound, each repeat a little quieter than the last.",
+          "say2": "When mixing songs, we can catch the last beat of the song that is leaving, so that it rings out over the next one instead of stopping dead.",
+          "task": "Drag the green handle in the **Echo** lane right, onto the [[marker]], for six repeats.",
+          "alone": "Hear just the echo",
+          "aloneFor": "Night Drive's last beat repeats and fades away.",
+          "together": "Now hear it with everything",
+          "togetherFor": "The last beat rings on over Sunrise.",
+          "done": "Echo is set: the last beat rings out."
+        },
+        "tempo": {
+          "title": "Tempo",
+          "sub": "Lock the two beats together",
+          "say1": "**Tempo** is a song's speed in beats per minute (BPM). Night Drive runs at 124, Sunrise at 128.",
+          "say2": "When mixing songs, we can play Sunrise at 124 while the two overlap, so that their kick drums land together. That is beatmatching.",
+          "task": "Drag the handle on Sunrise's line in the **Tempo** lane down, onto the [[marker]] at 124 BPM.",
+          "alone": "Hear just the kicks",
+          "aloneFor": "Only the lows play. The two kick drums stay locked.",
+          "together": "Now hear it with everything",
+          "togetherFor": "No stumbling kicks while both songs play.",
+          "done": "Tempo is set: the kicks line up."
+        },
+        "final": {
+          "title": "All together",
+          "sub": "Your finished transition",
+          "say": "That is the transition from the start again, and you built every layer of it. Each one does one job:",
+          "play": "Play your transition",
+          "playFor": "Five layers, one smooth move.",
+          "note": "In Wavee, turn on **Mix** in a playlist, then select the chip between two songs. This editor opens, and **Auto** has already set these layers for you to change.",
+          "vol": "fades Night Drive out as Sunrise comes in.",
+          "eq": "keeps one bassline at a time.",
+          "filter": "moves Night Drive into the distance.",
+          "echo": "lets the last beat ring out.",
+          "tempo": "keeps the kick drums together."
+        }
+      },
+      "compare": {
+        "title": "Hear the original",
+        "flip": "Flip between them while it plays.",
+        "original": "Original",
+        "play": "Play the comparison",
+        "stop": "Stop the comparison",
+        "vol": {
+          "with": "With the fade",
+          "without": "Original: no fade, a hard cut",
+          "seg": "With fade",
+          "hint": "Without the fade, Night Drive stops dead on bar 7."
+        },
+        "eq": {
+          "with": "With the bass swap",
+          "without": "Original: no bass swap",
+          "seg": "With bass swap",
+          "hint": "Without the swap, both basslines play at once and the lows get muddy."
+        },
+        "filter": {
+          "with": "With the filter",
+          "without": "Original: no filter",
+          "seg": "With filter",
+          "hint": "Without the filter, Night Drive stays bright until it is gone."
+        },
+        "echo": {
+          "with": "With the echo",
+          "without": "Original: no echo",
+          "seg": "With echo",
+          "hint": "Without the echo, Night Drive simply stops."
+        },
+        "tempo": {
+          "with": "With beatmatching",
+          "without": "Original: no beatmatching",
+          "seg": "Beatmatched",
+          "hint": "Without it, the two kick drums drift apart while both play."
+        },
+        "final": {
+          "with": "Your transition · 5 layers",
+          "without": "Original: a hard cut, no mixing",
+          "seg": "Your transition",
+          "hint": "The original is a hard cut, with no mixing at all."
+        }
+      },
+      "settings": {
+        "row": "Build a transition together",
+        "caption": "A hands-on lesson in the Mix editor: five layers, about 4 minutes."
+      },
+      "hint": {
+        "title": "New to Mix?",
+        "text": "Build a transition together: a 4-minute lesson in the Mix editor.",
+        "action": "Start the lesson"
+      }
+    }
   },
   "localFiles": {
     "$commentPage": "#240 P2-page: localFiles.page is the Local Files route's page, \"On this PC\" (a collection: hero, pivots, shelves, wall, folders, insights). The sidebar label stays nav.localFiles. Quality labels (FLAC, MP3 320) are format names and are not translated.",

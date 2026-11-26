@@ -5,12 +5,12 @@
 // transition" does. Where it is saved is the transition editor's rule (Mix.Editor.cs): on a list the user
 // may write, Spotify's "No transition" (`set-transition` with the "none" recipe; running it again resets the pair to Auto);
 // elsewhere the local NoMix record on this PC (running it again removes the record, so Spotify's version plays again). The
-// planner honours both (Playback.Mix.cs), and the Transitions view and the seams draw the pair as a break. Checked while the
-// pair plays without a transition.
+// planner honours both (Playback.Mix.cs), and the pair's chip in the list says "No transition". Checked while the pair plays without
+// a transition.
 //
-// The Mix menu (Items): the transitions view, listen without Mix, "Turn off Mix for everyone" (M2: the mix-state write), Smart
-// reorder (M8, owners and collaborators: Mix.Reorder.cs), Duplicate Mix (M8, a mixed list the user may not edit) and the view
-// options. A Free account is never offered any of it: its Mix button opens the Premium upsell (Mix.Reorder.cs, MixUpsell).
+// The Mix menu (Items): listen without Mix, "Turn off Mix for everyone" (M2: the mix-state write), Smart
+// reorder (M8, owners and collaborators: Mix.Reorder.cs), Duplicate Mix (M8, a mixed list the user may not edit) and "Mix when
+// shuffling". A Free account is never offered any of it: its Mix button opens the Premium upsell (Mix.Reorder.cs, MixUpsell).
 
 using FluentGpu.Controls;
 using FluentGpu.Localization;
@@ -85,8 +85,15 @@ public static class MixMenu
     public static void Toggle(Playlist p)
     {
         if (!p.IsValid || Upsell) return;
-        if (p.MixOn) { ListenWithout(p, !MixOptOut.Is(p)); return; }
-        if (Spotify.Mixes.CanWrite(p)) TurnOn(p);
+        // Turning Mix on (or back on) is when the lesson's tip may offer itself (once: Shell/Hints.cs, "learn-mix").
+        if (p.MixOn)
+        {
+            bool on = MixOptOut.Is(p);
+            ListenWithout(p, !MixOptOut.Is(p));
+            if (on) HintFacts.MixOn();
+            return;
+        }
+        if (Spotify.Mixes.CanWrite(p)) { TurnOn(p); HintFacts.MixOn(); }
     }
 
     /// <summary>Listen without Mix, synced to the account: the choice applies here at once; when Spotify cannot take it now, one quiet
@@ -128,14 +135,13 @@ public static class MixMenu
             }
         });
 
-    /// <summary>The list bar's Mix menu (UX direction rev 2): the transitions view, listen without Mix, turn Mix off for everyone
-    /// (owner and collaborators only: <see cref="Spotify.Mixes.CanWrite"/>; live when the server offers the mix-state signal), Smart
-    /// reorder (the same people; it needs a connection), Duplicate Mix under the official notice (a mixed list the user may not edit),
-    /// the transitions view option (on hover · always) and "Mix when shuffling".</summary>
-    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action toggleTransitions, bool transitionsOpen, Action openReorder)
+    /// <summary>The list bar's Mix menu: listen without Mix, turn Mix off for everyone (owner and collaborators only:
+    /// <see cref="Spotify.Mixes.CanWrite"/>; live when the server offers the mix-state signal), Smart reorder (the same people; it needs a
+    /// connection), Duplicate Mix under the official notice (a mixed list the user may not edit) and "Mix when shuffling". The transitions
+    /// themselves are in the list, a chip between each pair of rows (Entities/Mix.Seams.cs).</summary>
+    public static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> Items(Playlist p, Action openReorder)
     {
-        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(12);
-        if (p.MixOn) items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.Transitions), transitionsOpen, toggleTransitions));
+        var items = new List<FluentGpu.Controls.MenuFlyoutItem>(8);
         if (p.MixOn)
         {
             bool without = MixOptOut.Is(p);
@@ -153,10 +159,6 @@ public static class MixMenu
                     () => Spotify.MixLists.Duplicate(p, null)));
             }
         }
-        items.Add(FluentGpu.Controls.MenuFlyoutItem.Header(Loc.Get(Strings.Mix.ShowTransitions)));
-        bool always = MixPrefs.ShowAlways;
-        items.Add(FluentGpu.Controls.MenuFlyoutItem.RadioItem(Loc.Get(Strings.Mix.OnHover), !always, () => MixPrefs.SetShowAlways(false)));
-        items.Add(FluentGpu.Controls.MenuFlyoutItem.RadioItem(Loc.Get(Strings.Mix.Always), always, () => MixPrefs.SetShowAlways(true)));
         bool shuffling = MixPrefs.WhenShuffling;
         items.Add(FluentGpu.Controls.MenuFlyoutItem.Toggle(Loc.Get(Strings.Mix.WhenShuffling), shuffling, () => MixPrefs.SetWhenShuffling(!shuffling)));
         return items;

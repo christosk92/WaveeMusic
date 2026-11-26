@@ -69,6 +69,9 @@ public sealed record HintDef
     /// <summary>The button's word (a loc key), or null.</summary>
     public string? ActionKey { get; init; }
 
+    /// <summary>A feature pointer's door: what its button opens (a lesson, a page), instead of a dial in Settings. Null for a dial's hint.</summary>
+    public Action? Open { get; init; }
+
     /// <summary>A heading for a template that titles its hint (a TeachingTip), a loc key; null = the dial's own title.</summary>
     public string? TitleKey { get; init; }
 
@@ -296,6 +299,15 @@ public static partial class Hints
                 WritesOn = false, DoneKey = Strings.Hints.LosslessBadge.Done, DismissKey = Strings.Hints.LosslessBadge.Dismiss,
                 MaxShows = 3, DismissRetires = true, Suggested = false, IgnoresLaunchGrace = true, Drawn = true,
                 Trigger = HintFacts.LosslessBadgeOnScreen,
+            },
+            // 19 — the first time Mix is turned on in a playlist: a TeachingTip at the Mix button offering the lesson ("Build a transition
+            // together"), once; "Not now" retires it. Never a Settings home suggestion (it is about the button on screen now).
+            new()
+            {
+                Id = "learn-mix", Target = "pointer.learnMix", Surface = HintSurfaces.MixBar, Action = HintAction.Link, Priority = 15,
+                TitleKey = Strings.Mix.Lesson.Hint.Title, TextKey = Strings.Mix.Lesson.Hint.Text, ActionKey = Strings.Mix.Lesson.Hint.Action,
+                MaxShows = 1, DismissRetires = true, Suggested = false, Drawn = true,
+                Trigger = HintFacts.MixTurnedOn, Satisfied = static () => MixLesson.EverOpened, Open = MixLesson.Open,
             },
         ];
         Validate(all);
@@ -579,7 +591,8 @@ public static partial class Hints
             default:
                 // A followed link has done its job for this session (the surface that carried it closes as Settings opens). The in-context
                 // door: an overlaid rail or the full screen steps aside for Settings, as every other "open in Settings" does.
-                if (DialOf(def) is { } dial) InContextDoors.OpenSettings(dial);   // a pointer's place opens from its own surface
+                if (def.Open is { } open) open();   // a feature pointer's own door (the Mix lesson)
+                else if (DialOf(def) is { } dial) InContextDoors.OpenSettings(dial);   // a pointer's place opens from its own surface
                 if (!def.IsState) SetAside(def);
                 break;
         }

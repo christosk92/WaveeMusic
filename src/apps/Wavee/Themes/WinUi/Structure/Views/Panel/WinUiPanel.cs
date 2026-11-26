@@ -219,6 +219,8 @@ internal static class WinUiPanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new WinUiPanelVideoArm()),
+        // The Mix transition editor heads itself (title, Save, expand, close): the frame draws no tabs over it.
+        PanelMode.Transition => props.TransitionBody?.Invoke() ?? new BoxEl { Grow = 1f },
         _ => NowPlaying(props, view, sheet, swapIn),
     };
 
@@ -477,7 +479,7 @@ internal sealed class WinUiPanelFrame : Component
         if (sheet) column.Add(Grabber(props.Close, compact));
         // The docked card mounts unconditionally outside the Now playing tab (its own gate hides it); that tab pins it in place of the hero.
         if (body != PanelMode.NowPlaying) column.Add(WinUiPanel.DockedCapSlot(props, view.DockedHere, width, swapIn));
-        column.Add(WinUiPanel.Head(props, view, body, friends, compact, sheet ? vp.Value.Width : width));
+        if (body != PanelMode.Transition) column.Add(WinUiPanel.Head(props, view, body, friends, compact, sheet ? vp.Value.Width : width));
         column.Add(bodySlot);
 
         CornerRadius4 corners = sheet ? new CornerRadius4(B.CardRadius, B.CardRadius, 0f, 0f)

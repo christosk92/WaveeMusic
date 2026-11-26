@@ -415,7 +415,9 @@ internal static partial class ClassicDetailFrame
             };
             if (!float.IsNaN(width)) line = line with { Width = width };
             if (!float.IsNaN(maxWidth)) line = line with { MaxWidth = maxWidth };
-            content = () => line;
+            // A meta that changes in place (Mix turning on: "· Mixed · 7 of 9 transitions edited") hands its words over instead of snapping.
+            string meta = id.Meta!;
+            content = () => Controls.TextHandOver(meta, line);
         }
         return new SkelRegionEl(
             Pending: ready ? s_false : s_true, Failed: s_false, Content: content, ShimmerSource: s_metaShimmer, OnFailed: null,
