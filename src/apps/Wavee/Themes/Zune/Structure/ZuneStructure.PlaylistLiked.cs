@@ -38,6 +38,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.PlaylistAccess, ZunePlaylist.AccessTemplate, "zune.playlist.access");
         views.Add(ViewKeys.PlaylistTune, ZunePlaylist.TuneTemplate, "zune.playlist.tune");
         views.Add(ViewKeys.MixEditor, ZuneMixEditor.Template, "zune.playlist.mix-editor");
+        views.Add(ViewKeys.MixSeam, ZuneMixEditor.Seam, "zune.playlist.mix-seam");
         views.Add(ViewKeys.PlaylistDaylist, ZunePlaylist.DaylistTemplate, "zune.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ZunePlaylist.RecsTemplate, "zune.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ZunePlaylist.RecRowTemplate, "zune.playlist.rec-row");

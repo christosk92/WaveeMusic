@@ -63,6 +63,7 @@ public readonly partial struct Playlist
     public static void InstallPages()
     {
         Shell.SetPage(Shell.RouteKind.Playlist, PageFor);
+        Shell.SetPage(Shell.RouteKind.MixTransition, static (in Shell.Route _) => Embed.Comp(static () => new MixEditorPage()));   // #48 Mix: the editor full-page
         Shell.SetPage(Shell.RouteKind.Local, LocalCollectionPage.PageFor);   // #240 P2: "On this PC", the collection page (Songs = this list's table)
         Shell.SetPage(Shell.RouteKind.Liked, User.LikedPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryAlbums, User.LibraryPageFor);
@@ -306,8 +307,6 @@ public readonly partial struct Playlist
         readonly Action _mixToggle;
         readonly Func<bool> _mixLit;
         readonly Func<IReadOnlyList<MenuFlyoutItem>> _mixMenu;
-        /// <summary>#48 Mix: the Transitions list on this page (Entities/Mix.Transitions.cs).</summary>
-        readonly MixTransitionsSession _mixTransitions = new();
         /// <summary>#48 Mix M8: Smart reorder's panel on this page (Entities/Mix.Reorder.cs); it takes the slot while open.</summary>
         readonly MixReorderSession _mixReorder = new();
         readonly Func<Element?> _mixStrip;
@@ -360,9 +359,9 @@ public readonly partial struct Playlist
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
             _mixToggle = () => MixMenu.Toggle(_playlist);
-            _mixMenu = () => MixMenu.Items(_playlist, _mixTransitions.Toggle, _mixTransitions.IsOpen, _mixReorder.Open);
-            _bindMix = () => { _mixTransitions.Bind(_playlist); _mixReorder.Bind(_playlist); };
-            _mixStrip = () => _mixReorder.Strip() ?? _mixTransitions.Strip();
+            _mixMenu = () => MixMenu.Items(_playlist, _mixReorder.Open);
+            _bindMix = () => _mixReorder.Bind(_playlist);
+            _mixStrip = () => _mixReorder.Strip();
             _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
@@ -506,7 +505,6 @@ public readonly partial struct Playlist
                     MixToggle = mixable ? _mixToggle : null,
                     MixLit = mixable ? _mixLit : null,
                     MixMenu = mixable ? _mixMenu : null,
-                    OpenTransitions = mixable ? _mixTransitions.Open : null,
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,

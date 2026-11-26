@@ -1,7 +1,7 @@
 // ── Entities/Mix.Reorder.cs — #48 Mix M8: Smart reorder (inline), and the Premium upsell where Mix would be ──────────────────────
 //
 // Smart reorder (UX direction rev 2 "Smart reorder", the owner's inline-over-dialogs rule): the Mix menu's "Smart reorder" opens a
-// panel in the list bar's eased slot (the one the Transitions list uses), never a dialog. It asks Spotify for its order through the
+// panel in the list bar's eased slot (the one Tune uses), never a dialog. It asks Spotify for its order through the
 // harmonize lens (Spotify.MixLists.ReadSmartOrder) and shows the playlist's rows in that order, each with its tempo · key and the
 // place it comes from. The rows are there from the first frame in the list's own order and only change their words when the answer
 // lands, and the sentence above them keeps two lines, so nothing moves while Spotify answers. "Reorder" writes the order as ONE
@@ -65,7 +65,7 @@ internal sealed class MixReorderPanel(Playlist playlist, Action close) : Compone
     Signal<int[]?>? _map;
     ulong[]? _order;
 
-    /// <summary>How many rows the panel shows before it scrolls (the Transitions list's count).</summary>
+    /// <summary>How many rows the panel shows before it scrolls.</summary>
     const int VisibleRows = 6;
 
     public override Element Render()

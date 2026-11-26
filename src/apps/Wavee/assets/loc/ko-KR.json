@@ -1542,7 +1542,6 @@
       "mixOut": "믹스 아웃 {time}",
       "in": "인 {time}",
       "lengthBars": "{seconds}초 · {bars}마디",
-      "customize": "사용자 지정하기",
       "volume": "볼륨",
       "eq": "EQ",
       "filter": "필터",
@@ -1556,9 +1555,6 @@
       "hearIt": "들어 보기",
       "stop": "중지",
       "save": "저장",
-      "cancel": "취소",
-      "previous": "이전 전환",
-      "next": "다음 전환",
       "saveHere": "이 PC에 저장",
       "duplicateBody": "이 전환을 유지하려면 믹스를 복제하세요. 복제본은 내 플레이리스트가 되고 내가 바꾼 내용이 들어 있습니다.",
       "duplicating": "믹스 복제 중…"

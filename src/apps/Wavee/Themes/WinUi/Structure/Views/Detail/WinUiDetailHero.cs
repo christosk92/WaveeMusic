@@ -248,15 +248,17 @@ internal static partial class WinUiDetailFrame
             Layout = HeroReflowMotion,
             Children = showNames ? [WinUiDetailKit.Names(faces!) with { Key = "hero-names", Enter = WinUiDetailKit.FadeUp }] : [],
         });
+        // A meta that changes in place (Mix turning on: "· Mixed · 7 of 9 transitions edited") hands its words over instead of snapping.
+        string metaText = (center || !hasFaces ? "" : WinUiDetailRules.MetaLead) + meta;
         Element[] metaRun = showMeta
-            ? [new TextEl((center || !hasFaces ? "" : WinUiDetailRules.MetaLead) + meta)
+            ? [Controls.TextHandOver(metaText, new TextEl(metaText)
                 {
                     Key = "hero-meta-run", Enter = WinUiDetailKit.FadeUp,
                     Size = center ? WinUiDetailRules.MetaSize : WinUiDetailRules.AttributionSize,
                     LineHeight = center ? WinUiDetailRules.MetaLine : WinUiDetailRules.AttributionLine,
                     Color = center ? Tok.TextTertiary : Tok.TextSecondary,
                     MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f,
-                }]
+                })]
             : [];
         kids.Add(new BoxEl
         {

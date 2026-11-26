@@ -36,8 +36,9 @@ using FluentGpu.Signals;
 namespace Wavee.Theming.Contracts;
 
 /// <summary>Which body the panel shows. Same members, values and order as the core's rail mode (which the player bar's toggles write
-/// and the session document persists).</summary>
-public enum PanelMode : byte { Lyrics, Queue, NowPlaying, Friends, Video }
+/// and the session document persists). <see cref="Transition"/> is the Mix transition editor (<see cref="PanelProps.TransitionBody"/>): opened
+/// from a playlist's transition chip, never one of the pivot's tabs; its body draws its own head (title, Save, expand, close).</summary>
+public enum PanelMode : byte { Lyrics, Queue, NowPlaying, Friends, Video, Transition }
 
 /// <summary>Where the right panel is laid out in a window tier (the structure's <c>PanelPolicy</c>; contract 1.15).</summary>
 public enum PanelPlacement : byte
@@ -213,6 +214,10 @@ public sealed record PanelProps
 
     /// <summary>The friends body (<see cref="ViewKeys.PanelFriends"/>).</summary>
     public required FriendsProps Friends { get; init; }
+
+    /// <summary>The Mix transition editor's body (<see cref="PanelMode.Transition"/>: the core host that mounts <see cref="ViewKeys.MixEditor"/>).
+    /// It draws its own head, so the panel shows no pivot over it. Null where the panel hosts none (a docked pane beside the primary). Appended.</summary>
+    public Func<Element>? TransitionBody { get; init; }
 
     /// <summary>The transport a panel shown as a bottom sheet carries (the sheet covers the player bar; C-NowPlaying-Compact): the facts,
     /// the verbs and the bar's own seek rail and time labels. Null where the panel offers none (contract 1.20).</summary>

@@ -204,6 +204,8 @@ internal static class ZunePanel
         },
         PanelMode.Friends => Slots.View(ViewKeys.PanelFriends, props.Friends),
         PanelMode.Video => Embed.Comp(props, static () => new ZunePanelVideoArm()),
+        // The Mix transition editor heads itself (title, save, expand, close): the frame draws no pivots over it.
+        PanelMode.Transition => props.TransitionBody?.Invoke() ?? new BoxEl { Grow = 1f },
         _ => NowPlaying(props, view, swapIn),
     };
 
@@ -479,6 +481,7 @@ internal sealed class ZunePanelFrame : Component
         Element head = ZunePanel.Head(props, view, body, _pivots, ink, sheet ? vp.Value.Width : width, sheet, new CanvasInk(over)) with { Layout = slide };
         var column = new List<Element>(3);
         if (body == PanelMode.NowPlaying) { column.Add(head); column.Add(card); }
+        else if (body == PanelMode.Transition) column.Add(card);
         else { column.Add(card); column.Add(head); }
         column.Add(bodySlot);
 

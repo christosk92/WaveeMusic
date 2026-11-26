@@ -399,7 +399,7 @@ public static partial class Shell
                 if (!Ui.RailOpen.Value && _railDragging.Peek()) FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, false);
             });
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
-            UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value, Ui.QueueBeside.Value));
+            UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)MixEditSession.Persisted(Ui.Mode.Value), Ui.QueueBeside.Value));
 
             // ── large-display auto-zoom (ch 18 W24; plan 3.2, C1b): the window's base extent → the pure control loop ──
             // A SETTLED size (a maximize, restore, Snap, a drag release, a DPI or monitor change) steps HERE, synchronously: this

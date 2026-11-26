@@ -290,6 +290,7 @@ public sealed class ClassicStructure : IStructureLayer
         views.Add(ViewKeys.PlaylistAccess, ClassicPlaylist.AccessTemplate, "classic.playlist.access");
         views.Add(ViewKeys.PlaylistTune, ClassicPlaylist.TuneTemplate, "classic.playlist.tune");
         views.Add(ViewKeys.MixEditor, ClassicMixEditor.Template, "classic.playlist.mix-editor");
+        views.Add(ViewKeys.MixSeam, ClassicMixEditor.Seam, "classic.playlist.mix-seam");
         views.Add(ViewKeys.PlaylistDaylist, ClassicPlaylist.DaylistTemplate, "classic.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ClassicPlaylist.RecsTemplate, "classic.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ClassicPlaylist.RecRowTemplate, "classic.playlist.rec-row");

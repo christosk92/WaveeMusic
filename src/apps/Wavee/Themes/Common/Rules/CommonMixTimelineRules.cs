@@ -13,6 +13,8 @@ public sealed record MixTimelineLook
 {
     public required float LaneHeight { get; init; }
     public required float LaneGap { get; init; }
+    /// <summary>The room between the two lanes, where the theme's Hear it button sits (the band runs through it).</summary>
+    public required float CentreGap { get; init; }
     public required float Corner { get; init; }
     public required ColorF LaneFill { get; init; }
     public required ColorF WaveA { get; init; }
@@ -46,6 +48,8 @@ public static class CommonMixTimelineRules
     /// <summary>The span the view shows around the transition: the overlap times this, at least <see cref="MinSpanMs"/>.</summary>
     public const float SpanPerOverlap = 2.6f;
     public const float MinSpanMs = 12_000f, MaxSpanMs = 90_000f;
+    /// <summary>Where the transition band starts, as a share of the view (the outgoing song's lead-in on its left).</summary>
+    public const float BandLead = 0.38f;
     /// <summary>The waveform's column step (DIP) and its share of the lane's half height.</summary>
     public const float WaveStep = 5f, WaveDepth = 0.6f;
     /// <summary>How far past each side of the lane the waveform is drawn (a share of the width), a column's stroke as a share of the step, and the
@@ -58,6 +62,12 @@ public static class CommonMixTimelineRules
     public const float CurveInset = 6f;
     /// <summary>The bend a handle drag of one lane height makes (−1..1 over 2/3 of the lane).</summary>
     public const float BendPerLane = 1.5f;
+    /// <summary>A dragged bend is previewed in these steps (a re-sample per step, not per pointer move).</summary>
+    public const float BendStep = 1f / 64f;
+    /// <summary>The full-page overview strip: its height as a share of a lane, and its waveform's column step.</summary>
+    public const float OverviewShare = 0.75f, OverviewStep = 3f;
+    /// <summary>The list's timeline drawing itself in (Mix turned on): each segment's draw and the chip's arrival, in ms.</summary>
+    public const float SeamDrawMs = 167f, SeamChipMs = 250f;
     /// <summary>The measured-width key of the timeline (one per editor).</summary>
     public const string WidthKey = "mix:timeline";
 }

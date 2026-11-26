@@ -316,7 +316,7 @@ public static partial class Playback
             return new PairFacts(t.DurationMs, t.Tempo, t.Camelot, cues.Length > 0 ? cues[0] : default, true, t.IsLocal, t.Uri.Text);
         }
 
-        /// <summary>The timing for an arbitrary pair of the open playlist (the Transitions view, diagnostics): the same
+        /// <summary>The timing for an arbitrary pair of the open playlist (the list's transition chips, the editor, diagnostics): the same
         /// rules as the playing pair, with the list's own order deciding adjacency. UI thread.</summary>
         public static MixTiming PlanListPair(int playlistSlot, int fromIndex, int toIndex)
         {

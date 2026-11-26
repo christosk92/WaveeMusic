@@ -467,6 +467,7 @@ internal static class RailWiring
         },
         NowPlaying = BuildNowPlaying(),
         Friends = BuildFriends(),
+        TransitionBody = static () => FluentGpu.Hooks.Embed.Comp(static () => new MixEditorPanelBody()) with { Key = "mix:ed:body" },
         Transport = s_sheetTransport,
         VideoTitle = s_videoTitle,
     };
