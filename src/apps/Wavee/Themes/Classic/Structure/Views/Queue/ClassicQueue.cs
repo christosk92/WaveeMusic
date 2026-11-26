@@ -190,8 +190,9 @@ internal sealed class ClassicQueuePanel : Component
                     Direction = 0, Wrap = true, Gap = ClassicQueueRules.PillGap, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
                     Children =
                     [
-                        Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), queue.Shuffle, _toggleShuffle),
-                        Pill(props.RepeatTrack ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat), props.RepeatOn, _cycleRepeat),
+                        // The pills the playing context forbids (the DJ's shuffle and repeat) draw disabled and say why, as the bar's buttons do.
+                        Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), queue.Shuffle, _toggleShuffle, locked: queue.ShuffleLock),
+                        Pill(props.RepeatTrack ? Icons.RepeatOne : Icons.RepeatAll, Loc.Get(Strings.Player.Repeat), props.RepeatOn, _cycleRepeat, locked: queue.RepeatLock),
                         Pill("∞", Loc.Get(Strings.Player.Autoplay), queue.Autoplay.Enabled, _toggleAutoplay, glyphIsText: true),
                         // The "between songs" pair (design 5.4): Crossfade beside Autoplay, its length at rest as a link to the duration in
                         // Settings (the panel draws no slider). Wrapped together, so the length never strands on a line of its own.
@@ -234,7 +235,8 @@ internal sealed class ClassicQueuePanel : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return SectionHeader(props, slot.Section);
+        if (slot.Kind == QueueSlotKind.Header)
+            return props.Queue.SegmentOf(slot) is { } segment ? SegmentHeader(segment) : SectionHeader(props, slot.Section);
         if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? lane.Lane(item, Row(props, row, art, hairline), lane.RowKey("", row.ItemId, row.Index))
@@ -469,6 +471,28 @@ internal sealed class ClassicQueuePanel : Component
         ],
     };
 
+    /// <summary>AI DJ: a segment's header in the section header's grammar and height (the eyebrow, its words the segment's label), "Let DJ pick
+    /// starts here" in the accent at its end on the segment the button lands on (the queue by segment, plan-dj §2.8).</summary>
+    Element SegmentHeader(QueueSegment segment)
+    {
+        string mark = QueueProps.SegmentMark(segment);
+        var top = new List<Element>(3)
+        {
+            R.Type.Eyebrow(QueueProps.SegmentTitle(segment)) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            new BoxEl { Grow = 1f, MinWidth = 0f },
+        };
+        if (mark.Length > 0)
+            top.Add(new TextEl(mark) { Size = ClassicQueueRules.SmallSize, LineHeight = ClassicQueueRules.SmallLine, Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1 });
+        return new BoxEl
+        {
+            Key = "hdr:" + segment.Key,
+            Direction = 1, Gap = Spacing.XXS, Height = ClassicQueueRules.HeaderExtentFor(_tier.Target),
+            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.XS),
+            Layout = LayoutTransition.Slide, BlocksDragArm = true,
+            Children = [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = _tier.AtLeast(ClassicQueueRules.HeaderRowH), Children = top.ToArray() }],
+        };
+    }
+
     Element SectionHeader(QueuePanelProps props, QueueSection section)
     {
         string title = ClassicQueue.SectionTitle(section);
@@ -570,7 +594,7 @@ internal sealed class ClassicQueuePanel : Component
     /// (Workstream B's "Filter/mode toggles" grammar row) — stock checked = the chip accent, solid, never the raw
     /// grading. <paramref name="glyphIsText"/> is the autoplay "∞": a literal glyph, not an icon-font codepoint, so
     /// its <c>PartGlyph</c> node is overridden off the icon font.</summary>
-    Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false)
+    Element Pill(string glyph, string label, bool on, Action click, bool glyphIsText = false, string? locked = null)
     {
         // The common (non-text-glyph) case reuses the shared cached RootNoShrink instance (no per-render
         // allocation); the text-glyph arm (autoplay's "∞") needs its own PartGlyph modifier too, so it builds a
@@ -583,8 +607,9 @@ internal sealed class ClassicQueuePanel : Component
             parts = new TemplateParts { [ToggleButton.PartRoot] = b => target > 0f ? b with { Shrink = 0f, MinHeight = target, Height = float.NaN } : b with { Shrink = 0f } };
             if (glyphIsText) parts.Set<TextEl>(ToggleButton.PartGlyph, t => t with { FontFamily = null, Weight = 600 });
         }
-        return ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
-            style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts);
+        var pill = ToggleButton.Controlled(label, on, _ => click(), glyph: glyph,
+            style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts, isEnabled: locked is null);
+        return locked is null ? pill : ToolTip.Wrap(pill, locked);
     }
 
     /// <summary>The heart's 26-wide lane (40 on a Compact window) — the hairline row's leading cell (<paramref name="height"/> its row) and

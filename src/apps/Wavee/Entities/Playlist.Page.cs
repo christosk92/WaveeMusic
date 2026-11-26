@@ -328,6 +328,10 @@ public readonly partial struct Playlist
         readonly Func<float> _lensExtent;
         readonly Action<IReadOnlyList<int>> _removeRows;
         readonly Func<Element?> _recs, _lensHeader;
+        /// <summary>AI DJ (plan-dj §2.8): the DJ list lists no rows of its own; its body is what the DJ plays (<see cref="DjPage"/>), and its Play
+        /// starts (or pauses) the DJ session whatever the empty list says.</summary>
+        readonly Func<Element?> _djBody;
+        readonly Action<int> _djPlay;
         readonly Func<Element> _recsAside;
         readonly Func<float, Element> _cover, _compactCover, _attribution, _description, _facts;
         readonly Func<float, float, Element> _title;
@@ -341,7 +345,7 @@ public readonly partial struct Playlist
 
         /// <summary>What row 2 says: the playlist, its title once known, the heart's presence (not the viewer's own, not Local Files) and whether the list is
         /// known to be empty (Play and Shuffle are drawn disabled then).</summary>
-        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty, bool Pending = false);
+        readonly record struct ChromeInputs(bool Valid, EntityUri Subject, string? Title, bool Save, bool Empty, bool Pending = false, bool Dj = false);
 
         public PlaylistPage()
         {
@@ -366,6 +370,8 @@ public readonly partial struct Playlist
             _lensExtent = () => User.LensExtentFor(_lens, DetailKind.Playlist);
             _removeRows = rows => Spotify.PlaylistEdits.RemoveRows(_playlist, rows);
             _recs = () => RecommendationsSection(_playlist);
+            _djBody = () => DjPage.Body(_playlist.Uri);
+            _djPlay = _ => Playback.PlayOrToggleContext(_playlist.Uri.Id, "dj.page");
             _recsAside = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);
             _cover = size => HeldCover(size, CoverSlot(_playlist, size));
@@ -482,7 +488,8 @@ public readonly partial struct Playlist
 
             // #48 Mix: the toggle shows on a mixed playlist, or on the user's own one Spotify says may be mixed (kind 235).
             bool mixable = MixMenu.Offered(pl);
-            int profileMask = PageRules.ProfileMask(editable, recs, tune, lensExtent) ^ (mixable ? 1 << 30 : 0);
+            bool dj = pl.IsDj;
+            int profileMask = PageRules.ProfileMask(editable, recs, tune, lensExtent) ^ (mixable ? 1 << 30 : 0) ^ (dj ? 1 << 29 : 0);
             if (_profile is null || _profileMask != profileMask)
             {
                 _profileMask = profileMask;
@@ -503,6 +510,9 @@ public readonly partial struct Playlist
                     LensHeader = _lensHeader,
                     LensExtent = lensExtent,
                     Drawer = Track.DrawerSeam,
+                    EmptyBody = dj ? _djBody : null,
+                    EmptyBodyIsPage = dj,   // Classic too: no list commands (Shuffle among them) or column header over the DJ's own rows
+                    PlayFrom = dj ? _djPlay : null,
                 };
             }
 
@@ -544,7 +554,7 @@ public readonly partial struct Playlist
                 Config = cfg,
                 Source = _source,
                 Profile = _profile,
-                Actions = ActionsFor(editable ? _actions : _actionsReadOnly, tune, InviteAllowed(pl)),
+                Actions = ActionsFor(editable ? _actions : _actionsReadOnly, tune, InviteAllowed(pl), shuffle: !dj),
                 Slots = _slots,
                 RouteKey = p.RouteKey,
             });
@@ -552,9 +562,11 @@ public readonly partial struct Playlist
 
         /// <summary>The frame's verbs with the hero's optional pair: Tune (the list has a tune choice) and Invite (<see cref="InviteAllowed"/>). Equality is
         /// presence only, so the instance is kept while the presence holds.</summary>
-        Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite)
+        Detail.FrameActions ActionsFor(Detail.FrameActions basis, bool tune, bool invite, bool shuffle = true)
         {
-            var next = basis with { Tune = tune ? _tune : null, TuneLit = tune ? _tuneSession.Lit : null, Invite = invite ? _inviteAction : null };
+            // The DJ forbids shuffle (dj-disallow): its page offers no Shuffle beside Play.
+            var next = basis with { Tune = tune ? _tune : null, TuneLit = tune ? _tuneSession.Lit : null, Invite = invite ? _inviteAction : null,
+                                    Shuffle = shuffle ? basis.Shuffle : null };
             if (_actionsShown is { } shown && shown.Equals(next) && ReferenceEquals(shown.DepositOnPage, basis.DepositOnPage)) return shown;
             return _actionsShown = next;
         }
@@ -578,8 +590,8 @@ public readonly partial struct Playlist
         ChromeInputs ChromeOf(Playlist pl)
             => !pl.IsValid
                 ? default
-                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !pl.IsOwner, Empty: pl.RowsState(0) == PlaylistRowsState.Empty,
-                                   Pending: !pl.Knows(PlaylistFields.Identity));   // Identity.HeaderPending's own test
+                : new ChromeInputs(true, pl.Uri, TitleOf(pl), Save: !pl.IsOwner, Empty: !pl.IsDj && pl.RowsState(0) == PlaylistRowsState.Empty,
+                                   Pending: !pl.Knows(PlaylistFields.Identity), Dj: pl.IsDj);   // Identity.HeaderPending's own test
 
         /// <summary>Publishes row 2 (an auto-tracked effect: it reads the inputs signal and the saved set, so either moving re-publishes).</summary>
         void PublishChrome()
@@ -590,7 +602,7 @@ public readonly partial struct Playlist
             var actions = new List<Contracts.PageAction>(3)
             {
                 new("play", Loc.Get(Strings.Detail.Play), _playChrome, Contracts.PageActionKind.Play, !c.Empty),
-                new("shuffle", Loc.Get(Strings.Detail.Shuffle), _shuffleChrome, Contracts.PageActionKind.Shuffle, !c.Empty),
+                new("shuffle", Loc.Get(Strings.Detail.Shuffle), _shuffleChrome, Contracts.PageActionKind.Shuffle, !c.Empty && !c.Dj),   // the DJ forbids shuffle
             };
             if (c.Save && Controls.Library is { } lib)
             {
@@ -694,6 +706,8 @@ public readonly partial struct Playlist
             // `length: 0` included, bug A1), or a nonzero count some answer wrote beside Identity.
             bool countKnown = (pl.Knows(PlaylistFields.TrackCount) || (pl.Knows(PlaylistFields.Identity) && pl.TrackCount > 0));
             var arm = PageRules.MetaArmFor(holding, readiness, countKnown, slots.Length);
+            // The DJ's meta line is its list's own line ("All kinds of music, picked by your own AI DJ"), never "0 songs".
+            if (pl.IsDj) arm = MetaArm.Text;
             bool metaLoading = arm == MetaArm.Loading;
             // THE META LINE'S DECISION, ALWAYS ON. This shimmer has now been diagnosed confidently and fixed twice,
             // and come back twice, because every diagnosis was an argument about which of these four inputs was
@@ -708,6 +722,7 @@ public readonly partial struct Playlist
                 WaveeLogField.Of("state", state.ToString()));
             int count = countKnown && pl.TrackCount > 0 ? pl.TrackCount : slots.Length;
             string? meta = arm != MetaArm.Text ? null
+                : pl.IsDj ? (pl.DjTranscriptId.IsEmpty ? Loc.Get(Strings.Player.DjName) : Entities.Strings.Resolve(pl.DescriptionId))
                 : Detail.Text.PlaylistMeta(count, totalMs, durationsKnown && slots.Length > 0, pl.Knows(PlaylistFields.Saves) ? pl.Saves : 0, pl.EpisodeCount);
             // #48 Mix: a mixed playlist says so on the meta line, with how many of its transitions are edited (Entities/Mix.Menu.cs).
             if (meta is not null && MixMenu.MetaSuffix(pl) is { } mixed) meta += " · " + mixed;
@@ -743,7 +758,9 @@ public readonly partial struct Playlist
                 Owner = owner.IsValid ? owner.Uri : default,
                 Collaborative = pl.IsCollaborative,
                 IsPublic = pl.Knows(PlaylistFields.Visibility) && pl.IsPublic,
-                DescriptionHtml = headHeld && !editableMeta ? null : Entities.Strings.Resolve(pl.DescriptionId),
+                // The DJ's page says what its DJ says (its card's words, home.card.dj.transcript_text) where a list has its description.
+                DescriptionHtml = headHeld && !editableMeta ? null
+                    : pl.IsDj && !pl.DjTranscriptId.IsEmpty ? Entities.Strings.Resolve(pl.DjTranscriptId) : Entities.Strings.Resolve(pl.DescriptionId),
                 ChartNewEntries = pl.ChartNewEntries,
                 ChartUpdatedAtMs = pl.ChartUpdatedAt * 1000L,
                 DaylistExpiresAtMs = pl.DaylistExpiresAt * 1000L,
@@ -752,7 +769,8 @@ public readonly partial struct Playlist
                          : spotify ? "https://open.spotify.com/playlist/" + new string(EntityUri.IdOf(pl.Uri.Text.AsSpan())) : null,
                 Notice = pl.Notice,
                 EditableMetadata = editableMeta,
-                Empty = pl.RowsState(0) == PlaylistRowsState.Empty,
+                // The DJ list has no rows of its own but always plays (its session's): never "empty" (its Play stays live).
+                Empty = !pl.IsDj && pl.RowsState(0) == PlaylistRowsState.Empty,
             };
         }
 

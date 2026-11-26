@@ -104,6 +104,49 @@ internal static partial class WinUiPlayerBar
         };
     }
 
+    /// <summary>"Let DJ pick" (AI DJ): a subtle labelled button in the bar's own grammar (transparent at rest, the subtle fill on hover), its sparkle
+    /// in the DJ's icon colour (<c>narration.jump.icon.color</c>; the accent ink when none is stated), disabled while the next segment is still on
+    /// its way. The tooltip says what it does.</summary>
+    internal static Element DjPick(DjChrome dj, CanvasInk ink = default)
+    {
+        ColorF glyph = !dj.CanPick ? Tok.TextDisabled : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Tok.AccentTextPrimary;
+        return ToolTip.Wrap(new BoxEl
+        {
+            Height = PL.TransportH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.DjPickGap,
+            Padding = new Edges4(PL.DjPickPadX, 0f, PL.DjPickPadX, 0f), Corners = CornerRadius4.All(PL.ButtonCorner),
+            Fill = ColorF.Transparent, HoverFill = dj.CanPick ? ink.Hover : ColorF.Transparent, PressedFill = dj.CanPick ? ink.Pressed : ColorF.Transparent,
+            BrushTransitionMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = dj.CanPick,
+            OnClick = dj.CanPick ? dj.Jump : null, Cursor = dj.CanPick ? CursorId.Hand : null,
+            Children =
+            [
+                new TextEl(Icons.RefineSparkle) { Size = PL.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = glyph },
+                new TextEl(dj.Pick) { Size = PL.SubSize, LineHeight = PL.SubLine, Weight = PL.TitleWeight, Color = dj.CanPick ? Tok.TextPrimary : Tok.TextDisabled, MaxLines = 1 },
+            ],
+        }, dj.PickTip);
+    }
+
+    /// <summary>The DJ's segment line ("DJ · Vibes"): the "playing on" line's look and place (the secondary ink under the artists), the sparkle in the
+    /// DJ's icon colour.</summary>
+    internal static BoxEl DjLine(DjChrome dj) => new()
+    {
+        Key = PL.DjLineKey, Height = PL.SubLine, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.RemoteGap, MinWidth = 0f, ClipToBounds = true,
+        Animate = PL.ItemMotion,
+        Children =
+        [
+            new TextEl(Icons.RefineSparkle)
+            {
+                Size = PL.RemoteGlyph, FontFamily = Tok.Definition.Fonts.Icon, Shrink = 0f,
+                Color = dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Tok.AccentTextPrimary,
+            },
+            new TextEl(dj.Line)
+            {
+                Size = PL.SubSize, LineHeight = PL.SubLine, Color = Tok.TextSecondary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                MinWidth = 0f, Shrink = 1f,
+            },
+        ],
+    };
+
     /// <summary>A control a level brings or drops: keyed, it fades in and out in place on a crossing.</summary>
     internal static BoxEl Item(string key, Element face) => new()
     {

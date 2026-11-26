@@ -115,6 +115,9 @@ public static class ClassicQueueRules
     /// <summary>A section caption's height.</summary>
     public const float StageHeaderH = 40f;
 
+    /// <summary>The stage caption's words (an AI DJ segment's label and its mark): the section caption's 12/16.</summary>
+    public const float StageCaptionSize = 12f, StageCaptionLine = 16f;
+
     /// <summary>The Autoplay rows' dim on the stage.</summary>
     public const float StageAutoplayDim = 0.68f;
 

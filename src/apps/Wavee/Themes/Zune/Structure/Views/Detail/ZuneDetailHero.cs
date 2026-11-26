@@ -359,6 +359,9 @@ internal static class ZuneDetailHero
             float pageInset = Track.RowMetrics.RowInset - VerticalLayout.ToolbarSurfacePadX;
             float lead = pageBar ? pageInset : columns ? 0f : parts.CompactLeft;
             float trail = pageBar ? pageInset : columns ? Track.RowMetrics.RowInset : parts.CompactLeft;
+            // A list with no list bar at all (its body is the page: the DJ) reserves no row: the bar's top air alone parts the head from the body.
+            if (parts.NoListBar)
+                return new BoxEl { Key = "hero:toolbar", Direction = 1, MinWidth = 0f, Children = [ZuneMotion.Air("hero:toolbar-top", VerticalLayout.ExpandedToolbarTopPad)] };
             return new BoxEl
             {
                 Key = "hero:toolbar", Direction = 1, MinWidth = 0f,

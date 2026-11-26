@@ -861,6 +861,16 @@
     "next": "Volgende",
     "shuffle": "Shuffle",
     "repeat": "Herhalen",
+    "notWithDj": "Niet beschikbaar met DJ",
+    "notAvailableHere": "Niet beschikbaar voor wat er nu speelt",
+    "djSegmentEnding": "Het DJ-segment is zo afgelopen",
+    "djPick": "Laat DJ kiezen",
+    "djPickTip": "Krijg andere keuzes van de DJ",
+    "djPickNotYet": "Je DJ zet de volgende keuzes nog klaar",
+    "djName": "DJ",
+    "djLine": "{0} · {1}",
+    "djJumpsHere": "Laat DJ kiezen begint hier",
+    "djNotStarted": "Druk op afspelen en je DJ kiest de nummers, een paar tegelijk. Wat hij kiest, zie je hier.",
     "mute": "Dempen",
     "unmute": "Dempen opheffen",
     "resyncLyrics": "Opnieuw synchroniseren",
@@ -1660,8 +1670,8 @@
     "duplicate": "Mix dupliceren",
     "duplicateFailed": "Deze mix kon niet worden gedupliceerd. Probeer het opnieuw.",
     "duplicateOffline": "Je bent offline. Dupliceer de mix zodra je weer online bent.",
-    "upsellTitle": "Speel en maak gemixte playlists met Premium",
-    "upsellBody": "Luister naar gemixte playlists met overgangen of mix je eigen playlists, alleen met Premium.",
-    "upsellCta": "Ontdek Premium"
+    "upsellTitle": "Mix vraagt om Spotify Premium",
+    "upsellBody": "Gemixte playlists laten elk nummer overlopen in het volgende. Om ze af te spelen of zelf te maken, heb je Spotify Premium nodig.",
+    "upsellCta": "Bekijk Premium"
   }
 }

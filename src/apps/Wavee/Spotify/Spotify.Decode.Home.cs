@@ -754,6 +754,10 @@ public static partial class Spotify
                 public bool Paywalled;
                 /// <summary>The DJ card (<c>lexicon_set_type == your_dj</c>).</summary>
                 public bool Dj;
+                /// <summary>The DJ card's <c>lexicon_context_url</c> and <c>home.card.dj.transcript_text</c> (plan-dj §1.1).</summary>
+                public TextRef Lexicon, DjText;
+                /// <summary>The DJ card's <c>home.card.*</c> colours (ARGB, 0 = not stated).</summary>
+                public DjCardColors DjColors;
             }
 
             const byte TAlbum = 1, TPlaylist = 2, TArtist = 3, TEpisode = 4, TAudiobook = 5, TPodcast = 6;
@@ -833,6 +837,19 @@ public static partial class Spotify
                 {
                     ref var p = ref s.Playlists[s.Playlists.Count - 1];
                     p.HeaderImage = c.HeaderImage;
+                    // The DJ card speaks for its list's DJ pair as the list read does (a play of it resolves the lexicon session, plan-dj
+                    // §2.1.1), and carries its card words and colours (Home's DJ card, the DJ page).
+                    if (c.Dj && !c.Lexicon.IsEmpty)
+                    {
+                        p.FlagsMask |= (uint)PlaylistFlags.YourDj;
+                        p.Flags |= (uint)PlaylistFlags.YourDj;
+                        p.LexiconUrl = c.Lexicon;
+                    }
+                    if (c.Dj)
+                    {
+                        p.DjTranscript = c.DjText.IsEmpty ? default : Unescaped(s, c.DjText);
+                        p.DjColors = c.DjColors;
+                    }
                     if (daylist)
                     {
                         p.GenericTitle = c.Pretitle;
@@ -880,6 +897,8 @@ public static partial class Spotify
                         {
                             var description = n.Description.IsEmpty ? default : Unescaped(s, n.Description);
                             f.Subtitle = description.IsEmpty ? c.OwnerName : description;
+                            // The DJ card's words are what its DJ says on it (home.card.dj.transcript_text), not the list's blurb.
+                            if (c.Dj && !c.DjText.IsEmpty) f.Subtitle = Unescaped(s, c.DjText);
                             if (!liked && !n.Format.IsEmpty) f.Format = n.Format;
                             int seedStart = s.CardSeeds.Count, seeds = 0;
                             if (daylist)
@@ -1291,6 +1310,23 @@ public static partial class Spotify
                             c.Dj = !value.IsEmpty && s.Utf8(value).SequenceEqual("your_dj"u8);
                             if (!value.IsEmpty) s.RewindText(value.Offset);
                             break;
+                        // The DJ card's own attributes (plan-dj §1.1): the session url a play resolves, the card's words and colours.
+                        case 9: c.Lexicon = value; break;
+                        case 10: c.DjText = value; break;
+                        case 11: case 12: case 13: case 14: case 15:
+                            {
+                                uint argb = value.IsEmpty ? 0u : DjCardColors.Argb(s.Utf8(value));
+                                c.DjColors = key switch
+                                {
+                                    11 => c.DjColors with { Background = argb },
+                                    12 => c.DjColors with { Top = argb },
+                                    13 => c.DjColors with { Mid = argb },
+                                    14 => c.DjColors with { Bottom = argb },
+                                    _ => c.DjColors with { Text = argb },
+                                };
+                                if (!value.IsEmpty) s.RewindText(value.Offset);
+                                break;
+                            }
                         default:
                             if (!value.IsEmpty) s.RewindText(value.Offset);
                             break;
@@ -1307,6 +1343,13 @@ public static partial class Spotify
                  : r.ValueTextEquals("lexicon_set_type"u8) ? (byte)6
                  : r.ValueTextEquals("nicheMixLinks"u8) ? (byte)7
                  : r.ValueTextEquals("recsplanation_localized_terms"u8) ? (byte)8
+                 : r.ValueTextEquals("lexicon_context_url"u8) ? (byte)9
+                 : r.ValueTextEquals("home.card.dj.transcript_text"u8) ? (byte)10
+                 : r.ValueTextEquals("home.card.background_color"u8) ? (byte)11
+                 : r.ValueTextEquals("home.card.jellyfish_top_color"u8) ? (byte)12
+                 : r.ValueTextEquals("home.card.jellyfish_mid_color"u8) ? (byte)13
+                 : r.ValueTextEquals("home.card.jellyfish_bottom_color"u8) ? (byte)14
+                 : r.ValueTextEquals("home.card.text_color"u8) ? (byte)15
                  : (byte)0;
 
             /// <summary>Does the band already hold this card? Duplicates stay on the ledger and off the edge.</summary>

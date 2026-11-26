@@ -858,6 +858,16 @@
     "next": "다음",
     "shuffle": "셔플",
     "repeat": "반복",
+    "notWithDj": "DJ에서는 사용할 수 없어요",
+    "notAvailableHere": "지금 재생 중인 항목에서는 사용할 수 없어요",
+    "djSegmentEnding": "DJ 세그먼트가 곧 끝나요",
+    "djPick": "DJ에게 맡기기",
+    "djPickTip": "DJ에게 다른 곡 추천받기",
+    "djPickNotYet": "DJ가 아직 다음 곡을 고르고 있어요",
+    "djName": "DJ",
+    "djLine": "{0} · {1}",
+    "djJumpsHere": "DJ에게 맡기면 여기서 시작해요",
+    "djNotStarted": "재생을 누르면 DJ가 곡을 몇 곡씩 골라 줘요. 고른 곡은 여기에 나와요.",
     "mute": "음소거",
     "unmute": "음소거 해제",
     "resyncLyrics": "가사 다시 맞추기",
@@ -1657,8 +1667,8 @@
     "duplicate": "믹스 복제",
     "duplicateFailed": "이 믹스를 복제하지 못했습니다. 다시 시도하세요.",
     "duplicateOffline": "오프라인 상태입니다. 다시 온라인이 되면 믹스를 복제하세요.",
-    "upsellTitle": "Premium으로 믹스 플레이리스트를 재생하고 만드세요",
-    "upsellBody": "전환이 있는 믹스 플레이리스트를 듣거나 나만의 믹스를 만드세요. Premium 전용입니다.",
-    "upsellCta": "Premium 알아보기"
+    "upsellTitle": "믹스에는 Spotify Premium이 필요합니다",
+    "upsellBody": "믹스 플레이리스트는 곡과 곡을 자연스럽게 이어 줍니다. 재생하거나 직접 만들려면 Spotify Premium이 필요합니다.",
+    "upsellCta": "Premium 보기"
   }
 }

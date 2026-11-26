@@ -248,7 +248,14 @@ public sealed record PanelVideoTitleProps
 /// <param name="RepeatOn">Repeat is on (the context or the track).</param>
 /// <param name="RepeatOne">Repeat is the single track.</param>
 public readonly record struct PanelTransportFacts(bool Playing, bool PrimaryEnabled, bool CanTransport, bool PrevEnabled, bool NextEnabled,
-    bool Shuffle, bool RepeatOn, bool RepeatOne);
+    bool Shuffle, bool RepeatOn, bool RepeatOne)
+{
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ): the button draws disabled with this
+    /// tooltip. Null while it may be pressed. Appended.</summary>
+    public string? ShuffleLock { get; init; }
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>. Appended.</summary>
+    public string? RepeatLock { get; init; }
+}
 
 /// <summary>The sheet's transport (contract 1.20): the same facts, verbs and seek pieces the stage's transport card reads.</summary>
 public sealed record PanelTransportProps

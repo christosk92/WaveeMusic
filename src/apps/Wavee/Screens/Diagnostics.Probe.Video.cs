@@ -373,7 +373,7 @@ public static partial class Diagnostics
                         {
                             string target = OnUi(static () => Playback.Snap() is { Own.Kind: Playback.Owner.Foreign } st ? Playback.Devices.IdOf(st.Own.Device) : "");
                             if (target.Length == 0) return "no foreign owner";
-                            bool sent = Spotify.Connect.Signal(target, on ? Spotify.Decode.VideoSignal.ToVideo : Spotify.Decode.VideoSignal.ToAudio, CancellationToken.None);
+                            bool sent = Spotify.Connect.Signal(target, on ? Spotify.Decode.PlayerSignal.ToVideo : Spotify.Decode.PlayerSignal.ToAudio, CancellationToken.None);
                             return "raw signal " + (on ? "switch-to-video" : "switch-to-audio") + " sent=" + sent;
                         }
                         OnUi(() => { Playback.SwitchVideo(on); return true; });

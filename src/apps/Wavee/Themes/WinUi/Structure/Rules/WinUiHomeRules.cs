@@ -101,6 +101,11 @@ public static class WinUiHomeRules
     /// <summary>The lead art's decode target.</summary>
     public const int LeadArtDecodePx = 960;
 
+    /// <summary>The DJ lead (AI DJ): its art is the DJ's colour field, the jellyfish's glow a radial wash over its blue (as the spotlight's radial
+    /// wash; the angle is unused by a radial), its words inset by the copy band's own 16 and kept to three lines.</summary>
+    public const float DjWashAngle = 0f, DjWordsPad = LeadCopyPadX;
+    public const int DjWordsLines = 3;
+
     /// <summary>The compact tiles' gap (the concept's 8).</summary>
     public const float CompactGap = 8f;
 

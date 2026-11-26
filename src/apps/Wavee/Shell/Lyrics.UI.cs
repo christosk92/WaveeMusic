@@ -551,23 +551,36 @@ public static partial class Lyrics
                 : current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
             uint accountEpoch = Entities.ScopeEpoch.Value;
 
-            if (!anything)
+            if (!anything || trackId.Length == 0)
             {
                 ClearDocument();
+                // AI DJ (plan-dj §2.8): a narration has no lyrics to ask for (here a Tts clip; on the owner's deck a spotify:media: item, which
+                // is no catalog id at all); its words are the face instead of "No lyrics available" or "Nothing playing", as a reading block in
+                // the structure's own untimed picture, keyed per narration so the next one (and the song after it) swaps as text.
+                string spoken = IsPodcast ? "" : Spoken.Now();
+                if (spoken.Length > 0 && Spoken.Sheet(spoken) is { } sheet)
+                {
+                    bool fromLyrics = (_trackId.Length > 0 || (_spokenKey.Length > 0 && _spokenKey != sheet.TrackId)) && !caughtUp;
+                    _trackId = "";
+                    _spokenKey = sheet.TrackId;
+                    M.PublishState(LyricsState.Unsynced);
+                    return MountView(body: new BoxEl
+                    {
+                        Grow = 1f, MinHeight = 0f, Direction = 1, Key = "lyrics-spoken:" + sheet.TrackId,
+                        Layout = Stage.TrackSwapText(fromLyrics, drift: false),
+                        Children = [UnsyncedContent(sheet)],
+                    });
+                }
                 _trackId = "";
-                M.PublishState(LyricsState.Nothing);
-                return MountView(message: Loc.Get(Strings.Player.NothingPlaying));
-            }
-            if (trackId.Length == 0)
-            {
-                ClearDocument();
-                _trackId = "";
-                M.PublishState(LyricsState.NoLyrics);
-                return MountView(message: Loc.Get(Strings.Lyrics.NoLyrics));
+                _spokenKey = "";
+                M.PublishState(anything ? LyricsState.NoLyrics : LyricsState.Nothing);
+                return MountView(message: Loc.Get(anything ? Strings.Lyrics.NoLyrics : Strings.Player.NothingPlaying));
             }
             // a skip from one document to the next swaps them as text (the stage's track swap): the old lines fade out where they stand, then
-            // the next document fades in, in the layer stack the structure's view places the body in; a first mount is born as it was
-            bool swapped = _trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal) && !caughtUp;
+            // the next document fades in, in the layer stack the structure's view places the body in; a first mount is born as it was. The
+            // DJ's words leaving for the song they led into swap the same way.
+            bool swapped = (_spokenKey.Length > 0 || (_trackId.Length > 0 && !string.Equals(_trackId, trackId, StringComparison.Ordinal))) && !caughtUp;
+            _spokenKey = "";
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
             _subjectEpoch = accountEpoch;
             _trackId = trackId;
@@ -595,6 +608,9 @@ public static partial class Lyrics
         /// without the track swap's fade: nobody saw the old document go).</summary>
         Element? _heldView;
         bool _heldHidden;
+
+        /// <summary>The DJ narration the face shows (<see cref="Spoken.Sheet"/>'s key), "" while it shows a track's lyrics or a state.</summary>
+        string _spokenKey = "";
 
         /// <summary>Mount the structure's surface (<see cref="LyricsContracts.ViewKeys.LyricsView"/>) over what this render decided.</summary>
         Element MountView(string? message = null, Element? body = null, Element? ticker = null, Element? debug = null, Element? footer = null)
@@ -2113,7 +2129,12 @@ public static partial class Lyrics
         {
             var current = Playback.Current.Value;
             string trackId = current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
-            if (trackId.Length == 0) return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, s_peekNone);
+            if (trackId.Length == 0)
+            {
+                // AI DJ (plan-dj §2.8): the narration's words are the reel's line while it talks, a reel per narration (it fades in with it).
+                if (Spoken.Line(Spoken.Now()) is not { } spoken) return ViewSlots.View(LyricsContracts.ViewKeys.LyricsPeek, s_peekNone);
+                return Embed.Comp(() => new PeekReel("", spoken)) with { Key = "npv-lyrics:" + spoken.TrackId };
+            }
             return Embed.Comp(() => new PeekReel(trackId)) with { Key = "npv-lyrics:" + trackId };
         }
     }
@@ -2123,7 +2144,7 @@ public static partial class Lyrics
     /// suppression. It decides the face (nothing over an unsynced or absent document, the note while a video plays, else the reel) and
     /// the pair, and mounts `Player.LyricsPeek` with them.</summary>
     [LyricsContracts.CoreHost]
-    sealed class PeekReel(string trackId) : Component
+    sealed class PeekReel(string trackId, Doc? spoken = null) : Component
     {
         const float TickMs = 100f;
 
@@ -2134,9 +2155,9 @@ public static partial class Lyrics
         public override Element Render()
         {
             var tick = _tick ??= Tick;   // cached: the interval never re-arms on a re-render
-            UseLayoutEffect(() => Store.Ensure(trackId), DepKey.Empty);
+            UseLayoutEffect(() => { if (spoken is null) Store.Ensure(trackId); }, DepKey.Empty);
             _ = Store.Changed.Value;
-            var doc = Store.Doc(trackId);
+            var doc = spoken ?? Store.Doc(trackId);   // the DJ's words (PeekHost) or the store's one document
             // A video is a different edit: the peek becomes the note, and its clock stops.
             bool syncOff = SyncGate.SyncSuppressed(Playback.VideoActive.Value);
             bool show = PeekClock.ShouldShow(doc);

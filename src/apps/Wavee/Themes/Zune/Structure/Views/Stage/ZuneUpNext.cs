@@ -91,7 +91,7 @@ internal sealed class ZuneStageUpNextColumn : Component
                 int item = lane.ItemAt(i);
                 var slot = lane.SlotAt(item);
                 if (slot.Kind == QueueSlotKind.More) { slots[i] = ShowMore(props, slot.Section); continue; }
-                if (slot.Kind == QueueSlotKind.Header) { slots[i] = Heading(slot.Section, set); continue; }
+                if (slot.Kind == QueueSlotKind.Header) { slots[i] = _queue.SegmentOf(slot) is { } segment ? SegmentHeading(segment) : Heading(slot.Section, set); continue; }
                 slots[i] = _queue.TryRow(slot.Section, slot.Pos, out var row)
                     ? lane.Lane(item, Row(props, row), lane.RowKey("s", row.ItemId, row.Index))
                     : new BoxEl();
@@ -133,8 +133,9 @@ internal sealed class ZuneStageUpNextColumn : Component
         var words = new List<Element>(5);
         if (props.Player is { } player)
         {
-            words.Add(ModeWord(Strings.Player.Shuffle, _queue.Shuffle, player.ToggleShuffle, "stage:upnext:shuffle", set));
-            words.Add(ModeWord(Strings.Player.Repeat, (int)_queue.Repeat != 0, player.CycleRepeat, "stage:upnext:repeat", set));
+            // The words the playing context forbids (the DJ's shuffle and repeat) draw disabled and say why, as the bar's buttons do.
+            words.Add(ModeWord(Strings.Player.Shuffle, _queue.Shuffle, player.ToggleShuffle, "stage:upnext:shuffle", set, _queue.ShuffleLock));
+            words.Add(ModeWord(Strings.Player.Repeat, (int)_queue.Repeat != 0, player.CycleRepeat, "stage:upnext:repeat", set, _queue.RepeatLock));
         }
         words.Add(ModeWord(Strings.Player.Autoplay, _queue.Autoplay.Enabled, props.Verbs.ToggleAutoplay, "stage:upnext:autoplay", set));
         // the "between songs" pair (design 5.4): crossfade beside autoplay, and its length as a quiet word that opens the duration in Settings
@@ -162,9 +163,18 @@ internal sealed class ZuneStageUpNextColumn : Component
     }
 
     /// <summary>One mode word; on a Compact window (the board's chips) a flat plate, the accent filled while on.</summary>
-    Element ModeWord(string key, bool on, Action press, string nodeKey, AccentSet set)
+    Element ModeWord(string key, bool on, Action press, string nodeKey, AccentSet set, string? locked = null)
     {
         bool chip = _q.ModeChips;
+        if (locked is not null)
+            return ToolTip.Wrap(new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = _target, Shrink = 0f,
+                Padding = chip ? new Edges4(Px(UR.ChipPadX), 0f, Px(UR.ChipPadX), 0f) : default,
+                Fill = chip ? Ink.Plate : ColorF.Transparent, Corners = chip ? R.Shape.All(ShapeRole.Control) : default,
+                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = false,
+                Children = [new TextEl(Loc.Get(key)) { Size = Px(UR.ToggleSize), LineHeight = Px(UR.ToggleLine), Color = Ink.InkTertiary, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }],
+            }, locked) with { Key = nodeKey };
         return new BoxEl
         {
             Key = nodeKey, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, MinHeight = _target, Shrink = 0f,
@@ -305,12 +315,7 @@ internal sealed class ZuneStageUpNextColumn : Component
 
     /// <summary>The row's number on the page (Z-Queue-Page): its place among the upcoming rows, counted on across the sections ("next in queue" 1, 2,
     /// "next up" 3...), never its flat index in the queue, which counts the track on the deck.</summary>
-    int Ordinal(in QueueRowProps row) => row.Position + 1 + row.Section switch
-    {
-        QueueSection.Queue => 0,
-        QueueSection.NextUp => _queue.Counts.Queue,
-        _ => _queue.Counts.Queue + _queue.Counts.NextUp,
-    };
+    int Ordinal(in QueueRowProps row) => _queue.Ordinal(in row);
 
     Element Row(QueueStagePaneProps props, in QueueRowProps row)
     {
@@ -452,6 +457,28 @@ internal sealed class ZuneStageUpNextColumn : Component
     }
 
     // ── the section headings and "show more" ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>AI DJ: a segment's heading in the section heading's display face and height, its label for the name (never shrunk), and "let dj
+    /// pick starts here" as its quiet word where the button lands (the queue by segment, plan-dj §2.8).</summary>
+    Element SegmentHeading(QueueSegment segment) => new BoxEl
+    {
+        Key = "stagehdr:" + segment.Key,
+        Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(UR.HeadingGap), Height = Px(_q.HeaderH),
+        Layout = LayoutTransition.Slide, BlocksDragArm = true,
+        Children =
+        [
+            new TextEl(QueueProps.SegmentTitle(segment))
+            {
+                Size = Px(_q.HeadingSize), LineHeight = Px(_q.HeadingLine), Weight = UR.HeadingWeight, FontFamily = R.Type.DisplayFace, Color = Ink.Ink,
+                Case = R.Case.For(LabelKind.Heading), MaxLines = 1, Shrink = 0f,
+            },
+            new TextEl(QueueProps.SegmentMark(segment))
+            {
+                Size = Px(UR.SubSize), LineHeight = Px(UR.SubLine), Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Case = R.Case.For(LabelKind.Label), MinWidth = 0f, Shrink = 1f,
+            },
+        ],
+    };
 
     /// <summary>A section heading (display face, 26/32 at 300) with its quiet word: "clear" on the user's queue, "from … · n more" on the continuation,
     /// the count on autoplay. A slot of the lane, never a drag handle.</summary>

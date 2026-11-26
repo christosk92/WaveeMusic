@@ -131,8 +131,9 @@ internal sealed class ZuneQueuePanelView : Component
         float modeH = Q.ModeRow(_window);
         var modes = new List<Element>(5)
         {
-            ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, true, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" },
-            ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, true, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" },
+            // The words the playing context forbids (the DJ's shuffle and repeat) draw disabled and say why, as the bar's buttons do.
+            Locked(ZunePlayerBar.Word(Loc.Get(Strings.Player.Shuffle), _toggleShuffle, queue.ShuffleLock is null, queue.Shuffle, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:shuffle" }, queue.ShuffleLock),
+            Locked(ZunePlayerBar.Word(Loc.Get(Strings.Player.Repeat), _cycleRepeat, queue.RepeatLock is null, props.RepeatOn, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:repeat" }, queue.RepeatLock),
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Autoplay), _toggleAutoplay, true, queue.Autoplay.Enabled, modeH, Q.WordSize, latchedInk: _ink?.Accent) with { Key = "mode:autoplay" },
             ZunePlayerBar.Word(Loc.Get(Strings.Player.Crossfade), _toggleCrossfade, true, props.Crossfade, modeH, Q.WordSize, _onCrossfade, latchedInk: _ink?.Accent)
                 with { Key = "mode:crossfade" },
@@ -185,7 +186,7 @@ internal sealed class ZuneQueuePanelView : Component
         }
         int item = lane.ItemAt(kind);
         var slot = lane.SlotAt(item);
-        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section));
+        if (slot.Kind == QueueSlotKind.Header) return Inset(Header(props, slot.Section, props.Queue.SegmentOf(slot)));
         if (slot.Kind == QueueSlotKind.More) return Inset(ShowMore(props, slot.Section, _ink));
         return props.Queue.TryRow(slot.Section, slot.Pos, out var row)
             ? Inset(lane.Lane(item, Row(props, row), lane.RowKey("", row.ItemId, row.Index)))
@@ -332,12 +333,29 @@ internal sealed class ZuneQueuePanelView : Component
     }
 
     /// <summary>A section's header at the foot of its slot: the section's name (cased), the source's name after "next up from", and "clear".</summary>
-    Element Header(QueuePanelProps props, QueueSection section)
+    /// <para>AI DJ: a segment's header (<paramref name="segment"/>) is the segment's label in the section words' case, and "let dj pick starts
+    /// here" in the accent where the button lands (the queue by segment, plan-dj §2.8).</para>
+    /// <summary>A mode word wearing its lock's reason as a tooltip while the playing context forbids it (null: no tooltip).</summary>
+    static Element Locked(Element word, string? reason) => reason is null ? word : ToolTip.Wrap(word, reason) with { Key = ((BoxEl)word).Key };
+
+    Element Header(QueuePanelProps props, QueueSection section, QueueSegment? segment = null)
     {
         var queue = props.Queue;
         var kids = new List<Element>(3);
         var @case = R.Case.For(LabelKind.Label);
         float h = Q.Header(_window);
+        if (segment is { } seg)
+        {
+            kids.Add(new TextEl(QueueProps.SegmentTitle(seg)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, MaxLines = 1, Shrink = 0f });
+            if (QueueProps.SegmentMark(seg) is { Length: > 0 } mark)
+                kids.Add(new TextEl(mark) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = Tok.AccentTextPrimary, Case = @case, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+            return new BoxEl
+            {
+                Key = "hdr:" + seg.Key, Height = h, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.End, Gap = ZunePlayerLayout.FromGap,
+                Padding = new Edges4(0f, 0f, 0f, Q.HeaderPadBottom), Layout = LayoutTransition.Slide, BlocksDragArm = true,
+                Children = kids.ToArray(),
+            };
+        }
         if (section == QueueSection.NextUp && queue.PlayingFrom is { Name.Length: > 0 } src)
         {
             kids.Add(new TextEl(Loc.Get(Strings.Theme.Zune.Player.NextUpFrom)) { Size = Q.WordSize, LineHeight = Q.WordLine, Color = _ink?.Tertiary ?? Tok.TextTertiary, Case = @case, Shrink = 0f });

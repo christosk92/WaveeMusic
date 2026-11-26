@@ -190,6 +190,10 @@ public static partial class Spotify
             if (trackOk && contextOk && windowOk && videoOk) return s;
 
             bool local = !trackOk && TrackUri(in s, stackalloc byte[MaxLocalUriBytes]) > 0;
+            // An AI DJ narration on the deck (a wavee:tts: clip) leaves as the official player names it: the window's current row carries
+            // its spotify:media: name (Playback.NarrationWire), which the encoder writes instead of the track's own id.
+            bool narration = !trackOk && !local && s.Wire.Window is { Current.Narration: not null };
+            local |= narration;
             Playback.WireWindow? window = !trackOk && !local ? null
                 : s.Wire.Window is { } w ? Cleaned(w, dropCover: local) : null;
             var wire = new Playback.WireExtras(window, window is null ? 0 : s.Wire.QueueRevision, window is null ? default : s.Wire.Ids,
@@ -198,7 +202,8 @@ public static partial class Spotify
                 contextOk ? s.Wire.LikedPlaylist : null, contextOk ? s.Wire.LikedOwner : null,
                 contextOk ? s.Wire.Mix : null,   // #48: numbers and curves only, about an admitted context
                 contextOk ? s.Wire.LocalFilesTracks : 0,
-                s.Wire.Quality);   // levels and enums only: what the pump opened
+                s.Wire.Quality,    // levels and enums only: what the pump opened
+                contextOk && window is not null ? s.Wire.Dj : null);   // AI DJ: the lexicon session's own words about an admitted context
             if (!trackOk && !local)
                 return new Playback.Snapshot(in s.Device, s.IsActive, s.Reason, s.MessageId, s.Volume, s.ClientTimestampMs,
                     s.StartedPlayingAtMs, s.HasBeenPlayingForMs, false, default, default, "", 0, s.TimestampMs, 0,
@@ -236,18 +241,23 @@ public static partial class Spotify
             static Playback.WireRow[] Kept(ReadOnlySpan<Playback.WireRow> rows)
             {
                 int n = 0;
-                foreach (ref readonly Playback.WireRow row in rows) if (Admits(row.Id) || row.LocalUri.Length > 0) n++;
+                // An AI DJ narration stays as the official player names it (its spotify:media: uri, Playback.NarrationWire): its wavee:tts
+                // id is scrubbed with the rest.
+                foreach (ref readonly Playback.WireRow row in rows) if (Admits(row.Id) || row.LocalUri.Length > 0 || row.Narration is not null) n++;
                 var kept = new Playback.WireRow[n];
                 n = 0;
                 foreach (ref readonly Playback.WireRow row in rows)
-                    if (Admits(row.Id) || row.LocalUri.Length > 0) kept[n++] = Scrub(in row, dropCover: row.LocalUri.Length > 0);
+                    if (Admits(row.Id) || row.LocalUri.Length > 0 || row.Narration is not null)
+                        kept[n++] = Scrub(in row, dropCover: row.LocalUri.Length > 0 || row.Narration is not null);
                 return kept;
             }
         }
 
         static Playback.WireRow Scrub(in Playback.WireRow row, bool dropCover)
-            => new(Filter(row.Id), row.ItemId, row.UidText, row.Provider, row.Title, row.ArtistName, row.AlbumTitle,
+            => new Playback.WireRow(Filter(row.Id), row.ItemId, row.UidText, row.Provider, row.Title, row.ArtistName, row.AlbumTitle,
                 dropCover || !AdmitsImage(row.Image) ? null : row.Image, Filter(row.AlbumId), Filter(row.ArtistId),
-                row.DecisionId, row.QueuedBy, Admits(row.Id) ? null : row.LocalUri);
+                row.DecisionId, row.QueuedBy, Admits(row.Id) ? null : row.LocalUri)
+                .WithDj(Admits(row.Id) ? row.DjKeyArray : null)    // AI DJ: what Spotify's own lexicon page said about Spotify's row
+                .WithNarration(row.Narration);                     // AI DJ: a narration's spotify:media: name and keys (Spotify's own words)
     }
 }

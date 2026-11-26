@@ -11,8 +11,20 @@ using System.Globalization;
 
 namespace Wavee;
 
-/// <summary>Where a join's timing came from.</summary>
-public enum MixSource : byte { None, Auto, Saved }
+/// <summary>Where a join's timing came from. <see cref="TalkOver"/> and <see cref="Radio"/> are the AI DJ's (plan-dj §2.4, §2.5): a
+/// narration over the music, and the automix between two DJ tracks. They carry their own curves (<see cref="MixShape"/>) and no
+/// playlist-Mix surface shows them (<see cref="MixTiming.IsPlaylistMix"/>).</summary>
+public enum MixSource : byte { None, Auto, Saved, TalkOver, Radio }
+
+/// <summary>Which curves a join plays: a playlist join's styles and recipe curves (<see cref="MixTiming.Styles"/>,
+/// <see cref="MixTiming.Curves"/>), or one of the AI DJ's (<c>Playback.DjCurves</c>): the music ducked under a voice by the ml rule or
+/// the human-cue rule, the last track ducked under its outro, the radio pair.</summary>
+public enum MixShape : byte { Preset, DuckMl, DuckHuman, DuckOutro, Radio }
+
+/// <summary>When the incoming row becomes the current item: when A is over (playlist Mix, D14 (b); an intro or a welcome over its
+/// target, plan-dj §1.6), or as soon as B starts (a jump clip's target, an outro over the ducked tail, the radio pair), A then playing on
+/// under it to the end of its own window.</summary>
+public enum MixAnnounceAt : byte { OutEnd, InStart }
 
 /// <summary>What the planner chose beyond the recipe or the rule, for the logs and diagnostics.</summary>
 [Flags]
@@ -34,19 +46,24 @@ public enum MixPlanNotes : byte
 }
 
 /// <summary>Why a pair gets the base hand-off instead of a mix (logged, and shown by diagnostics). <see cref="NoTransition"/>: the
-/// pair's Spotify recipe is "no transition" (no preset id): A plays to its end and B from its start.</summary>
+/// pair's Spotify recipe is "no transition" (no preset id): A plays to its end and B from its start. <see cref="NoData"/>: an AI DJ
+/// seam whose voice length or cue is not known yet (a playlist pair never refuses for it: Auto plans the rule's fallback).</summary>
 public enum MixWhyNot : byte
 {
     None, NotMixed, ListenWithoutMix, NotInMixedList, PairOptOut, NotMixable, LocalFile, CrossKind, TooShort, Late,
-    UserQueued, NoTransition,
+    UserQueued, NoTransition, NoData,
 }
 
 /// <summary>One join's plan: the recipe's timing when the pair was edited, else Spotify's Auto, and the styles it plays. The
 /// Transitions view's row, the prepare's start offset, the Connect metadata, the seek bar's end and the pump all read this
-/// value. A's and B's curves start at the same instant and run over their own lengths (<see cref="OutDurationMs"/>,
-/// <see cref="InDurationMs"/>). Every lane the styles move is resolved here, including the ones the engine cannot render yet
-/// (<see cref="Playback.MixRender"/> renders every lane the engine has; only a looping or jog-wheel style the table does not know is
-/// skipped).</summary>
+/// value. A's and B's curves start at the same instant (B after <see cref="InDelayMs"/>) and run over their own lengths
+/// (<see cref="OutDurationMs"/>, <see cref="InDurationMs"/>). Every lane the styles move is resolved here, including the ones the
+/// engine cannot render yet (<see cref="Playback.MixRender"/> renders every lane the engine has; only a looping or jog-wheel style the
+/// table does not know is skipped).
+/// <para>The AI DJ's joins (<see cref="MixSource.TalkOver"/>, <see cref="MixSource.Radio"/>) play their own curves (<see cref="Shape"/>;
+/// their <see cref="Styles"/> are empty, <see cref="SpeedB"/> 1), say when B becomes current (<see cref="AnnounceAt"/>) and how long after
+/// A's window starts B starts (<see cref="InDelayMs"/>: an outro starts once the duck has landed; a radio B without a confident cue joins in
+/// the window's last 350 ms). A playlist join keeps the defaults (preset curves, B current at A's end, B with A).</para></summary>
 public readonly record struct MixTiming(
     MixSource Source, MixWhyNot WhyNot,
     byte Preset,          // recipe 2.1 as saved (1 for Auto); an id the table does not know plays as Fade (Styles says what plays)
@@ -61,12 +78,28 @@ public readonly record struct MixTiming(
                           // glides back to 1 after its fade-in (protocol §6.2; MixRender.RatePlan)
     float BpmA,           // A's tempo (recipe 1.16, else kind 222): the effects' echo and delay time (MixStyles.FxBeats)
     MixPlanNotes Notes,
-    MixCurveOverrides? Curves = null)   // the recipe's hand-drawn curves (2.6 to 2.14): each one plays in place of its style's lane
+    MixCurveOverrides? Curves = null,   // the recipe's hand-drawn curves (2.6 to 2.14): each one plays in place of its style's lane
+    MixShape Shape = MixShape.Preset,   // the AI DJ's curves (Playback.DjCurves) in place of the styles; Preset for a playlist join
+    MixAnnounceAt AnnounceAt = MixAnnounceAt.OutEnd,
+    uint InDelayMs = 0)   // B starts this long after A's window starts (0: together)
 {
     public bool Mix => Source != MixSource.None;
+    /// <summary>A playlist Mix join (Auto or a saved recipe): the joins the Mix surfaces (the rail, "Mixing into", the queue line) show.</summary>
+    public bool IsPlaylistMix => Source is MixSource.Auto or MixSource.Saved;
+    /// <summary>Where on A's clock B starts.</summary>
+    public uint InAtMs => OutStartMs + InDelayMs;
+    /// <summary>Where on A's clock B becomes the current item.</summary>
+    public uint AnnounceMs => AnnounceAt == MixAnnounceAt.InStart ? InAtMs : AudibleEndMs;
     /// <summary>A's audible end: where the outgoing track is over and the player flips (decision D14 (b)).</summary>
     public uint AudibleEndMs => OutStartMs + OutDurationMs;
     public static MixTiming Refused(MixWhyNot why) => new(MixSource.None, why, 0, 0, 0, 0, 0, default, 0, 1f, 0f, MixPlanNotes.None);
+
+    /// <summary>An AI DJ join (<see cref="MixSource.TalkOver"/> or <see cref="MixSource.Radio"/>): its own curves (<paramref name="shape"/>),
+    /// no styles, B at speed 1, its announce and B's delay.</summary>
+    public static MixTiming Dj(MixSource source, uint outStartMs, uint outDurationMs, uint inStartMs, uint inDurationMs, MixShape shape,
+        MixAnnounceAt announceAt, uint inDelayMs = 0)
+        => new(source, MixWhyNot.None, 0, outStartMs, outDurationMs, inStartMs, inDurationMs, default, 0, 1f, 0f, MixPlanNotes.None, null,
+               shape, announceAt, inDelayMs);
 
     /// <summary>A plan for preset <paramref name="presetId"/> with <paramref name="overrides"/> resolved through the style table.</summary>
     public static MixTiming Of(MixSource source, int presetId, in MixStyleOverrides overrides, int bars, uint outStartMs, uint outDurationMs,
@@ -79,9 +112,12 @@ public readonly record struct MixTiming(
     /// <summary>One lane's curve on one side as this join plays it: the recipe's hand-drawn curve when it overrides the lane, else
     /// the style table's (<see cref="MixStyles.Segments"/> at <see cref="Bars"/>). Writes at most <c>into.Length</c> segments;
     /// returns the count (0 = nothing moves the lane). Every reader of a join's curves calls this: the engine's tables, the
-    /// Connect metadata, the editor's drawing.</summary>
+    /// Connect metadata, the editor's drawing. An AI DJ join (<see cref="Shape"/> not Preset) moves its volume only, by its own curves
+    /// (<see cref="Playback.DjCurves"/>: at most 3 segments).</summary>
     public int Segments(MixCurveLane lane, bool incoming, Span<CurveSegment> into)
     {
+        if (Shape != MixShape.Preset)
+            return lane == MixCurveLane.Volume ? Playback.DjCurves.Segments(in this, incoming, into) : 0;
         if (Curves?.Get(lane, incoming) is { } c)
         {
             int n = Math.Min(c.Segments.Length, into.Length);
@@ -179,14 +215,15 @@ public static class MixCurves
         return System.Text.Encoding.UTF8.GetBytes(sb.ToString(), utf8);
 
         static void Point(System.Text.StringBuilder sb, float x, float y) => sb.Append("{\"x\":").Append(F(x)).Append(",\"y\":").Append(F(y)).Append('}');
-        // The official client's spelling: an exactly representable short binary fraction in full (1 − 2⁻⁹ is 0.998046875, 2⁻¹⁰ is
-        // 0.0009765625), anything else at the float's shortest round-trip form (0.6, not 0.6000000238).
-        static string F(float v)
-        {
-            double d = v;
-            string exact = d.ToString("0.############", CultureInfo.InvariantCulture);
-            return double.Parse(exact, CultureInfo.InvariantCulture) == d ? exact : v.ToString("R", CultureInfo.InvariantCulture);
-        }
+    }
+
+    /// <summary>A curve number as the official client spells it: an exactly representable short binary fraction in full (1 − 2⁻⁹ is
+    /// 0.998046875, 2⁻¹⁰ is 0.0009765625), anything else at the float's shortest round-trip form (0.6, not 0.6000000238).</summary>
+    internal static string F(float v)
+    {
+        double d = v;
+        string exact = d.ToString("0.############", CultureInfo.InvariantCulture);
+        return double.Parse(exact, CultureInfo.InvariantCulture) == d ? exact : v.ToString("R", CultureInfo.InvariantCulture);
     }
 
     // ── the curve → sound mapping: the official client's own evaluator (its value-semantics table, plan UPDATE 11-25) ──────

@@ -112,12 +112,20 @@ public sealed record PlayerBarView
     public bool RepeatOn { get; init; }
     /// <summary>The repeat button's glyph (repeat-one for a track repeat).</summary>
     public string RepeatGlyph { get; init; } = "";
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ's "Not available with DJ"): the
+    /// button draws disabled and wears this as its tooltip. Null while it may be pressed (as <see cref="CanTransport"/> says).</summary>
+    public string? ShuffleLock { get; init; }
+    /// <summary>The repeat button's twin of <see cref="ShuffleLock"/>.</summary>
+    public string? RepeatLock { get; init; }
     /// <summary>The bar owns the window's one transport (everything but full-bleed fullscreen video).</summary>
     public bool OwnsTransport { get; init; }
     /// <summary>The ±10 s step buttons may be pressed (episodes only; false otherwise).</summary>
     public bool SeekStepEnabled { get; init; }
     /// <summary>The indeterminate sweep runs along the bar's top edge.</summary>
     public bool TopEdgeSweeps { get; init; }
+    /// <summary>The playing item's progress is not shown (an AI DJ narration, `suppress_progress`): the time labels read empty and the seek
+    /// rail cannot seek. A theme hides what it draws BETWEEN the labels (a separator) and keeps every slot's width. Appended (D2, additive).</summary>
+    public bool ProgressSuppressed { get; init; }
 
     // ── what the level carries ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -158,6 +166,8 @@ public sealed record PlayerBarView
     public bool LikeEnabled { get; init; }
     /// <summary>The "Playing on ..." line is in the text block.</summary>
     public bool RemoteLine { get; init; }
+    /// <summary>AI DJ plays here (<see cref="DjChrome"/>: "Let DJ pick" and the segment line); null otherwise. Appended (contract additive).</summary>
+    public DjChrome? Dj { get; init; }
 
     // ── the right cluster ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -185,6 +195,18 @@ public sealed record PlayerBarView
     /// <summary>The rows behind the view split's chevron, in menu order (built with <see cref="PlayerBarProps.OverflowRow"/>).</summary>
     public OverflowCommand[] ViewMenu { get; init; } = [];
 }
+
+/// <summary>AI DJ on the now-playing surfaces (the player bar, the stage transport, the mini player; plan-dj §2.8), while a DJ session plays on
+/// this device. Appended (contract additive): a theme that ignores it shows the DJ as any list.</summary>
+/// <param name="Pick">"Let DJ pick": the label the session states (<c>dj.interactivity.localized_jump_button</c>), else the app's words.</param>
+/// <param name="PickTip">The button's tooltip ("Get some different DJ picks").</param>
+/// <param name="CanPick">A later segment is loaded to jump to (false for the moment a page is still on its way: the press waits for it).</param>
+/// <param name="PickFill">The button's tint (<c>narration.jump.background.color</c>), ARGB; 0 = none stated (the theme's own accent).</param>
+/// <param name="PickBorder">Its border (<c>narration.jump.border.color</c>), ARGB; 0 = none.</param>
+/// <param name="PickInk">Its glyph's colour (<c>narration.jump.icon.color</c>), ARGB; 0 = none.</param>
+/// <param name="Line">The context line while DJ plays: "DJ · Vibes" (the product's name and the playing segment's <c>station_subtitle</c>).</param>
+/// <param name="Jump">The verb: skip the rest of this segment and play the next one's first song.</param>
+public sealed record DjChrome(string Pick, string PickTip, bool CanPick, uint PickFill, uint PickBorder, uint PickInk, string Line, Action Jump);
 
 /// <summary>The props of <see cref="ViewKeys.PlayerBar"/>.</summary>
 public sealed record PlayerBarProps

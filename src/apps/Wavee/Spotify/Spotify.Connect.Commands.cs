@@ -57,8 +57,8 @@ public static partial class Spotify
             _ => CommandRoute.Mailbox,
         };
 
-        /// <summary>DEALER THREAD, after the ack.</summary>
-        static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
+        /// <summary>DEALER THREAD, after the ack (and the inspector's `dj do=signal`, which routes a made-up body as the glue does).</summary>
+        internal static void RouteCommand(in Decode.RemoteCommand command, ReadOnlySpan<byte> payload, uint epoch)
         {
             switch (RouteOf(command.Kind))
             {
@@ -66,7 +66,7 @@ public static partial class Spotify
                 case CommandRoute.Options: EnqueueOptions(in command, payload, epoch); break;
                 case CommandRoute.QueueBody: HandOffQueue(in command, payload, epoch); break;
                 case CommandRoute.Mailbox:
-                    if (command.Kind == Decode.RemoteCmd.Signal && command.Signal == Decode.VideoSignal.None) RouteMixPreview(payload);
+                    if (command.Kind == Decode.RemoteCmd.Signal && command.Signal == Decode.PlayerSignal.None) RouteMixPreview(payload);
                     Enqueue(new Item(command, epoch));
                     break;
                 default: Log.Warn("spotify", "connect command not understood — refused and dropped"); break;

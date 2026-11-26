@@ -97,17 +97,38 @@ public static class PlaylistItemFlags
 /// smallest start candidate and the largest end candidate, which Spotify's Auto for a pair it does not beatmatch reads (A's
 /// last end candidate, B's first start candidate; full-support reference §7.1). A cue or a candidate may sit at 0 ms, so
 /// <see cref="Candidates"/> says which the answer had. The whole candidate lists, in answer order, are
-/// <see cref="Edges.TrackCueCandidates"/> (the beatmatched Auto reads them, §7.2). 20 bytes, unmanaged: the payload of
-/// <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent; not persisted).</summary>
+/// <see cref="Edges.TrackCueCandidates"/> (the beatmatched Auto reads them, §7.2). 24 bytes, unmanaged: the payload of
+/// <see cref="Edges.TrackCues"/> (the <see cref="WaveSample"/> payload-only precedent; not persisted).
+/// <para><see cref="Facts"/> (AI DJ, plan-dj §1.6 and §1.7): what each cue's field 3 (origin: absent = human, 1 = ml) and the start cue's
+/// field 4 (confidence) said. Bit 0 the start cue is ml, bit 1 the end cue is ml, bit 7 the decoder stated them (a payload written
+/// without them reads as unknown), bits 8 to 15 the start cue's confidence in percent + 1 (0 = not stated).</para></summary>
 public readonly record struct TrackCues(uint StartCueMs, uint EndCueMs, ushort TempoX10, CueCandidates Candidates = CueCandidates.None,
-    uint FirstStartCandidateMs = 0, uint LastEndCandidateMs = 0)
+    uint FirstStartCandidateMs = 0, uint LastEndCandidateMs = 0, ushort Facts = 0)
 {
+    const ushort StartMlBit = 1, EndMlBit = 2, KnownBit = 0x80;
+
     public bool HasFirstStartCandidate => (Candidates & CueCandidates.Start) != 0;
     public bool HasLastEndCandidate => (Candidates & CueCandidates.End) != 0;
     /// <summary>Field 1 was on the wire (its ms may be absent: 0).</summary>
     public bool HasStartCue => (Candidates & CueCandidates.StartCue) != 0;
     /// <summary>Field 2 was on the wire (its ms may be absent: 0).</summary>
     public bool HasEndCue => (Candidates & CueCandidates.EndCue) != 0;
+
+    /// <summary>The origins were decoded (<see cref="StartIsHuman"/> and <see cref="StartConfidence"/> mean something).</summary>
+    public bool OriginKnown => (Facts & KnownBit) != 0;
+    /// <summary>The start cue was placed by a person (kind 28 field 1.3 absent); false when unknown.</summary>
+    public bool StartIsHuman => OriginKnown && StartCueMs > 0 && (Facts & StartMlBit) == 0;
+    /// <summary>The end cue was placed by a person; false when unknown.</summary>
+    public bool EndIsHuman => OriginKnown && EndCueMs > 0 && (Facts & EndMlBit) == 0;
+    /// <summary>The start cue's confidence, 0..1; −1 when not stated.</summary>
+    public float StartConfidence => (Facts >> 8) == 0 ? -1f : ((Facts >> 8) - 1) / 100f;
+
+    /// <summary>The <see cref="Facts"/> of decoded cues. PURE.</summary>
+    public static ushort FactsOf(bool startMl, bool endMl, double startConfidence)
+    {
+        int pct = double.IsFinite(startConfidence) && startConfidence >= 0 ? (int)Math.Round(Math.Clamp(startConfidence, 0, 1) * 100) + 1 : 0;
+        return (ushort)(KnownBit | (startMl ? StartMlBit : 0) | (endMl ? EndMlBit : 0) | (pct << 8));
+    }
 }
 
 /// <summary>Which of kind 28's fields an answer carried (<see cref="TrackCues.Candidates"/>): the candidate lists (3, 4) and

@@ -146,6 +146,10 @@ public enum PlaylistFlags : uint
     /// <summary>A daylist whose name still equals its generic pre-title: identity is present but not YET the real one
     /// (ch 10 §7, the 0.2.9 <c>HomeDaylistHydrator</c> contract as a bit rather than a re-fetch loop).</summary>
     GenericTitle = 1 << 4,
+    /// <summary>The list's format attributes say <c>lexicon_set_type=your_dj</c>: Spotify's DJ (plan-dj §1.1). Written by the answer
+    /// that carried the attributes (its mask speaks for this bit), together with <see cref="PlaylistTable.LexiconUrl"/>. Never keyed on
+    /// the list's id: per-market and per-account DJ lists differ.</summary>
+    YourDj = 1 << 5,
 
     // ── derived at commit from the membership (see PlaylistFacts) ───────────────────────────────────────────────────
     /// <summary>≥ 2 distinct <c>AddedBy</c> values ⇒ the table shows an Added-by column.</summary>
@@ -242,6 +246,21 @@ public sealed class PlaylistTable : Table
     /// <summary>#48 Mix: the mix lens's etag from the last lens read (SelectedListContent f22). A Save changes the items
     /// and this etag but not the revision (capture report §3.2).</summary>
     public Column<StringId> MixLensEtag;
+    /// <summary>The list's <c>lexicon_context_url</c> format attribute (<c>hm://lexicon-session-provider/…</c>): the context url a play
+    /// of it resolves instead of its uri (plan-dj §2.1.1). Empty for an ordinary list. Written with <see cref="PlaylistFlags.YourDj"/>'s
+    /// mask by the answer that carried the attributes.</summary>
+    public Column<StringId> LexiconUrl;
+    /// <summary>A DJ list's whole format attributes as one JSON object (<c>lexicon_set_type</c>, <c>lexicon_context_url</c>, <c>home.card.*</c>,
+    /// <c>automix.mode</c>, …): what a DJ play names as its context metadata, here and to another device (plan-dj §1.9, §2.7). Kept for a DJ
+    /// list only (an ordinary list's attributes are not held), written with <see cref="PlaylistFlags.YourDj"/>'s mask like
+    /// <see cref="LexiconUrl"/>.</summary>
+    public Column<StringId> DjAttributes;
+    /// <summary>The DJ card's words (<c>home.card.dj.transcript_text</c>, plan-dj §1.1): what the DJ says on its Home card and its page.
+    /// Written when an answer carries it (Home's card, the list read); never cleared by one that does not.</summary>
+    public Column<StringId> DjTranscript;
+    /// <summary>The DJ card's colours (<c>home.card.background_color</c>, the three jellyfish colours, <c>text_color</c>), written with
+    /// <see cref="DjTranscript"/>.</summary>
+    public Column<DjCardColors> DjColors;
 
     /// <summary><see cref="PlaylistFlags"/>.</summary>
     public Column<uint> Flags;
@@ -306,6 +325,10 @@ public sealed class PlaylistTable : Table
         Accent.EnsureCapacity(capacity);
         MixFlags.EnsureCapacity(capacity);
         MixLensEtag.EnsureCapacity(capacity);
+        LexiconUrl.EnsureCapacity(capacity);
+        DjAttributes.EnsureCapacity(capacity);
+        DjTranscript.EnsureCapacity(capacity);
+        DjColors.EnsureCapacity(capacity);
         Flags.EnsureCapacity(capacity);
         Notice.EnsureCapacity(capacity);
         EpisodeCount.EnsureCapacity(capacity);
@@ -334,6 +357,42 @@ public sealed class PlaylistTable : Table
         ClearText(ref TuningSelected, slot);
         ClearText(ref Revision, slot);
         ClearText(ref MixLensEtag, slot);
+        ClearText(ref LexiconUrl, slot);
+        ClearText(ref DjAttributes, slot);
+        ClearText(ref DjTranscript, slot);
+        DjColors[slot] = default;
+    }
+}
+
+/// <summary>The DJ card's colours (<c>home.card.background_color</c>, <c>home.card.jellyfish_{top,mid,bottom}_color</c>,
+/// <c>home.card.text_color</c>; plan-dj §1.1), each ARGB, 0 = not stated.</summary>
+public readonly record struct DjCardColors(uint Background, uint Top, uint Mid, uint Bottom, uint Text)
+{
+    public bool IsEmpty => (Background | Top | Mid | Bottom | Text) == 0u;
+
+    /// <summary><c>"#AARRGGBB"</c> or <c>"#RRGGBB"</c> (the <c>#</c> optional) → ARGB; 0 for anything else. PURE.</summary>
+    public static uint Argb(ReadOnlySpan<byte> hex)
+    {
+        if (hex.Length > 0 && hex[0] == (byte)'#') hex = hex[1..];
+        if (hex.Length is not (6 or 8)) return 0u;
+        uint v = 0;
+        foreach (byte c in hex)
+        {
+            int d = c is >= (byte)'0' and <= (byte)'9' ? c - '0' : c is >= (byte)'a' and <= (byte)'f' ? c - 'a' + 10
+                  : c is >= (byte)'A' and <= (byte)'F' ? c - 'A' + 10 : -1;
+            if (d < 0) return 0u;
+            v = (v << 4) | (uint)d;
+        }
+        return hex.Length == 6 ? 0xFF000000u | v : v;
+    }
+
+    /// <inheritdoc cref="Argb(ReadOnlySpan{byte})"/>
+    public static uint Argb(string hex)
+    {
+        Span<byte> b = stackalloc byte[9];
+        if (hex.Length > b.Length) return 0u;
+        for (int i = 0; i < hex.Length; i++) b[i] = hex[i] < 128 ? (byte)hex[i] : (byte)0;
+        return Argb(b[..hex.Length]);
     }
 }
 
@@ -518,6 +577,16 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     /// <summary>Spotify has Mix on for this playlist (<see cref="PlaylistMixRules.On"/>).</summary>
     public bool MixOn => PlaylistMixRules.On(MixFlags);
     public StringId MixLensEtagId => T.MixLensEtag[Slot];
+    /// <summary>Spotify's DJ: the list's attributes say <c>lexicon_set_type=your_dj</c> (<see cref="PlaylistFlags.YourDj"/>).</summary>
+    public bool IsDj => (Bits & (uint)PlaylistFlags.YourDj) != 0;
+    /// <summary>The list's <c>lexicon_context_url</c> (<see cref="PlaylistTable.LexiconUrl"/>); empty for an ordinary list.</summary>
+    public StringId LexiconUrlId => T.LexiconUrl[Slot];
+    /// <summary>A DJ list's format attributes as a JSON object (<see cref="PlaylistTable.DjAttributes"/>); empty otherwise.</summary>
+    public StringId DjAttributesId => T.DjAttributes[Slot];
+    /// <summary>The DJ card's words (<see cref="PlaylistTable.DjTranscript"/>); empty when no answer carried them.</summary>
+    public StringId DjTranscriptId => T.DjTranscript[Slot];
+    /// <summary>The DJ card's colours (<see cref="PlaylistTable.DjColors"/>).</summary>
+    public DjCardColors DjColors => T.DjColors[Slot];
 
     // ── membership ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -653,6 +722,15 @@ public struct StagedPlaylist : IStagedRow
     public TextRef ChartRankType, TuningSelected;
     /// <summary>#48: the mix lens etag (f22), when the answer was read through it.</summary>
     public TextRef MixLensEtag;
+    /// <summary>DJ: the list's <c>lexicon_context_url</c> (<see cref="PlaylistTable.LexiconUrl"/>), written when <see cref="FlagsMask"/>
+    /// speaks for <see cref="PlaylistFlags.YourDj"/> (empty then clears it).</summary>
+    public TextRef LexiconUrl;
+    /// <summary>DJ: the list's format attributes as one JSON object (<see cref="PlaylistTable.DjAttributes"/>), under the same mask.</summary>
+    public TextRef DjAttributes;
+    /// <summary>DJ: the card's words and colours (<see cref="PlaylistTable.DjTranscript"/>, <see cref="PlaylistTable.DjColors"/>), each
+    /// written when the answer carried it.</summary>
+    public TextRef DjTranscript;
+    public DjCardColors DjColors;
     /// <summary>#48: <see cref="PlaylistMixFlags"/> this answer asserts, and the bits it speaks for (a list read the low
     /// byte, an extended-metadata kind its own bit).</summary>
     public uint MixFlags, MixFlagsMask;
@@ -856,6 +934,21 @@ public static partial class Entities
                 uint merged = PlaylistTable.MergeFlags(t.Flags[slot], row.Flags, row.FlagsMask);
                 if (merged != t.Flags[slot]) { t.Flags[slot] = merged; t.Bump(slot); }
             }
+            // DJ: the answer that read the format attributes speaks for the lexicon url too (an empty one clears it).
+            if ((row.FlagsMask & (uint)PlaylistFlags.YourDj) != 0)
+            {
+                StringId lexicon = s.Intern(row.LexiconUrl);
+                if (lexicon != t.LexiconUrl[slot]) { t.SetText(ref t.LexiconUrl, slot, lexicon); t.Bump(slot); }
+                StringId attributes = s.Intern(row.DjAttributes);
+                if (attributes != t.DjAttributes[slot]) { t.SetText(ref t.DjAttributes, slot, attributes); t.Bump(slot); }
+            }
+            // The DJ card's words and colours: written when carried, never cleared by an answer that did not carry them.
+            if (!row.DjTranscript.IsEmpty)
+            {
+                StringId words = s.Intern(row.DjTranscript);
+                if (words != t.DjTranscript[slot]) { t.SetText(ref t.DjTranscript, slot, words); t.Bump(slot); }
+            }
+            if (!row.DjColors.IsEmpty && row.DjColors != t.DjColors[slot]) { t.DjColors[slot] = row.DjColors; t.Bump(slot); }
 
             // Wave 5 (owner O): the two facts derived from what just landed.
             if ((row.Known & (uint)(PlaylistFields.Identity | PlaylistFields.Capabilities)) != 0)

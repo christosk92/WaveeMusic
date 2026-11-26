@@ -1959,6 +1959,7 @@ public static partial class Lyrics
         public static string IdOf(Track track)
         {
             if (!track.IsValid) return "";
+            if (track.Uri.Text.StartsWith(Spotify.DjTts.UriPrefix, StringComparison.Ordinal)) return "";   // an AI DJ narration clip has no lyrics to ask for
             var span = EntityUri.IdOf(track.Uri.Text);
             return span.IsEmpty ? "" : span.ToString();
         }

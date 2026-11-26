@@ -1450,6 +1450,9 @@ public static partial class Shell
         /// (<see cref="SessionDeck.MaxRows"/>). ADDITIVE: a document without them restores through the context seed as
         /// before. When present, <see cref="CursorIndex"/> indexes THESE rows, not the live queue that produced them.</summary>
         public SessionQueueRowDto[]? Rows { get; set; }
+        /// <summary>A DJ deck's lexicon url (AI DJ): the launch restore resolves its session from it. ADDITIVE: absent for every other
+        /// context, and a reader that does not know it ignores it.</summary>
+        public string? ContextUrl { get; set; }
     }
 
     /// <summary>One persisted queue row: the uri text plus <c>QueueEdge</c>'s three numbers — <c>QueueBucket</c>'s and

@@ -120,7 +120,9 @@ public static partial class Spotify
             if (n > 0) lists.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(list[..n]));
         }
 
-        /// <summary>Kind 28: the chosen start cue (f1) and end cue (f2), the tempo the start cue states, which fields the answer
+        /// <summary>Kind 28: the chosen start cue (f1) and end cue (f2), the tempo the start cue states, each cue's origin (its f3:
+        /// absent = human, 1 = ml) and the start cue's confidence (its f4), which the AI DJ's talk-over and radio automix read (plan-dj
+        /// §1.6, §1.7; <see cref="TrackCues.Facts"/>), which fields the answer
         /// carried, the smallest start candidate (f3, min ms) and the largest end candidate (f4, max ms) into <paramref name="cue"/>;
         /// every candidate in answer order into <paramref name="candidates"/> (<see cref="CueCandidate"/> packing, the first
         /// <see cref="CueCandidate.Max"/>). A cue's ms is absent when 0. The candidate count. PURE (see <see cref="ReadMixBeats"/>).</summary>
@@ -129,6 +131,8 @@ public static partial class Spotify
             uint start = 0, end = 0, firstStart = uint.MaxValue, lastEnd = 0;
             var has = CueCandidates.None;
             float bpm = 0f;
+            bool startMl = false, endMl = false;
+            double startConfidence = -1;
             int n = 0;
             for (var r = new ProtoReader(proto); r.Next();)
             {
@@ -137,16 +141,20 @@ public static partial class Spotify
                     int field = r.Field;
                     uint ms = 0;
                     float cueBpm = 0f;
+                    bool ml = false;
+                    double confidence = -1;
                     for (var c = r.Message(); c.Next();)
                     {
                         if (c.Field == 1 && c.Wire == 0) ms = (uint)Math.Min(c.Varint(), CueCandidate.MsMask);
                         else if (c.Field == 2 && c.Wire == 5) cueBpm = BitConverter.UInt32BitsToSingle(c.Fixed32());
+                        else if (c.Field == 3 && c.Wire == 0) ml = c.Varint() == 1;
+                        else if (c.Field == 4 && c.Wire == 1) confidence = c.Double();
                         else c.Skip();
                     }
                     switch (field)
                     {
-                        case 1: start = ms; has |= CueCandidates.StartCue; if (cueBpm > 0) bpm = cueBpm; break;
-                        case 2: end = ms; has |= CueCandidates.EndCue; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; break;
+                        case 1: start = ms; startMl = ml; startConfidence = confidence; has |= CueCandidates.StartCue; if (cueBpm > 0) bpm = cueBpm; break;
+                        case 2: end = ms; endMl = ml; has |= CueCandidates.EndCue; if (bpm <= 0 && cueBpm > 0) bpm = cueBpm; break;
                         case 3: has |= CueCandidates.Start; firstStart = Math.Min(firstStart, ms); break;
                         default: has |= CueCandidates.End; lastEnd = Math.Max(lastEnd, ms); break;
                     }
@@ -155,7 +163,7 @@ public static partial class Spotify
                 else r.Skip();
             }
             cue = new TrackCues(start, end, bpm is > 0 and < 6553 ? (ushort)(bpm * 10 + 0.5f) : (ushort)0, has,
-                (has & CueCandidates.Start) != 0 ? firstStart : 0, lastEnd);
+                (has & CueCandidates.Start) != 0 ? firstStart : 0, lastEnd, TrackCues.FactsOf(startMl, endMl, startConfidence));
             return n;
         }
 

@@ -65,4 +65,31 @@ public static partial class Playback
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
     }
+
+    // ── the inspector's cluster (`dj do=cluster`) ─────────────────────────────────────────────────────────────────────
+
+    static readonly System.Collections.Generic.Queue<byte[]> s_inspectClusters = new();
+
+    /// <summary>The inspector hands a CAPTURED or synthetic <c>ClusterUpdate</c> (protobuf) to the fold a dealer push takes: decoded with
+    /// this device's id and folded at the top of the next drain (<see cref="FoldCluster(Spotify.Decode.ClusterBuffer, in Spotify.Decode.ClusterDelta, long)"/>),
+    /// so the ownership, the mirror and the DJ facts are the real ones. UI thread.</summary>
+    public static void FoldClusterForInspect(byte[] clusterUpdate)
+    {
+        s_inspectClusters.Enqueue(clusterUpdate);
+        RequestDrain();
+    }
+
+    static void FoldInspectClusters(long now)
+    {
+        while (s_inspectClusters.TryDequeue(out byte[]? raw))
+        {
+            Spotify.Decode.ClusterBuffer buffer = Spotify.Decode.ClusterBuffer.Rent();
+            try
+            {
+                Spotify.Decode.ClusterDelta d = Spotify.Decode.ClusterUpdate(raw, System.Text.Encoding.UTF8.GetBytes(s_identity.DeviceId ?? ""), buffer);
+                FoldCluster(buffer, in d, now);
+            }
+            finally { Spotify.Decode.ClusterBuffer.Return(buffer); }
+        }
+    }
 }
