@@ -9,15 +9,18 @@
 //   subscribe  POST /listening-activity/v1/subscribe — every user the feed named, on THIS dealer connection; it lives
 //              48 h. Sent again on a new connection id, for a user it does not cover yet, and before it expires.
 //   push       a friend's change arrives as a dealer MESSAGE on `hm://listening-activity/…` (observed on Wavee's own
-//              connection, 2026-11-25). The push is the SIGNAL, not the data: a shown panel loads the feed again,
-//              pushes inside `PushSettleMs` folded into one load; a hidden one loads on its next show.
+//              connection, 2026-11-25). The push is the SIGNAL, not the data: a panel someone can see loads the feed again,
+//              pushes inside `PushSettleMs` folded into one load. One nobody can see (unmounted, or the window minimised,
+//              hidden or covered: `OnWindowHidden`) only notes it was missed, and loads once when it is seen again.
 //   words      the feed names only identities, so the friends' users, tracks and context playlists are ENSURED through
 //              the fetch layer (extended-metadata); a watch on the track table fills each row's album and artist
 //   failure    rows kept (rows win, `Rail.Friends.SurfaceFor`), the error face with none; the next try waits for the
-//              answer's Retry-After or a doubling back-off, and only while the panel is shown. Logged on a change of
+//              answer's Retry-After or a doubling back-off, and only while someone can see the panel. Retry skips our
+//              own back-off (the user asked); a server's Retry-After it waits out, on the skeleton. Logged on a change of
 //              state (ok → failing, failing → ok), never per try.
-//   offline    "Sign in" only while signed out: `OnSignedOut` (or a launch with no stored credential) and nothing else.
-//              The run is cleared, so the next account never sees these rows.
+//   session    the panel says what the shell's profile chip says (`Shell.FoldAuth`, `WatchSession`): "Sign in" only with
+//              no stored credential (a launch without one, a sign-out, a rejected login); the error face when the session
+//              gave up; the skeleton while it connects. A sign-out clears the run, so the next account never sees it.
 //
 // No poll and no fallback source: the official client has neither (two launches captured, 130 s with the panel open and no
 // second request); a feed request follows a push, never a clock. UI thread except the bodies handed to `Api.Run` and the two timers (which only post). `--fake` lands the
@@ -49,6 +52,9 @@ public static partial class Spotify
         static uint s_generation;                        // bumped on sign-out: an answer from before it is dropped
         static int s_failures;                           // consecutive failed loads; 0 = the last one landed
         static long s_holdUntilMs;                       // no feed request before this (Retry-After or the back-off)
+        static bool s_hidden;                            // the window is minimised, hidden or covered (OnWindowHidden)
+        static bool s_missed = true;                     // a push, a connection, a renewal or a retry came while nobody looked
+        static bool s_holdIsServer;                      // the hold is the answer's Retry-After (Retry waits it out), not ours
         static Timer? s_retry, s_renew, s_push;
         static int s_pushes;                             // pushes folded into the pending load (the dealer thread counts)
 
@@ -60,7 +66,7 @@ public static partial class Spotify
         static int s_subFailStatus = -1;                 // the last failed subscribe's status, so a repeat is not logged
 
         static ReactiveRuntime? s_runtime;
-        static Effect? s_refill;
+        static Effect? s_refill, s_session;
         static bool s_flushPosted;
         static readonly Action s_flush = static () => { s_flushPosted = false; s_runtime?.Flush(); };
 
@@ -71,15 +77,20 @@ public static partial class Spotify
             if (s_attached) return;
             s_attached = true;
             Rail.Friends.SetActive = SetActive;
-            Rail.Friends.Refresh = static () => Load("retry");
+            Rail.Friends.Refresh = Retry;
             s_runtime = new ReactiveRuntime { FrameRequested = RequestFlush };
             s_refill = new Effect(s_runtime, WatchTracks);
+            s_session = new Effect(s_runtime, WatchSession);
             if (Platform.Args.Fake) LandFake();
             else if (NoAccount) Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
         }
 
-        /// <summary>A launch with no stored credential: signed out without a sign-out.</summary>
-        static bool NoAccount => Current.Fault == SessionFault.NoCredential;
+        /// <summary>Nothing to resume: no stored credential, the shell's own rule for "signed out" (<c>Shell.FoldAuth</c>). A
+        /// launch without one never calls <c>Spotify.Login</c>, so the session's fault cannot tell.</summary>
+        static bool NoAccount => !Platform.HasStoredCredential();
+
+        /// <summary>Someone can see the panel: it is mounted and its window is not minimised, hidden or covered.</summary>
+        static bool Looking => s_active && !s_hidden;
 
         static void RequestFlush()
         {
@@ -99,20 +110,86 @@ public static partial class Spotify
             Post(static () => { if (Entities.RefillFriends()) Entities.Publish(); });
         }
 
+        /// <summary>Tracked: the session's phase and fault. Posts the panel's answer to them (a watch never writes inline).</summary>
+        static void WatchSession()
+        {
+            _ = Status.Value;
+            _ = Fault.Value;
+            Post(s_landSession);
+        }
+
+        /// <summary>The panel says what the profile chip says (<c>Shell.FoldAuth</c>): "Sign in" with nothing to resume, the
+        /// error face for a session that gave up (rows kept), and the skeleton again once it connects.</summary>
+        static readonly Action s_landSession = static () =>
+        {
+            if (Platform.Args.Fake || !s_attached) return;
+            var state = Rail.Friends.State.Peek();
+            switch (Shell.FoldAuth(Status.Peek(), Fault.Peek(), !NoAccount))
+            {
+                case Shell.AuthState.SignInRequired:
+                    if (Rows == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Offline;
+                    break;
+                case Shell.AuthState.Offline:
+                    // A stored credential and a session that is down. Before the launch's login folds, the phase still reads
+                    // Offline: only a session that GAVE UP is an outage.
+                    if (Status.Peek() == SessionPhase.Failed) LandFailure();
+                    break;
+                default:   // Connecting, Live: a (re)connect owes a load (OnConnection), so the panel waits on the skeleton
+                    if (Rows == 0 && state is Rail.Friends.FeedState.Offline or Rail.Friends.FeedState.Error)
+                        Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
+                    break;
+            }
+        };
+
         static void SetActive(bool active)
         {
             s_active = active;
             if (active) Load("shown");
-            else s_retry?.Change(Timeout.Infinite, Timeout.Infinite);   // nobody is looking: no retries
+            else StopRetry();   // nobody is looking: no retries
+        }
+
+        /// <summary>UI thread (the shell root's watch on <c>InputHooks.WindowOccluded</c>): the window was minimised, hidden or
+        /// covered (true), or can be seen again (false). Seen again, a mounted panel that missed something loads once; a
+        /// window that is merely brought back to the front costs nothing.</summary>
+        public static void OnWindowHidden(bool hidden)
+        {
+            if (s_hidden == hidden) return;
+            s_hidden = hidden;
+            if (!s_attached || !s_active) return;
+            if (hidden) StopRetry();
+            else if (s_missed) Load("seen");
+        }
+
+        /// <summary>A retry that was due goes with the viewer; the next look owes it.</summary>
+        static void StopRetry()
+        {
+            if (s_failures > 0) s_missed = true;
+            s_retry?.Change(Timeout.Infinite, Timeout.Infinite);
         }
 
         /// <summary>UI thread (Session's AnnounceDevice effect): a NEW dealer connection. Signed in again if the panel read
-        /// "Sign in"; a shown panel reloads, and the load re-subscribes on the new connection id.</summary>
+        /// "Sign in"; a panel someone can see reloads (the load re-subscribes on the new connection id), any other owes it.</summary>
         public static void OnConnection()
         {
             if (!s_attached) return;
             if (Rail.Friends.State.Value == Rail.Friends.FeedState.Offline) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
-            if (s_active) Load("connection");
+            LoadOrOwe("connection");
+        }
+
+        /// <summary>Load now when someone can see the panel; otherwise note it, so the next look loads once.</summary>
+        static void LoadOrOwe(string why)
+        {
+            if (Looking) Load(why);
+            else s_missed = true;
+        }
+
+        /// <summary>The error face's Retry. The user asked, so our own back-off gives way; a server's Retry-After does not, but
+        /// the panel shows it is on its way (the skeleton) instead of a button that seems to do nothing.</summary>
+        static void Retry()
+        {
+            if (!s_holdIsServer) s_holdUntilMs = 0;
+            else if (Playback.UnixNowMs() < s_holdUntilMs && Rows == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
+            Load("retry");
         }
 
         /// <summary>DEALER THREAD: a MESSAGE frame nobody else took. A <c>hm://listening-activity/</c> push (a friend's
@@ -137,7 +214,7 @@ public static partial class Spotify
         static readonly Action s_settled = static () =>
         {
             int pushes = Interlocked.Exchange(ref s_pushes, 0);
-            if (pushes > 0 && s_attached && s_active) Load("push");   // hidden: the next show loads anyway
+            if (pushes > 0 && s_attached) LoadOrOwe("push");   // nobody looking: one load when someone does
         };
 
         /// <summary>UI thread (Session's SignedOut effect): no feed, no subscription and no rows left for the next account.</summary>
@@ -146,6 +223,8 @@ public static partial class Spotify
             s_generation++;
             s_failures = 0;
             s_holdUntilMs = 0;
+            s_holdIsServer = false;
+            s_missed = true;
             s_again = false;
             s_retry?.Change(Timeout.Infinite, Timeout.Infinite);
             s_renew?.Change(Timeout.Infinite, Timeout.Infinite);
@@ -186,6 +265,7 @@ public static partial class Spotify
                 return;
             }
             s_inflight = true;
+            s_missed = false;
             if (Rows == 0) Rail.Friends.State.Value = Rail.Friends.FeedState.Loading;
 
             uint epoch = Entities.Current.Epoch, generation = s_generation;
@@ -228,6 +308,7 @@ public static partial class Spotify
                     Log.Info("friends", "feed recovered after " + s_failures.ToString(CultureInfo.InvariantCulture) + " failed loads");
                 s_failures = 0;
                 s_holdUntilMs = 0;
+                s_holdIsServer = false;
                 s_retry?.Change(Timeout.Infinite, Timeout.Infinite);
 
                 Entities.Commit(s);
@@ -259,13 +340,15 @@ public static partial class Spotify
             long delay = report.RetryAfterSeconds > 0 ? report.RetryAfterSeconds * 1000L
                 : Math.Min((long)BackoffMaxMs, (long)BackoffFirstMs << Math.Min(s_failures - 1, 10));
             s_holdUntilMs = Playback.UnixNowMs() + delay;
+            s_holdIsServer = report.RetryAfterSeconds > 0;
             if (s_failures == 1)
                 Log.Warn("friends", "feed failing status=" + report.Status.ToString(CultureInfo.InvariantCulture)
                     + (report.Status is >= 200 and < 300 ? " unknown shape (" + report.Bytes.ToString(CultureInfo.InvariantCulture) + " bytes)" : "")
                     + (report.Error.Length > 0 ? " error=" + report.Error : "")
                     + " retryIn=" + (delay / 1000).ToString(CultureInfo.InvariantCulture) + "s why=" + report.Why);
             LandFailure();
-            if (s_active) ArmRetry(delay);
+            if (Looking) ArmRetry(delay);
+            else s_missed = true;
         }
 
         /// <summary>A failed load keeps the rows it held (rows win, <c>Rail.Friends.SurfaceFor</c>); with none, the error face.</summary>
@@ -276,7 +359,7 @@ public static partial class Spotify
 
         static void ArmRetry(long delayMs)
         {
-            s_retry ??= new Timer(static _ => Post(static () => { if (s_active) Load("backoff"); }), null, Timeout.Infinite, Timeout.Infinite);
+            s_retry ??= new Timer(static _ => Post(static () => LoadOrOwe("backoff")), null, Timeout.Infinite, Timeout.Infinite);
             s_retry.Change(Math.Clamp(delayMs, 1L, CapturedLifetimeMs), Timeout.Infinite);   // a wild Retry-After cannot overflow the timer
         }
 
@@ -345,7 +428,7 @@ public static partial class Spotify
             Log.Info("friends", "subscribed users=" + users.Length.ToString(CultureInfo.InvariantCulture)
                 + " expiresIn=" + ((s_subExpiresMs - now) / 3_600_000L).ToString(CultureInfo.InvariantCulture) + "h"
                 + (read ? "" : " (expiry unread: the captured 48 h assumed)"));
-            s_renew ??= new Timer(static _ => Post(static () => { if (s_active) Load("renew"); }), null, Timeout.Infinite, Timeout.Infinite);
+            s_renew ??= new Timer(static _ => Post(static () => { if (s_attached) LoadOrOwe("renew"); }), null, Timeout.Infinite, Timeout.Infinite);
             s_renew.Change(Math.Clamp(s_subExpiresMs - RenewAheadMs - now, 60_000L, CapturedLifetimeMs), Timeout.Infinite);
         }
 

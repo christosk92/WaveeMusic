@@ -474,6 +474,9 @@ public static partial class Shell
             // ── the published derived facts ──
             UseSignalEffect(static () =>
                 Auth.SetIfChanged(FoldAuth(Spotify.Status.Value, Spotify.Fault.Value, Platform.Args.Fake || Platform.HasStoredCredential())));   // --fake presents its seeded account as signed in (G-065)
+            // The friends feed reloads on a push only while someone can see the panel: minimised, hidden or covered, it owes
+            // one load for when the window is seen again (#277).
+            UseSignalEffect(static () => Spotify.Friends.OnWindowHidden(s_hooks?.WindowOccluded?.Value ?? false));
             UseSignalEffect(() => _pageStageHosts.SetIfChanged(
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
             UseSignalEffect(() => PublishPanelTier(ShellPolicy.Tracked.Panel.For(tiers.Window), vp.Value.Width));

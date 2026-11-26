@@ -69,14 +69,17 @@ The themes draw "now" and the equalizer from the flag (`bool live = f.Playing;`)
 | Event | The host does |
 |---|---|
 | Launch, signed in | `State` starts `Loading` (never "Sign in"); a launch with no stored credential reads `Offline` |
-| Panel shown (`SetActive(true)`) | load the feed |
-| A new dealer connection (AnnounceDevice) | `Offline` → `Loading` (signed in again); a shown panel loads the feed |
-| Retry (error face) | load the feed, unless inside Retry-After / the back-off: then it waits for it |
+| The session changes (`WatchSession`) | the panel says what the profile chip says (`Shell.FoldAuth`): no stored credential → `Offline` ("Sign in"); a session that gave up (`Failed`) → the error face, rows kept; connecting again → `Loading` |
+| Panel mounted (`SetActive(true)`) | load the feed |
+| The window minimised, hidden or covered (`OnWindowHidden`, from the shell root's `InputHooks.WindowOccluded`) | nobody is looking: retries stop, and a push, connection, renewal or retry that comes now is owed, not loaded |
+| The window seen again | one load if something was owed; nothing otherwise (bringing Wavee back to the front costs no request) |
+| A new dealer connection (AnnounceDevice) | `Offline` → `Loading` (signed in again); a panel someone can see loads the feed, any other owes it |
+| Retry (error face) | load the feed now: our own back-off gives way to the user. A server's Retry-After does not: the panel shows the skeleton and loads when it ends |
 | Feed lands | replace the run; `Ensure` users, tracks, context playlists (Identity); then subscribe |
 | Subscribe | every user of the run on this connection id; skipped when the standing subscription covers them on this connection and is more than 1 h from expiry |
-| `hm://listening-activity/…` push | a shown panel loads the feed (pushes inside 2 s are one load); hidden: nothing, the next show loads |
-| Subscription near expiry | a timer at expiry − 1 h loads again (feed, then re-subscribe) while the panel is shown; hidden, the next show does it |
-| Feed fails (429 / 5xx / transport / unknown shape) | rows kept, the error face with none; next try after Retry-After, else 15 s doubling to 15 min, and only while shown |
+| `hm://listening-activity/…` push | a panel someone can see loads the feed (pushes inside 2 s are one load); otherwise owed |
+| Subscription near expiry | a timer at expiry − 1 h loads again (feed, then re-subscribe) while someone can see the panel; otherwise owed |
+| Feed fails (429 / 5xx / transport / unknown shape) | rows kept, the error face with none; next try after Retry-After, else 15 s doubling to 15 min, and only while someone can see the panel |
 | A track row lands | `Entities.RefillFriends` gives the friend's row its album and first artist (a tracked watch, posted) |
 | Non-track activity (an episode) | skipped (the panel's row lane is a track lane) and named in the log |
 | Signed out (`OnSignedOut`) | the run cleared, timers stopped, subscription forgotten, `Offline`; an answer from before it is dropped |
@@ -100,9 +103,11 @@ topic, and a shown panel loads the feed again, pushes inside 2 s folded into one
 show. The feed's shape is the one already read strictly, so nothing about the push body is guessed. Cost: one feed
 request per burst of real changes, nothing while nothing changes.
 
-Later, if one request per change matters: record the frame (Settings ▸ Developer ▸ "Record Spotify realtime traffic",
-`ops/tools/capture/decode.py`), keep its plain-JSON payload in `DealerFrame.ReadPayloads`, and apply that one user's
-activity in place.
+Why it reads empty: `DealerFrame.ReadPayloads` decodes `payloads[]` entries that are base64 STRINGS and skips any entry
+that is a JSON object (the social-connect rule), so a plain-JSON body never reaches a handler. The body is still unseen.
+Next: record the frame (Settings ▸ Developer ▸ "Record Spotify realtime traffic" keeps every incoming dealer frame,
+`DealerFrameIn`, secrets redacted by name; decode with `ops/tools/capture/decode.py`) while a friend changes song, then
+read that one user's activity from it and apply it in place, which takes the feed request per push away.
 
 ## 6. Files
 
@@ -119,6 +124,7 @@ activity in place.
 | `Spotify/Spotify.Connect.cs` | a dealer MESSAGE nobody else took goes to `Friends.OnDealerPush` (§5) |
 | `Shell/Rail.cs` | `State` starts `Loading`; `LiveWindowMs` / `IsLive` removed |
 | `Shell/Rail.Wiring.cs` | `Spotify.Friends.Attach()` in the panel's props builder (app and headless inspector alike) |
+| `Shell/Shell.UI.cs` | the shell root hands `InputHooks.WindowOccluded` to `Spotify.Friends.OnWindowHidden` |
 | `Themes/*/Structure/Views/Panel/*Friends.cs` | `bool live = f.Playing;` |
 | `Entities/Entities.Fake.Friends.cs` (new) | the `--fake` feed in the wire's shape (`followEntity`, no names) through the real decoder; seeds the two friends no other surface names |
 
