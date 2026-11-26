@@ -9,6 +9,65 @@ Target: Wavee **0.4 "Drift"**. Base code: `release/0.3.13` (all file:line refere
 the app and in fluent-gpu). Work branches from the 0.4 release
 branch once it exists.
 
+**Revision 6 (2026-11-25), full support.** Two more capture sessions of the official desktop client (1.3.10) and the
+client's own mixing tables answer most of §5.2. The plan beyond the 0.4 cut is now
+[`48-mix-full-support.md`](48-mix-full-support.md), with the data model in [`48-mix-reference.md`](48-mix-reference.md)
+and the wire in [`48-mix-protocol.md`](48-mix-protocol.md). Where this file and those three differ, they win. The rest
+of this file is not rewritten: it stays the record of the 0.4 design, read on `release/0.3.13`; the new files cite
+`release/0.4.0` at `0a45dbfbc`. What they replace here:
+
+- **Superseded sections.** §3.2's `MixRecipe` and its guesses (1.4 "?", 1.6 / 1.7 "?", 1.8 as a beatmatch bool, 2.2 as
+  `StyleVersion`, an `Encode` that forces f3 = 1 and drops 1.9 and 2.4): the recipe is now known field by field. §3.4's
+  preset table, curve ids C1 to C16 and the 8 / 16-unit rule: every preset and style is tabled by bars (the unnamed
+  "third bundle" is preset 19, LowPassFilterFadeInOut). §3.4's curve-to-sound mapping (a −26 dB shelf, a 20 kHz low-pass
+  top, a 6 kHz high-pass top): replaced by the client's exact value semantics. §3.2's "not written in 0.4": Mix off and
+  Reset to Auto now have known requests.
+- **§5.2's open items.**
+  - O1 closed: off is `mix-state` without a payload field (lens `auto`, sync-reason `CA8QAQ==`); the recipes are kept,
+    and on again restores identical bytes.
+  - O2 closed: Blend = 2, Wave = 17, Melt = 4 (Slam 11, Dissolve 20, Surge 21, Afterglow 22); their styles and curves
+    are tabled.
+  - O3 closed in schema: style overrides are preset fields 2.3 (volume), 2.4 (EQ), 2.5 (filter), 2.12 (effect), 2.15
+    (jog wheel), 2.16 (looping); curve overrides 2.6 to 2.11, 2.13, 2.14; loop blocks 2.17. Only 2.4 was seen on the
+    wire.
+  - O4 mostly closed: 1.6 / 1.7 `speedA` / `speedB`, 1.8 `durationBars`, 1.9 `isBeatmatched`, top-level 5
+    `beatmatchPreference`; the client's speed is `bpmA / bpmB` in 38 of 73 beatmatched Auto pairs, the rest is open.
+  - O5 closed: 1.4 = `startBMs` (B's in-point), 1.18 / 1.19 = `itemSpeedA` / `itemSpeedB`, top-level 3 =
+    `isOverlapOverride`, 4 = `isPresetIdOverride`.
+  - O6 closed from the client's logic: Reset to Auto is `set-transition` with no payload (not yet seen on the wire).
+  - O7 closed: kind 142 = `{2 frame ms (20), 3 packed varints}`, a loudness envelope at 50 values/s.
+  - O8 closed: signals neither move the revision nor cause a push; only the mix lens etag changes, so another device
+    sees an edit only when it reads the lens again.
+  - O9 narrowed: a remote `play` carries no lens and no curves; the receiving player reads the playlist itself. An
+    official receiver was not observed.
+  - O10 closed: curves depend on the length in bars (the bass swap sits 1/16 bar before the centre; the volume step
+    lasts 1/512 of a 2-bar and 1/1024 of a 4-bar window); the tables cover 1 to 100 bars.
+  - O11 half closed: a read with only `auto` does return a mixed list's mix attributes (the server applies the mix lens
+    itself); the `spotify-applied-lenses` value on a diff is still open.
+  - O12 open.
+  - O13 closed: `stop-automix-preview` carries "true" or "false" (resume afterwards or not); preview field 6 =
+    `relativeStartPosition`, 14 / 15 = `itemSpeedA` / `itemSpeedB`; the "New effects" opt-in is not read (owner
+    decision: effects and looping are always available).
+  - O14 half closed: the non-beatmatched Auto rule is exact (156 of 156 pairs); the beatmatched choice (which pairs,
+    2 or 4 bars, the preset score) is open.
+  - O15 open: no recipe written by Wavee has been played by the official client yet.
+  - O16 closed: Spotify has a per-pair opt-out, "No transition", saved as the "none" recipe (overlap 1, no preset id).
+- **Decisions that change.**
+  - D3: Mix off is written to Spotify (the captured `mix-state` signal). "Listen without Mix" becomes account-synced
+    (`mix-opt-out` / `mix-remove-opt-out`); the per-PC setting is removed after a one-time migration that sends the
+    existing per-PC choices as opt-outs.
+  - D13: unchanged in substance and still not done on `release/0.4.0` (`Spotify/Spotify.Decode.PutState.cs:470` still
+    writes the signal): stop advertising `automix-preview` until Wavee renders previews as a receiver (full-support
+    M5), then advertise it with `stop-automix-preview`.
+  - D14: (b) is what 0.4 ships, but the official player publishes PlayerState duration = `audio.fade_out_start_time`
+    and makes the incoming track current when it starts. On the wire Wavee follows the official player (a phone
+    controlling Wavee reads that duration); what Wavee's own bar shows is an owner decision in full-support M7.
+  - D16: "No mix" for one pair is Spotify's "No transition", saved to Spotify; it no longer needs the local layer.
+  - Also touched: D6 (beatmatching is now planned: engine E4 and recipe 1.6 to 1.9 and 5), D15 (Wavee's Auto follows
+    the official rule), D11 (No mix and Reset to Auto now have Spotify writes, so the local layer is not needed for
+    them).
+- `48-mix-ux-direction.md` is unchanged; its "capture round 2" list is answered in `48-mix-full-support.md`.
+
 **Revision 5 (2026-11-23), Spotify parity.** The owner found revision 4 "too barebones, it's missing a lot" next to
 the Spotify app. `48-mix-ux-direction.md` is now its revision 2: **everything Spotify's Mix offers, quiet by
 default**. Where this file and the direction differ, the direction wins. What changes here:
