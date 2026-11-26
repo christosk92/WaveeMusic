@@ -455,6 +455,9 @@ public static partial class Spotify
         {
             public PlaybackIds Ids;
             public string ContentUri, PlayContext, Provider, ReasonStart, SourceStart, AudioFormatName;
+            /// <summary>The open segment's reason-start once a resume or a seek opened it (<c>playbtn</c>); null while the first segment runs,
+            /// which starts with <see cref="ReasonStart"/>. The RawCoreStream keeps <see cref="ReasonStart"/>: why the stream started.</summary>
+            public string? SegmentReasonStart;
             /// <summary>A local file's real <c>spotify:local:…</c> uri (RawCoreStream field 41), "" for any other play. While it is set,
             /// <see cref="ContentUri"/> is the blanked <see cref="LocalContentUriBlank"/> on every event of the registration.</summary>
             public string? LocalContentUri;
@@ -577,11 +580,12 @@ public static partial class Spotify
             Session("pause", r.Ids.PlaybackId, "", 0);
         }
 
-        /// <summary>Resumed. The next segment's reason-start is the play button, not whatever started the track.</summary>
+        /// <summary>Resumed. The next segment's reason-start is the play button, not whatever started the track (the stream's own
+        /// reason-start stays).</summary>
         public static void Resumed(ref Registration r, long positionMs)
         {
             if (!r.Open) return;
-            r.ReasonStart = "playbtn";
+            r.SegmentReasonStart = "playbtn";
             r.SegmentStartMs = NowMs();
             r.SegmentStartTick = Stopwatch.GetTimestamp();
             r.SegmentActive = true;
@@ -596,7 +600,7 @@ public static partial class Spotify
             if (!r.Open) return;
             int landed = (int)Math.Min(toMs, int.MaxValue);
             CloseSegment(ref r, (int)Math.Min(fromMs, int.MaxValue), isPause: false, isLast: false, "seek");
-            r.ReasonStart = "playbtn";
+            r.SegmentReasonStart = "playbtn";
             r.SegmentStartMs = NowMs();
             r.SegmentStartTick = Stopwatch.GetTimestamp();
             r.SegmentActive = true;
@@ -710,7 +714,7 @@ public static partial class Spotify
                 StartPosition = r.SegmentStartPositionMs,
                 EndPosition = endPositionMs,
                 MsPlayed = played,
-                ReasonStart = r.ReasonStart,
+                ReasonStart = r.SegmentReasonStart ?? r.ReasonStart,
                 ReasonEnd = reasonEnd,
                 PlaybackSpeed = r.PlaybackSpeed > 0 ? r.PlaybackSpeed : 1.0,
                 StartTimestamp = r.SegmentStartMs,
