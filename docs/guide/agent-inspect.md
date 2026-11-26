@@ -1685,6 +1685,21 @@ home do=page key=nmf page=2 settle=false
 film frames=36 every=3 cols=4 scale=0.6 crop=home:tile:feed:spotify:section:wavee-mockup-nmf path=C:/WAVEE/scratch/x/pager.png keys=[home-shelf-card:spotify:playlist:37i9dQZEVXbp4UblnlhiEI]
 ```
 
+### `friends {push?, track?, playing?, agoMs?, context?, raw?, trace?, ...}`
+
+The friend-activity run (`Spotify/Spotify.Friends.cs`; verb in `Diagnostics.Inspect.Friends.cs`). With no args it reads the
+run: `state` and `rows[]` (`user`, `track`, `playing`, `ageMs`) in panel order. `push=<user> track=spotify:track:…` lands one
+friend's change the way the dealer pushes it (`hm://listening-activity/`, the captured shape: `playing=false` is a pause,
+`agoMs` sets the start); `raw=<file>` lands a captured frame as received. Both go through `Friends.ApplyPush`, so the row is
+replaced in place and the run re-sorts exactly as a live push does. With a mount the reply settles, so `trace=N prefix=fr:`
+sees the change.
+
+```text
+click key=winui.titlebar.friends
+friends push=jun-park track=spotify:track:tr3 trace=60 prefix=fr:
+friends push=christos track=spotify:track:tr4 playing=false agoMs=30000
+```
+
 ### `nudge {fixture?, channel?, session?, window?, policy?, clock?, trouble?, sessionAge?, starsCache?, stars?, store?, link?, fire?, tick?, raw?, reload?, refresh?, expect?, ...}`
 
 The rate/star nudge (`Screens/RateNudge*.cs`; verb in `Diagnostics.Inspect.Nudge.cs`). With no args it reads: the decision, the ledger, the
