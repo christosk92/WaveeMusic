@@ -100,7 +100,8 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode, Quit,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Timecode, Drop, LocalScan, LocalIndex, Decode,
+            MixStyles, Quit,   // Quit stays last: the spec table is sized by it
         }
 
         // ── the verb table ──────────────────────────────────────────────────────────────────────────────────────────
@@ -593,14 +594,39 @@ public static partial class Diagnostics
                 Args = [Arg("fixture", ArgType.Enum, "the fixture", "book-titled", "show-episodic|show-serial|book-titled|book-tracks|book-inprogress|book-finished"),
                         Arg("path", ArgType.Path, "also write the dump's JSON to this file")],
             },
-            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, each row's mixable bits, beat grid, cue points and stored recipe), or a raw recipe decoded", "mix uri=spotify:playlist:plmix")
+            new(Verb.Mix, "mix", "#48 Mix: one playlist's Mix data (list and XM flags, lens etag, the mix-state signal template, each row's mixable bits, set-transition template, not-mixable reason, beat grid, cue points and stored recipe), a raw recipe decoded, or (show=roundtrip) every stored recipe decoded and encoded again, byte-compared, unchanged and with one field changed", "mix roundtrip uri=spotify:playlist:plmix")
             {
-                Positional = ["uri"],
-                Args = [Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
-                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead"),
+                Positional = ["show", "uri"],
+                Args = [Arg("show", ArgType.Enum, "what to print: the playlist's Mix data, the recipe round trip, the curve value map (EQ dB, cutoff Hz) and the automation steps it yields, (decode, --fake) a made-up lens read of spotify:playlist:plmixwire run through the real playlist decoder and commit, then its Mix data, (cancel) a Fade join cancelled inside its overlap, each voice pulled alone through the engine's mixer, the gain per ms now and as it was, (render) the tables MixRender builds for the engine against the mixstyles curves of the same styles and bars (every planned pair of the playlist, every preset 1-22 at bars 0-32), max deviation, (speed, --fake, mounted) the playlist's beatmatched pair played offline through the engine as the pump arms it (B's rate plan, its glide back to 1 read on the 200 ms tick) and each published step through the reducer into the PUT (playback_speed, f9 and the track metadata), (writes, --fake, mounted) every Mix write sent to the fake server with each request's method, path, headers and body (fields and hex), (fake) the fake server's state, or switch it with fake=, (requests) the requests it recorded since the last writes or fake=clear, (migrate, --fake, mounted) a session start's \"Listen without Mix\" step: the per-PC list (seed= puts entries in it first) sent as account opt-outs, the one log line, the key after, (coldstart, --fake, mounted) the playlist's Mix half as the list write keeps it, the Mix data forgotten as at a launch, the blob staged back as the disk read does (no lens read owed), then the cache identity against the fake server's /diff with the etag held and with it moved, (reorder, --fake, mounted, #48 M8) Smart reorder: the harmonize read, Spotify's order against the list's, the keyed-move write and the list after it, every request, (duplicate, --fake, mounted, #48 M8) Duplicate Mix with the playlist read as someone else's: the duplicate call, the copy read, filed, its Mix turned on and opened", "dump", "dump|roundtrip|semantics|decode|cancel|render|speed|writes|fake|requests|migrate|coldstart|preview|remote|reorder|duplicate"),
+                        Arg("seed", ArgType.String, "show=migrate: put these playlist ids (comma list, quoted) in the per-PC \"listen without Mix\" list first, as a build before M2 left it"),
+                        Arg("fake", ArgType.Enum, "show=fake: take the fake server offline (no session: nothing is sent), make it refuse every request (503), put it back, or clear its request log", "ok", "ok|offline|fail|clear"),
+                        Arg("owner", ArgType.Bool, "show=fake: the fake mixed playlist reads as the user's own (true) or as a followed playlist of someone else's (false)"),
+                        Arg("tier", ArgType.Enum, "show=fake (#48 M8): the account reads as Free (the Premium upsell where Mix would be) or Premium", "premium", "premium|free"),
+                        Arg("apply", ArgType.Bool, "show=reorder: write Spotify's order after reading it (false: the read and the proposal only)"),
+                        Arg("undo", ArgType.Bool, "show=reorder: then write the previous order back, as the toast's Undo does"),
+                        Arg("override", ArgType.Bool, "show=duplicate: send the first stored pair's recipe as an unsaved edit (the editor's Duplicate)"),
+                        Arg("uri", ArgType.String, "the playlist (default: the fake mixed playlist)"),
+                        Arg("from", ArgType.Int, "show=speed: the pair (row from to from + 1) to play (default: the list's first beatmatched pair); show=preview: the pair's first row (default 0)"),
+                        Arg("to", ArgType.Int, "show=preview: the pair's second row (default from + 1)"),
+                        Arg("do", ArgType.Enum, "show=preview (#48 M5 Hear it): run (start, step frames until it restored: the deck samples and the timeline), start, stop, status, wait (max= frames held to the wall clock, then status), envelope (the automix-preview signal body this editor sends the device that owns playback, decoded back), mark (the deck and queue now, before a preview started elsewhere: the editor's Hear it clicked) or verify (restoredExactly / queueRestored against the mark, once it stopped)", "status", "run|start|stop|status|wait|envelope|mark|verify"),
+                        Arg("preset", ArgType.Int, "show=preview: an unsaved edit, the pair's recipe with this preset id"),
+                        Arg("resume", ArgType.Bool, "show=preview do=stop: restore playing (true) or paused (false); default as it was"),
+                        Arg("loop", ArgType.Bool, "show=preview do=start: loop the pair until stopped"),
+                        Arg("every", ArgType.Int, "show=preview do=run: frames between deck samples", "60"),
+                        Arg("max", ArgType.Int, "show=preview do=run: the most frames to run (do=wait: the frames to wait)"),
+                        Arg("recipe", ArgType.String, "decode this base64 TransitionRecipe instead (with show=roundtrip: round-trip it too)"),
+                        Arg("at", ArgType.Float, "show=cancel: where in the overlap the cancel lands (0..1)", "0.4"),
+                        Arg("change", ArgType.Enum, "show=roundtrip: the one field changed in the second encode (overlap +1 ms, durationBars +1, the EQ override set to 15 or 7)", "overlap", "overlap|bars|eq"),
                         Arg("mixstate", ArgType.String, "print the mix-state (turn Mix on) body for this revision (hex)"),
-                        Arg("curves", ArgType.Int, "print the Connect metadata curves for this preset id (1 Fade, 3 Rise)"),
-                        Arg("window", ArgType.Int, "the window those curves are for, ms (8 units under 8 s, else 16)")],
+                        Arg("curves", ArgType.Int, "print the Connect track metadata the publisher writes for this preset id (Playback.Mix.FadeMeta), at bars= with volume= eq= filter= fx= overrides"),
+                        Arg("bars", ArgType.Int, "curves=: the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0"),
+                        Arg("window", ArgType.Int, "curves=: A's window, ms (audio.fade_out_duration)", "2890"),
+                        Arg("inWindow", ArgType.Int, "curves=: B's window, ms (audio.fade_in_duration; default the window)"),
+                        Arg("volume", ArgType.Int, "curves=: a volume style override (recipe 2.3)"),
+                        Arg("eq", ArgType.Int, "curves=: an EQ style override (recipe 2.4)"),
+                        Arg("filter", ArgType.Int, "curves=: a filter style override (recipe 2.5)"),
+                        Arg("fx", ArgType.Int, "curves=: an effect style override (recipe 2.12)"),
+                        Arg("autocheck", ArgType.Path, "Spotify's Auto against the official client's own answers: a folder outside the repo holding auto-pairs*.json (the client's Auto per adjacent pair) *inputs*.json (kind 28 cue candidates and kind 10 durations per track uri) and wire*.json (each track's raw kind 217, 28, 218 and 6 payloads, base64, for the live line: Wavee's own decoders); each pair's inputs run through the real planner (MixPlanner.Plan), the matches counted, every miss listed")],
             },
             new(Verb.Setting, "setting", "List every Settings dial of the registry (id, legacy ids, category, group, kind, value, writer), or read or set one through the dial's own writer as a Settings view does (the theme's options are dials too; `option` writes them by their own grammar)", "setting id=lyrics.blur value=40")
             {
@@ -668,6 +694,21 @@ public static partial class Diagnostics
                         IntArg("every", "ms between readings", "200", 0, 60_000),
                         Arg("key", ArgType.Enum, "with do=set: the timecode dial", null, "enabled|device|rate|start|level|offset|clx"),
                         Arg("value", ArgType.String, "with do=set: true|false, an endpoint id (headless: any), 24|25|29.97|30, 0|1, dB, ms")],
+            },
+            new(Verb.MixStyles, "mixstyles", "#48 Mix style table: a preset's resolved style ids and every lane's out and in curve at a bar count, in the Connect metadata spelling; or check= the generators against the official client's own tables in a folder outside the repo (max deviation per lane, style and bar count over the 1025-point engine table, and a total)", "mixstyles preset=17 bars=4")
+            {
+                Positional = ["preset"],
+                Args = [IntArg("preset", "the preset id (1 Fade, 2 Blend, 3 Rise, 4 Melt, 11 Slam, 17 Wave, 20 Dissolve, 21 Surge, 22 Afterglow; 5-19 internal; 0 No transition; another id renders as Fade)", "1", -1, 1000),
+                        IntArg("bars", "the transition's length in bars (0 = not beatmatched: the 2-bar layout)", "0", 0, 1000),
+                        Arg("bpm", ArgType.Float, "A's tempo, for the echo and delay time", "120") with { Min = 1, Max = 400 },
+                        IntArg("volume", "a volume style override (recipe 2.3)", null, -1, 127),
+                        IntArg("eq", "an EQ style override (recipe 2.4)", null, -1, 127),
+                        IntArg("filter", "a filter style override (recipe 2.5)", null, -1, 127),
+                        IntArg("fx", "an effect style override (recipe 2.12)", null, -1, 127),
+                        IntArg("looping", "a looping style override (recipe 2.16)", null, -1, 127),
+                        Arg("check", ArgType.Path, "a folder with the client's tables (volume.json, eq.json, filterfx.json, fx.json, presets.json, looping.json, limits.json): compare every generator with them"),
+                        Arg("tol", ArgType.Float, "with check: the deviation that counts as an exception", "0.000001", requires: "check"),
+                        Arg("rows", ArgType.Bool, "with check: list every curve's deviation", "true", requires: "check")],
             },
             new(Verb.Home, "home", "The pinned Home: read the board (status, doc, plan, verify) or act through the verbs the themes call (edit, customize, pin, unpin, add, remove, size, move, open, close, option, surface, search, undo, redo, reset); turn a paged section (page); drive a Spine Shelf (shelf) or a Release Spotlight card (spotlight); acting ones settle", "home do=pin uri=spotify:album:al2")
             {
@@ -849,6 +890,7 @@ public static partial class Diagnostics
             "home" => Verb.Home, "hold" => Verb.Hold, "focus" => Verb.Focus, "said" => Verb.Said,
             "perf" => Verb.Perf, "film" => Verb.Film, "pointer" => Verb.Pointer, "podcastpages" => Verb.PodcastPages, "nudge" => Verb.Nudge, "timecode" => Verb.Timecode, "drop" => Verb.Drop, "localscan" => Verb.LocalScan, "localindex" => Verb.LocalIndex, "decode" => Verb.Decode,
             "quit" or "exit" => Verb.Quit,
+            "mixstyles" => Verb.MixStyles,
             _ => Verb.None,
         };
 

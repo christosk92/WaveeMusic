@@ -85,7 +85,9 @@ public enum FetchEdge : byte
     /// recipe pins). Asked for the tracks a mixed playlist is about to join; the JSON route above stays the visualizer's
     /// until kind 217 is shown to be served outside a mixed list (plan O12).</summary>
     TrackMixBeats,
-    /// <summary>#48 Mix: kind 28's start and end cue (<c>Edges.TrackCues</c>).</summary>
+    /// <summary>#48 Mix: kind 28's cues and candidate lists (<c>Edges.TrackCues</c>, <c>TrackCueCandidates</c>), with kinds 218
+    /// (<c>TrackVocals</c>) and 6 (<c>TrackMixGenres</c>, and the chips) in the same POST (<see cref="FetchRoutes.EdgeKinds"/>):
+    /// the rest of what the beatmatched Auto reads.</summary>
     TrackCues,
     // synthetic subjects' children
     /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>). A band's own cards are no relation here: the section
@@ -230,9 +232,9 @@ public static class FetchRoutes
     /// <summary><c>CURATION_EXPERIENCE_TRAIT</c>: on a track it names the account's Liked Songs playlist
     /// (<c>Spotify.Connect.AskLikedPlaylist</c>). Asked on its own, never by a table's route.</summary>
     public const int CurationExperience = 246;
-    /// <summary>#48 Mix kinds (capture report §3.5): cue points and beats per track; mix state, auto lens and the
-    /// mixability trait per playlist.</summary>
-    public const int Cuepoints = 28, MixBeats = 217, AutoLens = 170, MixState = 225, MixabilityTrait = 235;
+    /// <summary>#48 Mix kinds (capture report §3.5): cue points, beats and vocal activity per track; mix state, auto lens and
+    /// the mixability trait per playlist.</summary>
+    public const int Cuepoints = 28, MixBeats = 217, MixVocals = 218, AutoLens = 170, MixState = 225, MixabilityTrait = 235;
 
     // ── the entity tables' routes, most capable first ──
 
@@ -455,6 +457,21 @@ public static class FetchRoutes
             into[n++] = routes[i].Extension;
         }
         return n;
+    }
+
+    /// <summary>The extension kinds a <see cref="RouteTransport.Metadata"/> edge's ONE POST asks for every parent: the route's own
+    /// kind, and for <see cref="FetchEdge.TrackCues"/> also kinds 218 and 6 (the beatmatched Auto's vocals and genres, which
+    /// land beside kind 28 in the same commit, so the pair re-plans once with all of them; the official client asks 6, 28, 217
+    /// and 218 together too, protocol §6.3). The kind count.</summary>
+    public static int EdgeKinds(FetchEdge edge, int offset, Span<int> into)
+    {
+        var route = ForEdge(edge, offset);
+        if (route.Transport != RouteTransport.Metadata || into.IsEmpty) return 0;
+        into[0] = route.Extension;
+        if (edge != FetchEdge.TrackCues || into.Length < 3) return 1;
+        into[1] = MixVocals;
+        into[2] = TrackDescriptor;
+        return 3;
     }
 
     /// <summary>THE EDGE ROUTE: where a relation's children come from, for the page at <paramref name="offset"/>.

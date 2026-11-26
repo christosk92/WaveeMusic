@@ -1416,6 +1416,8 @@ public static partial class Playback
         if ((r.Events & PlayEvents.Started) == 0) return;
 
         EntityId id = r.StartedId;
+        // #48 M5: a Mix preview is a listen in an editor, not a play: no play log, no registration (Playback.MixPreview.cs).
+        if (MixPreview.IsPreviewContext(r.Context)) return;
         PlayStarted?.Invoke(id, r.Context, unix);
         if (!id.IsPlayable) return;
         // A local file (#240 E7, E8) is reported under its spotify:local: uri, blanked in content_uri, real in local_content_uri and in the

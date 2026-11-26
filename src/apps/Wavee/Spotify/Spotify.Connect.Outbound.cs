@@ -391,6 +391,36 @@ public static partial class Spotify
             w.WriteEndObject();
         }
 
+        /// <summary>#48 M5, the editor's side of a Mix preview (protocol §5): <c>automix-preview</c> with the base64
+        /// <c>AutomixPreview</c> as its <c>parameters</c>, or <c>stop-automix-preview</c> with "true" / "false" (resume afterwards or
+        /// not), to the device that owns playback. Blocks; api threads only.</summary>
+        public static bool MixPreviewSignal(string targetDeviceId, Decode.MixPreviewSignal signal, string parameters, CancellationToken ct)
+        {
+            if (signal == Decode.MixPreviewSignal.None) return false;
+            var buffer = new ArrayBufferWriter<byte>(512 + parameters.Length);
+            MixPreviewSignalBody(buffer, signal, parameters, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
+            return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
+        }
+
+        /// <summary>The Mix preview <c>signal</c> envelope, as the captured editor sends it: endpoint, <c>signal_id</c>, <c>parameters</c>,
+        /// the three option bools, the logging params, then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
+        public static void MixPreviewSignalBody(IBufferWriter<byte> into, Decode.MixPreviewSignal signal, string parameters, string deviceId,
+            string commandId, string intentId, long nowMs)
+        {
+            using var w = new Utf8JsonWriter(into);
+            w.WriteStartObject();
+            w.WriteStartObject("command");
+            w.WriteString("endpoint", "signal");
+            w.WriteString("signal_id", Decode.SignalId(signal));
+            w.WriteString("parameters", parameters);
+            QueueOptions(w);
+            LoggingParams(w, deviceId, commandId, "", nowMs);
+            w.WriteEndObject();
+            w.WriteString("connection_type", "wlan");
+            w.WriteString("intent_id", intentId);
+            w.WriteEndObject();
+        }
+
         /// <summary>Volume is not a player verb: it is a PUT with a three-field `SetVolumeCommand` protobuf body,
         /// hand-encoded so this path carries no generated message for three bytes of varint. The header set is the official
         /// client's (all.saz 2243): the connection id and <c>Accept-Language</c> ride beside the protobuf content type

@@ -155,6 +155,15 @@ public static partial class Spotify
             public Func<string, byte[], Api.Result> PlaylistChanges =
                 static (id, body) => Api.PlaylistChanges(id, body, CancellationToken.None);
             public Func<string, Api.Result> Playlist = static id => Api.Playlist(id, CancellationToken.None);
+            /// <summary>#48 Mix: one <c>/signals</c> POST (Spotify.Mixes) — the playlist id, the route it travels (lens header and
+            /// sync-reason) and the body; the answer unwrapped. <c>--fake</c> puts its recording server here
+            /// (Entities.Fake.MixServer.cs).</summary>
+            public Func<string, SignalRoute, byte[], Api.Result> PlaylistSignals =
+                static (id, route, body) => Api.PlaylistSignals(id, route, body, CancellationToken.None);
+            /// <summary>#48 Mix M8, Smart reorder: the list read through the <c>harmonize</c> lens (Spotify.MixLists); never folded.</summary>
+            public Func<string, Api.Result> PlaylistHarmonized = static id => Api.PlaylistHarmonized(id, CancellationToken.None);
+            /// <summary>#48 Mix M8, Duplicate Mix: the mix-list-lens <c>duplicate</c> POST (JSON body in, <c>{"playlist_uri"}</c> out).</summary>
+            public Func<byte[], Api.Result> MixDuplicate = static body => Api.MixDuplicate(body, CancellationToken.None);
             /// <summary>One user follow / unfollow (<c>Library.FollowUser</c>): the bare, unescaped username and the direction.</summary>
             public Func<string, bool, Api.Result> FollowUsers =
                 static (bareId, follow) => Api.ProfileQueries.Follow(bareId, follow, CancellationToken.None);
@@ -246,6 +255,9 @@ public static partial class Spotify
             Entities.RefreshEdge(FetchEdge.SavedShows, me, FetchPriority.Visible);
             Entities.RefreshEdge(FetchEdge.Recents, me, FetchPriority.Prefetch);
             Entities.Ensure(new User(me), UserFields.Identity, FetchPriority.Visible);
+            // #48 Mix: "Listen without Mix" choices Spotify has not taken yet (offline, refused, or the per-PC list's one-time
+            // migration) go out now that the account can write (Entities/Mix.cs, MixOptOut).
+            MixOptOut.OnSessionReady();
             // Podcast progress: ONE ListCurrentStates for every resume point touched in the last 180 days, folded into the
             // episode rows (podcast plan §5.8). Every sync of the scope — a reconnect catches up on what another device
             // played meanwhile, and keeps the scope's settled hydrate rather than resetting it.

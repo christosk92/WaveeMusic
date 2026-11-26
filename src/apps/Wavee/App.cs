@@ -155,6 +155,9 @@ public static class App
         Playback.Audio.EnumerateEndpoints = static () => Playback.Audio.Outputs(FluentGpu.Windows.Wasapi.WasapiPcm.EnumerateEndpoints());
         Playback.Boot();                 // state, host loop, audio pump, os bridges
         Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
+        // #48 Mix: the transition editor's Hear it plays through the preview engine, looped until Stop; the engine's state lights the button.
+        MixHearIt.Install((s, f, t, r, raw) => Playback.MixPreview.Start(s, f, t, r, raw, loop: true), () => Playback.MixPreview.Stop(),
+            () => Playback.MixPreview.State.Value != Playback.MixPreview.Phase.Idle);
         if (gui) WireMaterialPolicy();   // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
         if (Platform.Args.Fake) Playback.Audio.UseFake(Entities.FakeOutputs());  // --fake: a stable outputs roster and a format echo for the device picker (audit B5b)

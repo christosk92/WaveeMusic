@@ -168,6 +168,7 @@ public static partial class Playback
             return;
         }
         if (load.Kind == RemoteCmd.Transfer) Video.WarmForClaim();   // the owner's row comes here: start the runtime now
+        MixPreview.Abandon("a controller's " + load.Kind);   // #48 M5: a new load ends a preview without a restore (the load replaces it)
         StepOne(Input.Controller(in command, now));      // the claim and its is_active announce, in THIS drain
         if (load.Kind is not (RemoteCmd.Play or RemoteCmd.Transfer)) { ClusterBuffer.Return(buffer); return; }
 

@@ -1470,6 +1470,7 @@ public static partial class Playback
                 s_prepId = default;
                 s_recovering = false;
                 s_joinPending = false;
+                DropMixJoinLocked();                        // #48: a mix join pending at a load goes with the session, its state too
                 s_crossfadeInFlight = false;
                 s_prepOverlap = false;
                 s_activePrimaryId = 0;
@@ -3335,7 +3336,7 @@ public static partial class Playback
             long exactFrames = ActiveExactFrames(sess);
             bool exact = exactFrames >= 0;
             long activeEnd, remaining = s_activeDurMs - ActivePositionMs();
-            lock (s_gate) activeEnd = exact ? JoinFrameExact(s_anchorClock, s_anchorPlayheadMs, exactFrames, rate) : s_activeJoinFrame;
+            lock (s_gate) activeEnd = exact ? ActiveEndFrameLocked(sess, exactFrames, rate) : s_activeJoinFrame;
             if (exact) remaining = Math.Max(remaining, (activeEnd - clock) * 1000 / Math.Max(1, rate));
             long join = GaplessJoinClock.ScheduleJoin(activeEnd, clock, remaining, rate);
             int fadeFrames = 0;
@@ -3436,11 +3437,17 @@ public static partial class Playback
                 s_activeKind = s_joinKind;
                 // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
                 joinedAtMs = AnnouncedMixLocked();
-                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + OutDuration, plus how late this
-                // tick runs past the join frame. A gapless join keeps its start at the announce, as before.
+                // The playhead (raw − s_activeStartMs) starts where B already is: InStart + what B covered over A's window, plus how
+                // late this tick runs past the join frame. A gapless join keeps its start at the announce, as before. A beatmatched B
+                // (#48 E4) covers its own media at its rate plan's pace, so the lateness and B's end are taken along that plan.
+                int mixRate = Math.Max(1, sess.Format.SampleRate);
+                var bRate = sess.VoiceRatePlanOf(s_joinVoiceId);
+                long lateFrames = Math.Max(0, sess.SampleClock - s_joinFrame);
                 if (joinedAtMs > 0)
-                    s_activeStartMs = rawPos - joinedAtMs - Math.Max(0, (sess.SampleClock - s_joinFrame) * 1000 / Math.Max(1, sess.Format.SampleRate));
-                s_activeJoinFrame = s_joinFrame + GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), sess.Format.SampleRate);
+                    s_activeStartMs = rawPos - joinedAtMs - (bRate is null ? lateFrames * 1000 / mixRate
+                        : (long)(bRate.SourceFramesBetween(s_joinFrame, s_joinFrame + lateFrames) * 1000 / mixRate));
+                long leftFrames = GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), mixRate);
+                s_activeJoinFrame = s_joinFrame + (bRate is null ? leftFrames : (long)Math.Round(bRate.MixerFramesFor(leftFrames, s_joinFrame)));
                 s_anchorClock = s_joinFrame;
                 s_anchorPlayheadMs = joinedAtMs;
                 s_joinPending = false;
@@ -3474,18 +3481,20 @@ public static partial class Playback
 
         /// <summary>Abandon a pending join. The mixer has no voice REMOVAL, so B's envelope is pinned at zero with a
         /// 1-frame fade-out in the past and its byte source is cut: the ring decode faults to EOF and the voice
-        /// retires silently. True when a join was really dropped (S-5: only then does a seek owe the reducer a
-        /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
+        /// retires silently. A #48 mix join cancelled inside its overlap fades B out over 30 ms instead (an Out envelope
+        /// the mixer retires B at the end of). True when a join was really dropped (S-5: only then does a seek owe the
+        /// reducer a <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
         static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
             bool mixCancelled = false;
+            GainEnvelope? incomingFade;
             long voiceId, outgoingFaded;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
                 if (!s_joinPending) return false;
                 s_joinPending = false;
-                mixCancelled = CancelMixLocked(sess);      // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
+                mixCancelled = CancelMixLocked(sess, out incomingFade);   // #48: a mix join also puts A back (Playback.Audio.Mix.cs)
                 voiceId = s_joinVoiceId;
                 outgoingFaded = s_joinFadeMs > 0 ? s_joinOutgoingVoiceId : 0;
                 s_joinFadeMs = 0;
@@ -3499,7 +3508,7 @@ public static partial class Playback
             Interlocked.Increment(ref s_mGaplessAbandoned);
             if (mixCancelled) Timeline.ClearTransition();   // #48: the tap's transition ends with the cancelled join
             Log.Info("audio", "join abandoned reason=" + reason);
-            try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
+            try { sess?.SetVoiceEnvelope(voiceId, incomingFade ?? GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             // A scheduled crossfade also set A's fade-out: A keeps playing at full level (before the fade's start frame it was
             // still at 1; past it, the step back is from at most one tick into an equal-power fade, under 1 %).
             if (outgoingFaded != 0) { try { sess?.SetVoiceEnvelope(outgoingFaded, GainEnvelope.Constant); } catch { } }
@@ -3981,7 +3990,7 @@ public static partial class Playback
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                 : (long)p.Position.Peek().TotalMilliseconds;
             long pos = ActivePositionMs();
-            int fadeMs = EffectiveFadeMs;
+            int fadeMs = MixBaseFadeMs(EffectiveFadeMs);       // #48: 0 for a Spotify "no transition" pair (Playback.Audio.Mix.cs)
 
             DrainXruns(sess, pos, state);
 
@@ -4027,7 +4036,8 @@ public static partial class Playback
                 PostEndingSoon(epoch);
             }
 
-            // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3). The boundary is the voice's EXACT end once it
+            // (c) the commit. `EffectiveFadeMs` is the ONLY selector (rule 3; #48 zeroes it for a Spotify "no transition" pair of a
+            // mixed playlist, `fadeMs` above). The boundary is the voice's EXACT end once it
             // is known (G-113), not the catalogue duration — a track 1.6 s shorter than its `duration_ms` never commits
             // against the catalogue figure.
             if (state == PlaybackState.Playing && s_prepItem is { IsReady: true } item && !TickMix(sess, item))
@@ -4050,6 +4060,7 @@ public static partial class Playback
 
             // (d) the join going live, and the hand-off closing.
             TickMixSounding(sess);
+            TickMixSpeed(sess);                                // #48 E4: a beatmatched B's speed steps, published (Playback.Audio.Mix.cs)
             if (s_joinPending)
             {
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");

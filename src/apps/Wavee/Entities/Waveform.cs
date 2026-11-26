@@ -91,16 +91,19 @@ public static class WaveformBands
         => At(samples, positionMs, durationMs, out float l, out float m, out float h) ? (l + m + h) / 3f : 0f;
 }
 
-/// <summary>The audio-analysis beat grid (Edges.TrackBeats: one <c>uint</c> per beat — start ms in bits 0..30, bit 31 =
-/// a bar's downbeat) and the kind-222 tempo fallback. Pure; the stage's Pulse and the Horizon ticks read it.</summary>
+/// <summary>The audio-analysis beat grid (Edges.TrackBeats: one <c>uint</c> per beat — start ms in bits 0..29, bit 31 =
+/// a bar's downbeat, bit 30 = a downbeat whose confidence is at most Spotify's 0.40, which kind 217 alone sets) and the
+/// kind-222 tempo fallback. Pure; the stage's Pulse and the Horizon ticks read it.</summary>
 public static class BeatGrid
 {
     public const int MaxBeats = 8192, MaxBars = 2048;
-    public const uint DownbeatBit = 0x8000_0000u, MsMask = 0x7FFF_FFFFu;
+    public const uint DownbeatBit = 0x8000_0000u, WeakDownbeatBit = 0x4000_0000u, MsMask = 0x3FFF_FFFFu;
     public const int DownbeatToleranceMs = 40;
 
     public static uint StartMs(uint packed) => packed & MsMask;
     public static bool IsDownbeat(uint packed) => (packed & DownbeatBit) != 0;
+    /// <summary>A downbeat the beatmatched Auto may not put a window on (beat × downbeat confidence ≤ 0.40, reference §7.2).</summary>
+    public static bool IsWeakDownbeat(uint packed) => (packed & WeakDownbeatBit) != 0;
 
     /// <summary>Fold the bars in: the beat nearest each bar start (within the tolerance) is flagged a downbeat. Both
     /// spans are in wire order (ascending); linear, no allocation.</summary>

@@ -165,6 +165,10 @@ public static partial class Playback
         DeviceReload,
         /// <summary>The video host found no source for the row (the manifest resolve answered nothing): demote to audio.</summary>
         VideoUnavailable,
+        /// <summary>#48 Mix: the playing row's own speed changed (a beatmatched B at its <c>speedB</c>, then each 0.005 step of its glide
+        /// back to 1). <see cref="Input.LongArg"/> carries the factor (<see cref="BitConverter.DoubleToInt64Bits"/>); it rides the PUT as
+        /// <c>playback_speed</c> and the playhead's extrapolation (<see cref="State.PlayRate"/>).</summary>
+        MixSpeed,
     }
 
     /// <summary>Why the current playable is not playing. <see cref="Fault.None"/> is the ONLY value that lets the
@@ -1070,6 +1074,15 @@ public static partial class Playback
         /// host's, because the glue owns the debounce that decides how many PUTs actually go out.</summary>
         public float EpisodeRate;
         public readonly float ContentRate => SpeedApplies(CurrentId.Kind) && EpisodeRate > 0 ? EpisodeRate : 1f;
+        /// <summary>#48 Mix: the playing row's own speed as the pump last published it (<see cref="AudioSignal.MixSpeed"/>), for the load
+        /// <see cref="MixSpeedEpoch"/>; 0 = none.</summary>
+        public double MixSpeed;
+        public uint MixSpeedEpoch;
+        /// <summary>The pace the content moves at: <see cref="ContentRate"/> (the session's, an episode's speed) × a beatmatched track's
+        /// own speed while it plays by one (#48: B at its <c>speedB</c> and on its glide back to 1). The playhead extrapolates by it and
+        /// the PUT states it as <c>playback_speed</c>; the session rate itself stays <see cref="ContentRate"/>.</summary>
+        public readonly float PlayRate => MixSpeed > 0 && MixSpeedEpoch == LoadEpoch && CurrentId.Kind == EntityKind.Track
+            ? (float)(ContentRate * MixSpeed) : ContentRate;
         public uint PublishSeq;
 
         // ── the connect bookkeeping the PUT body carries ──
@@ -1196,7 +1209,7 @@ public static partial class Playback
         public readonly int Position(long nowMs)
         {
             if (Phase != Phase.Playing || Buffering) return PosMs;
-            long p = PosMs + (long)((nowMs - PosQpc) * ContentRate);
+            long p = PosMs + (long)((nowMs - PosQpc) * PlayRate);
             if (p < 0) p = 0;
             if (DurationMs > 0 && p > DurationMs) p = DurationMs;
             return (int)p;
@@ -2435,6 +2448,22 @@ public static partial class Playback
                 fx.Smtc = true;
                 fx.SmtcEpoch = s.Epoch;
                 break;
+
+            case AudioSignal.MixSpeed:
+            {
+                double speed = BitConverter.Int64BitsToDouble(i.LongArg);
+                if (!double.IsFinite(speed) || speed <= 0) break;
+                // Re-anchor the playhead at the old pace before the new one applies, then state the step on the wire (each one a PUT,
+                // as the official player publishes every 0.005 step).
+                s.PosMs = s.Position(i.NowMs);
+                s.PosQpc = i.NowMs;
+                s.MixSpeed = speed;
+                s.MixSpeedEpoch = s.LoadEpoch;
+                if (s.IsPlaying) Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                fx.Smtc = true;
+                fx.SmtcEpoch = s.Epoch;
+                break;
+            }
 
             case AudioSignal.Duration:
                 s.DurationMs = (int)i.LongArg;

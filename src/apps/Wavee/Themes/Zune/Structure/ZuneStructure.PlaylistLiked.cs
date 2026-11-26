@@ -8,6 +8,7 @@
 //   Playlist.Editor                   the title and the description as the editor (the hairline that rises on hover, "save" / "cancel")        ZunePlaylistEditor.cs
 //   Playlist.Owner / MembersFlyout    the owner run or the collaborator pile and the invite ring; the flyout is the album's every-artist one    ZunePlaylistOwner.cs
 //   Playlist.Access / Tune            the invite and access panel, the tune panel                                                              ZunePlaylistPanels.cs
+//   Playlist.MixEditor                the transition editor (#48 M6): a flat band, presets as words, Customize a second band     ZuneMixEditor.cs
 //   Playlist.Daylist                  the countdown in the numeral voices, or the ring                                                         ZunePlaylistExtras.cs
 //   Playlist.Recs / RecRow            "recommended songs" with its "refresh" word, the rows with an "add" pill, and the empty playlist's lead  ZunePlaylistExtras.cs
 //   Liked.Cover / CoverPicker / CoverStyleFlyout   the flat cover (stock, mosaic, tone), its strip and its three-look flyout                   Views\Liked\ZuneLikedCover.cs
@@ -36,6 +37,7 @@ public sealed partial class ZuneStructure
         views.Add(ViewKeys.PlaylistMembersFlyout, ZunePlaylist.MembersFlyoutTemplate, "zune.playlist.members-flyout");
         views.Add(ViewKeys.PlaylistAccess, ZunePlaylist.AccessTemplate, "zune.playlist.access");
         views.Add(ViewKeys.PlaylistTune, ZunePlaylist.TuneTemplate, "zune.playlist.tune");
+        views.Add(ViewKeys.MixEditor, ZuneMixEditor.Template, "zune.playlist.mix-editor");
         views.Add(ViewKeys.PlaylistDaylist, ZunePlaylist.DaylistTemplate, "zune.playlist.daylist");
         views.Add(ViewKeys.PlaylistRecs, ZunePlaylist.RecsTemplate, "zune.playlist.recs");
         views.Add(ViewKeys.PlaylistRecRow, ZunePlaylist.RecRowTemplate, "zune.playlist.rec-row");

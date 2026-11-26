@@ -79,8 +79,8 @@ public static partial class Spotify
             AudioAttributes = 222,
             /// <summary>The three-band waveform (G-044, <c>Edges.TrackWaveform</c>).</summary>
             Waveforms = 237,
-            /// <summary>#48 Mix (Spotify.Decode.Mix.cs): cue points, beats; mix state, auto lens, mixability trait.</summary>
-            Cuepoints = 28, MixBeats = 217, AutoLens = 170, MixState = 225, MixabilityTrait = 235,
+            /// <summary>#48 Mix (Spotify.Decode.Mix.cs): cue points, beats, vocal activity; mix state, auto lens, mixability trait.</summary>
+            Cuepoints = 28, MixBeats = 217, MixVocals = 218, AutoLens = 170, MixState = 225, MixabilityTrait = 235,
         }
 
         /// <summary>THE protobuf parser for this app's read path: a cursor over one frame, a field-number switch, and
@@ -98,6 +98,10 @@ public static partial class Spotify
             public int Wire;
 
             public ProtoReader(ReadOnlySpan<byte> bytes) { _b = bytes; _p = 0; Field = 0; Wire = 0; }
+
+            /// <summary>The byte offset of the cursor: before <see cref="Next"/> it is where the next field's tag starts, after
+            /// the field's value is read or skipped it is where that field ends (a byte-exact patcher copies the span between).</summary>
+            public readonly int Position => _p;
 
             /// <summary>Advance to the next tag. False at the end of the frame, and false — permanently — on anything
             /// malformed, so a caller's <c>while (r.Next())</c> is also its error handling.</summary>
@@ -1393,6 +1397,7 @@ public static partial class Spotify
                 case Ext.Waveforms: Waveform(payload, entityUri, s); break;
                 case Ext.MixBeats: MixBeats(payload, entityUri, s); break;
                 case Ext.Cuepoints: Cuepoints(payload, entityUri, s); break;
+                case Ext.MixVocals: MixVocals(payload, entityUri, s); break;
                 case Ext.MixState or Ext.AutoLens or Ext.MixabilityTrait: PlaylistMixKind(kind, payload, entityUri, s); break;
                 default: break;
             }
@@ -1617,6 +1622,7 @@ public static partial class Spotify
 
             tags.EndEvenIfEmpty(in id, tags.Count);
             s.Tracks.RowFor(id, Authority.Full, (uint)TrackFields.Tags);
+            MixGenres(proto, in id, s);   // #48: every descriptor's concept, for the beatmatched Auto (Spotify.Decode.Mix.cs)
         }
 
         /// <summary>Kind 185 (`OnPlatformReputationTrait`) → <see cref="TrackFields.PlayCount"/>: field 3, varint.

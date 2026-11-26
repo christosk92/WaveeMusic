@@ -308,6 +308,9 @@ public readonly partial struct Playlist
         readonly Func<IReadOnlyList<MenuFlyoutItem>> _mixMenu;
         /// <summary>#48 Mix: the Transitions list on this page (Entities/Mix.Transitions.cs).</summary>
         readonly MixTransitionsSession _mixTransitions = new();
+        /// <summary>#48 Mix M8: Smart reorder's panel on this page (Entities/Mix.Reorder.cs); it takes the slot while open.</summary>
+        readonly MixReorderSession _mixReorder = new();
+        readonly Func<Element?> _mixStrip;
         readonly Action _bindMix;
         /// <summary>Tune's strip and its state on this page (the strip opens inline under the list bar).</summary>
         readonly TuneSession _tuneSession = new();
@@ -353,8 +356,9 @@ public readonly partial struct Playlist
             _tune = _tuneSession.Toggle;
             _bindTune = () => _tuneSession.Bind(_playlist);
             _mixToggle = () => MixMenu.Toggle(_playlist);
-            _mixMenu = () => MixMenu.Items(_playlist, _mixTransitions.Toggle, _mixTransitions.IsOpen);
-            _bindMix = () => _mixTransitions.Bind(_playlist);
+            _mixMenu = () => MixMenu.Items(_playlist, _mixTransitions.Toggle, _mixTransitions.IsOpen, _mixReorder.Open);
+            _bindMix = () => { _mixTransitions.Bind(_playlist); _mixReorder.Bind(_playlist); };
+            _mixStrip = () => _mixReorder.Strip() ?? _mixTransitions.Strip();
             _mixLit = () => { _ = Entities.Current.Playlists.Changed.Value; return MixMenu.Lit(_playlist); };
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
@@ -490,7 +494,7 @@ public readonly partial struct Playlist
                     RemoveRows = editable ? _removeRows : null,
                     Recommendations = recs ? _recs : null,
                     Tune = tune ? _tune : null,
-                    TuneStrip = tune ? _tuneSession.Strip : mixable ? _mixTransitions.Strip : null,
+                    TuneStrip = tune ? _tuneSession.Strip : mixable ? _mixStrip : null,
                     TuneLit = tune ? _tuneSession.Lit : null,
                     MixToggle = mixable ? _mixToggle : null,
                     MixLit = mixable ? _mixLit : null,

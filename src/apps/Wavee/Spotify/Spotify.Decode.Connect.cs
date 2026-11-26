@@ -191,6 +191,13 @@ public static partial class Spotify
             /// <summary>The video switches the owner OFFERS (<c>signals</c>, field 33) and lists in <c>disallow_signals</c> with a
             /// reason (restrictions field 29), as <c>Playback.VideoSignals</c> bits: 1 = switch-to-video, 2 = switch-to-audio.</summary>
             public byte VideoOffered, VideoDisallowed;
+            /// <summary>#48 M5: the Mix preview signals the owner offers (<c>signals</c>, field 33): 1 = automix-preview, 2 =
+            /// stop-automix-preview. What an editor on this controller may send it (Playback.MixPreview).</summary>
+            public byte MixOffered;
+            /// <summary>#48 M7: the owner's published transition out of its current track (<c>audio.fade_out_start_time</c> /
+            /// <c>audio.fade_out_duration</c> on the current track) and into its next one (<c>audio.fade_in_start_time</c> /
+            /// <c>audio.fade_in_duration</c> on <c>next_tracks[0]</c>); -1 when the cluster carried none.</summary>
+            public long FadeOutStartMs, FadeOutDurationMs, FadeInStartMs, FadeInDurationMs;
             public bool Shuffling;
             public RepeatMode Repeat;
             public long PositionAsOfMs, TimestampMs, ServerTimestampMs, DurationMs, ActiveStartedPlayingAt;
@@ -260,6 +267,7 @@ public static partial class Spotify
             delta.PlaybackSpeed = 1.0;
             delta.OurVolume = -1;
             delta.ActiveVolume = -1;
+            delta.FadeOutStartMs = delta.FadeOutDurationMs = delta.FadeInStartMs = delta.FadeInDurationMs = -1;
             delta.DeviceStart = into.DeviceCount;
             if (proto.IsEmpty) return delta;
 
@@ -408,7 +416,9 @@ public static partial class Spotify
                             // The current track is the DELTA's own field, not a row in either list: decoded into a
                             // local so it never takes a slot in the buffer that a list would have to skip.
                             var track = default(ClusterTrack);
-                            Track(r.Message(), into, ref track);
+                            ReadOnlySpan<byte> current = r.Bytes();
+                            Track(new ProtoReader(current), into, ref track);
+                            FadeKeys(current, out delta.FadeOutStartMs, out delta.FadeOutDurationMs, outgoing: true);   // #48 M7
                             delta.Track = track;
                             delta.HasTrack = !track.Uri.IsEmpty;
                             break;
@@ -492,16 +502,42 @@ public static partial class Spotify
                     case 23: delta.SessionId = into.AddText(r.Bytes()); break;
                     case 24: delta.QueueRevision = into.AddText(r.Bytes()); break;
                     case 32: delta.Quality = ReadQuality(r.Bytes()); break;      // playback_quality (Spotify.Decode.Quality.cs)
-                    case 33: delta.VideoOffered |= SignalBit(r.Bytes()); break;   // signals: what the owner offers a controller
+                    case 33:                                       // signals: what the owner offers a controller
+                        {
+                            ReadOnlySpan<byte> signal = r.Bytes();
+                            delta.VideoOffered |= SignalBit(signal);
+                            delta.MixOffered |= signal.SequenceEqual("automix-preview"u8) ? (byte)1 : signal.SequenceEqual("stop-automix-preview"u8) ? (byte)2 : (byte)0;
+                            break;
+                        }
                     default: r.Skip(); break;
                 }
             }
 
             delta.NextStart = nextStart < 0 ? 0 : nextStart;
             delta.NextCount = next;
+            delta.FadeInStartMs = delta.FadeInDurationMs = -1;
+            if (next > 0) FadeKeys(into.Utf8(into.Tracks(delta.NextStart, 1)[0].Raw), out delta.FadeInStartMs, out delta.FadeInDurationMs, outgoing: false);
             delta.PrevStart = prevStart < 0 ? 0 : prevStart;
             delta.PrevCount = prev;
             delta.MetaStart = metaStart < 0 ? 0 : metaStart;
+        }
+
+        /// <summary>#48 M7: a <c>ProvidedTrack</c>'s published fade (protocol §6.3): <c>audio.fade_out_start_time</c> and
+        /// <c>audio.fade_out_duration</c> (<paramref name="outgoing"/>) or <c>audio.fade_in_start_time</c> and
+        /// <c>audio.fade_in_duration</c>; -1 each when the row carries none. Allocation-free.</summary>
+        static void FadeKeys(ReadOnlySpan<byte> track, out long startMs, out long durationMs, bool outgoing)
+        {
+            startMs = durationMs = -1;
+            var t = new ProtoReader(track);
+            while (t.Next())
+            {
+                if (t.Field != 3 || t.Wire != 2) { t.Skip(); continue; }
+                t.Message().Fields(1, 2, out var key, out var value);
+                if (key.SequenceEqual(outgoing ? "audio.fade_out_start_time"u8 : "audio.fade_in_start_time"u8)) startMs = MsOf(value);
+                else if (key.SequenceEqual(outgoing ? "audio.fade_out_duration"u8 : "audio.fade_in_duration"u8)) durationMs = MsOf(value);
+            }
+
+            static long MsOf(ReadOnlySpan<byte> text) => System.Buffers.Text.Utf8Parser.TryParse(text, out long v, out _) && v >= 0 ? v : -1;
         }
 
         /// <summary>A video signal's wire name → its <c>Playback.VideoSignals</c> bit (0 for any other signal).</summary>

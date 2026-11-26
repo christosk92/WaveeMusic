@@ -154,7 +154,52 @@ public static partial class Spotify
             }
             if (load.Kind == RemoteCmd.Unknown) { into.TrackCount = load.TrackStart; return load; }
             load.TrackCount = into.TrackCount - load.TrackStart;
+            // #48 M7 (protocol §7): a list's own Play button sends `skip_to {"track_uri": ""}` and the start row's index in
+            // context.metadata.playlist_play_request; a play that names no row by uid, uri or index starts there.
+            if (load.SkipToIndex < 0 && load.SkipToUid.IsEmpty && load.SkipToUri.IsEmpty && !load.ContextMetadata.IsEmpty)
+                load.SkipToIndex = PlaylistPlayIndex(into.Utf8(load.ContextMetadata));
             return load;
+        }
+
+        /// <summary>The start index a list play carries in <c>context.metadata.playlist_play_request</c> (base64 protobuf
+        /// <c>{1 uri, 2 query, 4 {1 {3 index}, 3 1, 5 0}, …}</c>, protocol §7), or −1. PURE.</summary>
+        public static int PlaylistPlayIndex(ReadOnlySpan<byte> metadataJson)
+        {
+            if (metadataJson.IsEmpty) return -1;
+            var r = new Utf8JsonReader(metadataJson);
+            string? b64 = null;
+            try
+            {
+                while (r.Read())
+                {
+                    if (r.TokenType != JsonTokenType.PropertyName || r.CurrentDepth != 1 || !r.ValueTextEquals("playlist_play_request"u8)) continue;
+                    r.Read();
+                    if (r.TokenType == JsonTokenType.String) b64 = r.GetString();
+                    break;
+                }
+            }
+            catch (JsonException) { return -1; }
+            if (string.IsNullOrEmpty(b64)) return -1;
+            byte[] proto;
+            try { proto = Convert.FromBase64String(b64); }
+            catch (FormatException) { return -1; }
+            var request = new ProtoReader(proto);
+            while (request.Next())
+            {
+                if (request.Field != 4 || request.Wire != 2) { request.Skip(); continue; }
+                var range = request.Message();
+                while (range.Next())
+                {
+                    if (range.Field != 1 || range.Wire != 2) { range.Skip(); continue; }
+                    var start = range.Message();
+                    while (start.Next())
+                    {
+                        if (start.Field == 3 && start.Wire == 0) return (int)Math.Min(start.Varint(), int.MaxValue);
+                        start.Skip();
+                    }
+                }
+            }
+            return -1;
         }
 
         static void PlayContext(ref Utf8JsonReader r, ClusterBuffer into, ref RemoteLoad load)

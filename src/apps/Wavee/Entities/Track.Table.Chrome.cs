@@ -27,6 +27,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using Wavee.Theming.Contracts;
 using static FluentGpu.Dsl.Ui;
@@ -124,6 +125,8 @@ public readonly partial struct Track
             ExitDynamics: TransitionDynamics.Tween(SearchCollapseMs, Easing.FluentAccelerate));
 
         internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+        /// <summary>#48 M8: the Premium upsell is a content flyout (the FlyoutPresenter chrome), not a menu.</summary>
+        static PopupOptions UpsellPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false };
 
         // ══ 1. THE CHROME STACK ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -131,7 +134,7 @@ public readonly partial struct Track
         /// header (the hero arm, whose toolbar lives in the hero). The chips sit BETWEEN the bar and the header — they change what
         /// the rows contain — and the lens directly above the header, in the header's own register (W18). No fill: the
         /// stuck stratum is an unpainted omission and the rows are clipped at its lower edge.</summary>
-        Element Chrome(in Shape shape, Element? chips, Element? lens)
+        Element Chrome(in Shape shape, Element? chips, Element? lens, bool tuneInline = true)
         {
             // An empty list that shows its recommendations lead has nothing to sort, filter or head: a theme that says so draws no chrome over it (one box, so a row of chrome
             // that comes back with the first song does so as a change of the box's height, not of the tree).
@@ -163,9 +166,9 @@ public readonly partial struct Track
                     Children = [Toolbar()],
                 });
             // The Tune strip (contract 1.120): under the list bar while Tune is open. ONE slot, mounted whenever the list can be tuned, whose height eases
-            // through real layout as the strip opens and shuts, so the rows slide instead of jumping (the chips slot's form below).
-            if (P.TuneStrip is not null)
-                stack.Add(Embed.Comp(new TuneSlotProps(this, padX), static () => new TableTuneSlot()) with { Key = "chrome:tune" });
+            // through real layout as the strip opens and shuts, so the rows slide instead of jumping (the chips slot's form below). The hero list's item
+            // places it itself, outside the pinned part (ChromeItem).
+            if (P.TuneStrip is not null && tuneInline) stack.Add(TuneSlot(padX));
             // The unavailable-songs bar (boards C-Unavailable / C-Unavailable-Compact, contract 1.22) leads what narrows the rows: under the
             // list bar in the two-column arm, first in the hero arm's pinned chrome (the hero above it). Its slot stays mounted on a track list
             // and eases its own height, so it never moves the rows by a snap.
@@ -804,14 +807,19 @@ public readonly partial struct Track
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
                 bool on = h.P.MixLit?.Invoke() ?? false;
-                void Toggle() => h._latest.Profile.MixToggle?.Invoke();
-                void Menu() => ToggleOverlay(overlay, anchor, handle,
-                    () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                // #48 M8: a Free account's Mix button (toggle and chevron) opens the Premium upsell, never the menu or a write.
+                void Toggle() { if (MixMenu.Upsell) Menu(); else h._latest.Profile.MixToggle?.Invoke(); }
+                void Menu()
+                {
+                    if (MixMenu.Upsell) ToggleOverlay(overlay, anchor, handle, () => MixUpsell.Card(() => handle.Value?.Close()), UpsellPopup);
+                    else ToggleOverlay(overlay, anchor, handle,
+                        () => MenuFlyout.Create(h._latest.Profile.MixMenu?.Invoke() ?? [], () => handle.Value?.Close(), size: OverlayFit.MenuSize), MenuPopup);
+                }
                 var kids = new List<Element>(2)
                 {
                     ToolTip.Wrap(h.Kit.MixCommand(Loc.Get(Strings.Mix.Label), Loc.Get(Strings.Mix.LabelOn), on, Toggle), Loc.Get(Strings.Mix.Label)),
                 };
-                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n), Loc.Get(Strings.Mix.Menu)));
+                if (h.P.MixMenu is not null) kids.Add(ToolTip.Wrap(h.Kit.MixMenuButton(Menu, n => anchor.Value = n) with { Key = "cmd:mix:menu" }, Loc.Get(Strings.Mix.Menu)));
                 return new BoxEl { Key = "cmd:mix:split", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids.ToArray() };
             }
         }
@@ -1121,21 +1129,75 @@ public readonly partial struct Track
         /// <summary>What the Tune strip's slot is handed (re-pushed with the chrome, so a tier crossing re-pads it): the host and the rows' gutter.</summary>
         sealed record TuneSlotProps(TableHost Host, float PadX);
 
-        /// <summary>The Tune strip's slot (contract 1.120): the structure's strip while Tune is open, nothing while it is shut, its height easing through real
-        /// layout (the chips slot's form), so the strip opening or shutting slides the rows instead of moving them at once. The strip keeps the rows' gutter,
+        Element TuneSlot(float padX) => Embed.Comp(new TuneSlotProps(this, padX), static () => new TableTuneSlot()) with { Key = "chrome:tune" };
+
+        /// <summary>The two-column arm's cap on the slot (its chrome stands above the list's own viewport): the column less the bar, the header and two
+        /// rows, so a strip taller than that (Mix's editor) scrolls in its own viewport while the rows stay in sight. Tracked (the column's height).</summary>
+        float TuneSlotCap()
+        {
+            var shape = _shape!.Peek();
+            float rest = Detail.VerticalLayout.ToolbarRowHeight + Detail.VerticalLayout.ChromeExtent(0f, TableRules.HeaderHeightFor(shape.Set)) + 2f * shape.RowH;
+            return MathF.Max(3f * shape.RowH, _colH.Value - rest);
+        }
+
+        /// <summary>Show <paramref name="node"/> (a part of the slot's strip) when the page has scrolled past it: its top above the hero list's pin line
+        /// (the slot opened from a seam further down). A glide that lands its top on that line; nothing otherwise (below the fold the user scrolls on,
+        /// and a glide toward a place the growing slot has not made yet would land at once). The hero arm's slot
+        /// scrolls with the page; the two-column arm's scrolls in its own viewport (the nearest scroller either way).</summary>
+        internal void RevealInSlot(NodeHandle node)
+        {
+            if (Context.Scene is not { } scene || node.IsNull || !scene.IsLive(node)) return;
+            var vp = scene.Parent(node);
+            while (!vp.IsNull && !scene.HasScroll(vp)) vp = scene.Parent(vp);
+            if (vp.IsNull || scene.ScrollHandleFor(vp) is not { } handle) return;
+            ref var sc = ref scene.ScrollRef(vp);
+            if (sc.ContentNode.IsNull || !scene.IsLive(sc.ContentNode)) return;
+            double top = sc.WindowOrigin + scene.AbsoluteLayoutRect(node).Y - scene.AbsoluteLayoutRect(sc.ContentNode).Y;
+            double band = VerticalArm ? Reactive.Untrack<float>(StickLine) : 0f;
+            double offset = handle.Offset.Peek();
+            if (top >= offset + band) return;
+            scene.BringIntoView(vp, node, 0f, ScrollMove.Glide, band);
+        }
+
+        /// <summary>The Tune strip's slot (contract 1.120): the structure's strip while Tune is open, nothing while it is shut, its height revealing as THE
+        /// disclosure mode (<see cref="SlotReveal"/>: layout lands once, the presented height reveals in lockstep with the rows under it, so a strip that
+        /// reveals inside it, Mix's editor, composes with it instead of fighting a Reflow tween), so the strip opening or shutting slides the rows. The strip keeps the rows' gutter,
         /// with the bar's air over it and the header's under it. Its own component: the strip's reads (open, applying, the mix's tuning) re-render this slot,
-        /// never the chrome.</summary>
+        /// never the chrome.
+        /// <para>#48: a strip can be far taller than the bar (Mix's transition editor). The hero list's slot scrolls with the page under the pinned header
+        /// (ChromeItem), the two-column arm's pins with its bar up to <see cref="TuneSlotCap"/> and scrolls inside. Opening while the page is scrolled
+        /// past its place glides it in (<see cref="RevealInSlot"/>: the part a strip names in <see cref="BarSlot"/>, else the slot's top).</para></summary>
         sealed class TableTuneSlot : Component
         {
+            readonly BarSlot _slot = new();
+            NodeHandle _node;
+            Action<NodeHandle>? _capture;
+            bool _wasOpen;
+
             public override Element Render()
             {
                 var p = UseProps<TuneSlotProps>();
-                Element? strip = p.Host.P.TuneStrip?.Invoke();
+                var host = p.Host;
+                _slot.Reveal ??= host.RevealInSlot;
+                _capture ??= n => _node = n;
+                Element? strip = host.P.TuneStrip?.Invoke();
+                bool open = strip is not null;
+                UseEffect(() =>
+                {
+                    // The open edge: show the part the strip named (Mix's editor), else the slot's top.
+                    if (open && !_wasOpen) host.RevealInSlot(_slot.Focus.IsNull ? _node : _slot.Focus);
+                    _wasOpen = open;
+                    _slot.Focus = default;
+                }, FluentGpu.Hooks.DepKey.From(open ? 1 : 0));
+                if (strip is not null) strip = Ctx.Provide(SlotContext, _slot, strip);
+                if (strip is not null && !host.VerticalArm)
+                    strip = new ScrollEl { ContentSized = true, MaxHeight = host.TuneSlotCap(), AutoEdgeFade = true, Content = strip };
                 return new BoxEl
                 {
-                    Key = "chrome:tune-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = p.Host.ChromeResize,
-                    Padding = strip is null ? default : new Edges4(p.PadX, Spacing.XS, p.PadX, Spacing.S),
-                    Children = strip is null ? [] : [strip],
+                    Key = "chrome:tune-slot", Direction = 1, MinWidth = 0f, ClipToBounds = true, Layout = host.SlotReveal, OnRealized = _capture,
+                    // The air rides inside what reveals (padding cannot ease: on the slot itself it landed with the first frame).
+                    Children = strip is null ? []
+                        : [new BoxEl { Direction = 1, MinWidth = 0f, Padding = new Edges4(p.PadX, Spacing.XS, p.PadX, Spacing.S), Children = [strip] }],
                 };
             }
         }

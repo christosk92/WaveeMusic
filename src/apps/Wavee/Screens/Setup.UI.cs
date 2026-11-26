@@ -50,7 +50,7 @@ public static partial class Setup
     static OverlayHandle? s_signIn { get => s_signInState.Value; set => s_signInState.Value = value; }
 
     const string SpotifySignUpUrl = "https://www.spotify.com/signup";
-    const string SpotifyPremiumUrl = "https://www.spotify.com/premium/";
+    internal const string SpotifyPremiumUrl = "https://www.spotify.com/premium/";
     const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
 
     sealed class SignInDoorView : Component

@@ -282,8 +282,10 @@ public static partial class Platform
         public static readonly SettingKey<string> EqualizerGains = new("playback.eq.gains", "0,0,0,0,0,0,0,0,0,0");
         public static readonly SettingKey<bool> CrossfadeEnabled = new("playback.crossfade.enabled", false);
         public static readonly SettingKey<int> CrossfadeMs = new("playback.crossfade.ms", 5000);
-        /// <summary>#48 Mix: the playlists (bare ids, comma list) this PC plays without Mix (decision D3, Entities/Mix.cs).</summary>
-        public static readonly SettingKey<string> MixListenWithout = new("playback.mix.listenWithout", "");
+        /// <summary>#48 Mix: the local mirror of the account's "Listen without Mix" opt-outs (MixOptOut, Entities/Mix.cs): one line per
+        /// account and playlist, with whether Spotify has taken it yet. It replaces the per-PC `playback.mix.listenWithout` list, which
+        /// is sent once as opt-outs and removed.</summary>
+        public static readonly SettingKey<string> MixOptOuts = new("playback.mix.optOuts", "");
         /// <summary>#48 Mix: the per-pair local overrides (No mix, Auto over a Spotify recipe, a local edit), Entities/Mix.Overrides.cs.</summary>
         public static readonly SettingKey<string> MixOverrides = new("playback.mix.overrides", "");
         /// <summary>#48 Mix menu: "Show transitions: Always" (chips in every seam); false = on hover.</summary>

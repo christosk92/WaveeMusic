@@ -276,6 +276,15 @@ public static partial class Sidebar
         /// UNKNOWN count is null, never "0 songs" (bug A1).</summary>
         public static string? SubtitleOf(in SidebarLibraryEntry e)
         {
+            string? words = Words(in e);
+            // #48 Mix M8: a mixed playlist says so after its count ("12 songs · Mixed"), or alone while the count is unknown.
+            if (!e.Mixed || e.Kind != SidebarEntryKind.Playlist) return words;
+            string mixed = Loc.Get(Strings.Mix.MixedLine);
+            return words is { Length: > 0 } ? words + " · " + mixed : mixed;
+        }
+
+        static string? Words(in SidebarLibraryEntry e)
+        {
             var s = SidebarSubtitleRules.Of(in e);
             return s.Kind switch
             {
