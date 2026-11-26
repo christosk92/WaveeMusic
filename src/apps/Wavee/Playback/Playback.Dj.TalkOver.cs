@@ -271,8 +271,10 @@ public static partial class Playback
             inMeta.Add(new("audio.fade_in_curves", DjCurves.Json(in t, incoming: true)));
             inMeta.Add(new("audio.only_allow_fade_on_advance", "true"));
             if (seam.VoiceB is null) TrackSide(inMeta, "in", seam.CuesB, true);
-            // B's half rides its row (the narration item or the track row the seam joins), as an upcoming row's keys do (Mix.RowOf).
-            return new MixWire(false, PlaylistMixFlags.None, seam.B, outMeta.ToArray(), [], [new MixRowWire(seam.ItemB, seam.B, inMeta.ToArray(), [])]);
+            // B's half rides the track row the seam joins, found by its queue item as an upcoming row's keys are (Mix.RowOf). A narration item
+            // B (an outro) carries none: the official player states only a talk-over's fade-out on a narration item (dj-protocol §4).
+            MixRowWire[] rows = seam.VoiceB is null ? [new MixRowWire(seam.ItemB, seam.B, inMeta.ToArray(), [])] : [];
+            return new MixWire(false, PlaylistMixFlags.None, seam.B, outMeta.ToArray(), [], rows);
 
             static void TrackSide(List<KeyValuePair<string, string>> meta, string side, TrackCues cues, bool cueUsed)
             {

@@ -485,12 +485,11 @@ public static partial class Spotify
                 int view = Math.Max(0, contextIndex + 1), autoplayView = 0;   // the autoplay tail numbers itself from 0, as the official tail does
                 foreach (ref readonly Playback.WireRow row in window.Next)
                 {
-                    // An AI DJ narration item sits between the tracks as the official player lays it (dj-protocol §4 f20), unnumbered; the one a
-                    // talk-over joins into carries its fade-in half.
+                    // An AI DJ narration item sits between the tracks as the official player lays it (dj-protocol §4 f20), unnumbered, with no fade
+                    // keys of the seam into it (only a talk-over's fade-out, on the current item).
                     if (row.Narration is { } spoken)
                     {
-                        Playback.MixRowWire? voiceIn = dj is not null ? snap.Wire.Mix?.RowOf(row.ItemId, row.Id) : null;
-                        NarrationItem(ref w, 20, spoken, in ids, scratch, voiceIn is { In.Length: > 0 } ? voiceIn.In : null);
+                        NarrationItem(ref w, 20, spoken, in ids, scratch);
                         continue;
                     }
                     bool autoplay = row.Provider == QueueProvider.Autoplay;
@@ -689,8 +688,9 @@ public static partial class Spotify
             {
                 foreach (var e in mixOut.CurrentIn) w.Entry(3, e.Key, e.Value);   // #48 M7: the seam the playing row came in by
                 foreach (var e in mixOut.Out) w.Entry(3, e.Key, e.Value);   // #48: the playing row's fade-out
-                // #48: the speed the row plays at, "%.6f" (protocol §6.1: a beatmatched B's speedB and each step of its glide back to 1).
-                if (Utf8Formatter.TryFormat((double)snap.Wire.PlaybackRate, scratch, out int speedLength, new System.Buffers.StandardFormat('F', 6)))
+                // #48: the speed the row plays at, "%.6f" (protocol §6.1: a beatmatched B's speedB and each step of its glide back to 1). A
+                // mixed list's only (Lens): an AI DJ seam's keys carry no speed (dj-protocol §7).
+                if (mixOut.Lens && Utf8Formatter.TryFormat((double)snap.Wire.PlaybackRate, scratch, out int speedLength, new System.Buffers.StandardFormat('F', 6)))
                     w.Entry(3, "playback_speed"u8, scratch[..speedLength]);
             }
             if (HostsVideo(in snap))
