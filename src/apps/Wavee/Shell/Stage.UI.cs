@@ -611,8 +611,10 @@ public static partial class Stage
                 ctx.Effective.SetIfChanged(LayoutRules.Effective(ctx.LayoutPref.Value, layout.Aspect, ctx.HeroFact.Value, layout.AllowedLayouts));
             });
             // A row-identity stage too short for the Lyrics caption keeps its art, title and controls and drops the caption (Layout.CaptionFits).
+            // The DJ's words take the caption while it talks (plan-dj §2.8): a narration has no lyrics, but it has a line to show.
             UseSignalEffect(() => ctx.CaptionOn.SetIfChanged(LayoutRules.ShowsCaption(ctx.Mode.Value, ctx.Effective.Value, ctx.LyricsOverlay.Value,
-                ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value) && ctx.Layout.Value.CaptionFits(ctx.Mode.Value)));
+                ctx.HasTimedLyrics.Value || Playback.Dj.CaptionNow().Length > 0, ctx.Layout.Value.ShowPane, ctx.Kind.Value)
+                && ctx.Layout.Value.CaptionFits(ctx.Mode.Value)));
             UseSignalEffect(() =>
             {
                 var look = LayoutRules.LookOf(ctx.Mode.Value, ctx.Effective.Value, ctx.SpectrumPref.Value, ctx.HeroLyricsPref.Value, ctx.CaptionOn.Value);

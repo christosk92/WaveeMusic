@@ -37,6 +37,9 @@ public static partial class Diagnostics
         public sealed class Options
         {
             public int Frames = 60;
+            /// <summary>Pace the frames to the wall clock (16 ms each), so work that runs on wall time (the audio pump's announce of a
+            /// join, a download) keeps its proportions to the traced frames: <c>realtime=true</c>.</summary>
+            public bool RealTime;
             /// <summary>Emit every Nth row (the summary always covers every frame).</summary>
             public int Every = 1;
             public List<string> Keys = [];
@@ -121,6 +124,7 @@ public static partial class Diagnostics
             o.Census = a.Bool("census", false);
             o.Flights = a.Bool("flights", false);
             o.Curves = a.Bool("curves", false);
+            o.RealTime = a.Bool("realtime", false);
             if (a.Has("wheel"))
             {
                 if (!TryWheelSequence(string.Join(",", a.List("wheel")), out o.Wheel)) { error = "wheel is a number or a comma list of numbers (notches, + toward the end)"; return false; }
@@ -963,8 +967,14 @@ public static partial class Diagnostics
                 SampleNodes(baseRow, -1);
                 result.Baseline = baseRow;
             }
+            long paceStart = Stopwatch.GetTimestamp();
             for (int f = 0; f < o.Frames; f++)
             {
+                if (o.RealTime)
+                {
+                    double due = f * 16.0, spent = Stopwatch.GetElapsedTime(paceStart).TotalMilliseconds;
+                    if (due > spent) Thread.Sleep(TimeSpan.FromMilliseconds(due - spent));
+                }
                 _traceFrameHook?.Invoke(f);   // a staged landing's later part (`head-land part=overview cards=N`)
                 var keyed = shell.FindPrefix("");   // one key copy per frame serves the nodes, the wheel target and the scroller
                 bool wheel = o.Wheel.Length > 0 && InspectTrace.WheelDue(f, o.WheelEvery, o.WheelCount, sent);

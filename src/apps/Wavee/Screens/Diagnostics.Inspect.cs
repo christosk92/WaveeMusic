@@ -427,6 +427,8 @@ public static partial class Diagnostics
                     return PodcastPagesVerb(id, name, a);
                 case Inspect.Verb.Mix:
                     return MixVerb(id, name, a);
+                case Inspect.Verb.Dj:
+                    return DjVerb(id, name, a);   // the list and the session need no mount; do=play settles on a mounted one
                 case Inspect.Verb.Setting:
                     return Setting(id, name, a);   // the store needs no mount; a mounted one settles after the write
                 case Inspect.Verb.Settings:
@@ -455,6 +457,8 @@ public static partial class Diagnostics
                     return Timecode(id, name, a);   // the tap is read off the playback statics: no mount
                 case Inspect.Verb.MixStyles:
                     return MixStylesVerb(id, name, a);   // the style table and the reference check: no mount
+                case Inspect.Verb.DjTts:
+                    return DjTtsVerb(id, name, a);  // the TTS client's statics: no mount
             }
 
             // Everything below needs a mount (the verb table says so: NeedsMount).

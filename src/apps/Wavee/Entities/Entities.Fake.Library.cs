@@ -193,6 +193,7 @@ public static partial class Entities
                 StageAvailability(s, now0);
                 StageLocal(s);
                 StageMix(s);
+                StageDj(s);
                 StageTrackKnowns(s);
                 StageQAlbums(s);
                 Commit(s);
@@ -207,6 +208,7 @@ public static partial class Entities
             LandExtras(now0);
             LandLocal();
             LandMix(now0);
+            LandDj();
             LandTags();
             LandCredits();
             LandContentFilters();

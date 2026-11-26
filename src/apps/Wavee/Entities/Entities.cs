@@ -119,6 +119,8 @@ public enum EntityProvider : byte
     UserPlaylist = 5,
     /// <summary><c>wavee:show:*</c> / <c>wavee:episode:*</c> — the synthetic podcast source.</summary>
     WaveePodcast = 6,
+    /// <summary><c>wavee:tts:&lt;key&gt;</c> — an AI DJ narration clip (<c>Spotify.DjTts</c>), played through <c>SourceRoute.Tts</c>.</summary>
+    Tts = 7,
 }
 
 /// <summary>Who wrote a column group, and therefore who may overwrite it (D16). A LOWER rung never overwrites a higher
@@ -789,6 +791,7 @@ public readonly record struct EntityUri(EntityId Id)
             if (Starts(rest, "playlist:")) { kind = EntityKind.Playlist; return EntityProvider.UserPlaylist; }
             if (Starts(rest, "show:")) { kind = EntityKind.Show; return EntityProvider.WaveePodcast; }
             if (Starts(rest, "episode:")) { kind = EntityKind.Episode; return EntityProvider.WaveePodcast; }
+            if (Starts(rest, "tts:")) { kind = EntityKind.Track; return EntityProvider.Tts; }
             kind = EntityKind.Unknown;
             return EntityProvider.None;   // wavee:skeleton:*, wavee:media:*, … — routed by their own owners, not here
         }

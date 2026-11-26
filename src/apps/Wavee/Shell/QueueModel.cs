@@ -102,6 +102,9 @@ public static partial class Shell
             int divider = Queue.Divider(edges, viewer ? -1 : cursorIndex);
             var index = new int[edges.Length];
             Queue.Split(edges, divider, index, out int user, out int next, out int auto);
+            // AI DJ narration rows are hidden in the queue (plan-dj §1.5 `hidden_in_queue`): out of every section and every count.
+            HideNarration(edges, index, ref user, ref next, ref auto);
+            int djNext = DjNextRow(edges, divider, index, ref user, ref next);
             // The panel lists what will really play (#215): the autoplay rows only while the end of the context continues into
             // them (the setting on AND repeat off, `Playback.AutoplayAllowed`). Under repeat the context wraps instead, and the
             // tail is neither listed nor counted; the switch itself still shows the setting.
@@ -116,11 +119,73 @@ public static partial class Shell
                 int start = section == QueueSection.Queue ? 0 : section == QueueSection.NextUp ? user : user + next;
                 ulong itemId = edges[i].ItemId;
                 rows[k] = new QueueRowProps(itemId, i, refAt(i), section, k - start,
-                    QueueRowRules.Removable(viewer, itemId), QueueRowRules.RowDrags(viewer));
+                    QueueRowRules.Removable(viewer, itemId) && i != djNext, QueueRowRules.RowDrags(viewer));
             }
             EntityRef preview = auto > 0 ? refAt(index[user + next]) : default;
             return new QueueProps(viewer, nowPlaying, playingFrom, new QueueCounts(user, next, auto),
                 new QueueAutoplay(autoplayEnabled, auto, preview), shuffle, repeat, rows);
+        }
+
+        /// <summary>AI DJ: while a narration is the deck, the track it leads into is the row right after it, bucketed with the user's queue so
+        /// it stays ahead of anything queued during the clip (<c>QueueOrder.Follow</c>: a song added during a clip plays after the target). It
+        /// is the DJ's next row, not one the user queued: it moves from the queue section to the head of the continuation (under its segment,
+        /// <see cref="WithSegments"/>) and cannot be removed. Answers its flat index, or −1. PURE over the split.
+        /// <para>A song queued during the clip then lists above it in the "Next in queue" section while it plays after it, until the clip ends
+        /// (then the target is the deck and the list reads in play order again).</para></summary>
+        static int DjNextRow(ReadOnlySpan<QueueEdge> edges, int divider, int[] index, ref int user, ref int next)
+        {
+            if (user == 0 || (uint)divider >= (uint)edges.Length || edges[divider].Provider != (byte)QueueProvider.Narration) return -1;
+            int head = index[0];
+            if (head != divider + 1 || edges[head].Provider != (byte)QueueProvider.Context) return -1;
+            Array.Copy(index, 1, index, 0, user - 1);
+            index[user - 1] = head;
+            user--;
+            next++;
+            return head;
+        }
+
+        /// <summary>Drop the narration rows (<see cref="QueueProvider.Narration"/>) from a split's indices, section by section, in place.</summary>
+        static void HideNarration(ReadOnlySpan<QueueEdge> edges, int[] index, ref int user, ref int next, ref int auto)
+        {
+            int w = 0, k = 0;
+            int keptUser = 0, keptNext = 0, keptAuto = 0;
+            for (; k < user + next + auto; k++)
+            {
+                if (edges[index[k]].Provider == (byte)QueueProvider.Narration) continue;
+                if (k < user) keptUser++; else if (k < user + next) keptNext++; else keptAuto++;
+                index[w++] = index[k];
+            }
+            (user, next, auto) = (keptUser, keptNext, keptAuto);
+        }
+
+        /// <summary>AI DJ (plan-dj §2.8, owner decision: the queue by segment, not "The DJ doesn't have a queue"): the continuation's rows of
+        /// <paramref name="model"/> grouped by their DJ segment (<see cref="Playback.Dj.RowOf"/>), each under its <c>station_subtitle</c>, the
+        /// segment "Let DJ pick" lands on marked; a row the DJ book does not know joins the group before it. The rows stay in place but no longer
+        /// drag (a DJ's order is its own; a header inside the run would also split the reorder's window). Unchanged for any other context.
+        /// Narration rows (D2) never reach it: <see cref="Project"/> hides them first (<c>HideNarration</c>), and the book holds tracks only.</summary>
+        public static QueueProps WithSegments(QueueProps model, int jumpTarget)
+        {
+            int start = model.Counts.Queue, count = model.Counts.NextUp;
+            if (count == 0 || model.Viewer) return model;
+            var rows = model.Rows;
+            List<QueueSegment>? segments = null;
+            string current = "";
+            for (int k = 0; k < count && start + k < rows.Length; k++)
+            {
+                if (Playback.Dj.RowOf(rows[start + k].ItemId) is not { } dj) continue;
+                if (segments is not null && dj.Segment == current) continue;
+                segments ??= new List<QueueSegment>(4);
+                current = dj.Segment;
+                segments.Add(new QueueSegment("seg:" + dj.Segment, dj.Subtitle, k, 0, rows[start + k].Index == jumpTarget));
+            }
+            if (segments is null) return model;
+            if (segments[0].Start > 0) segments[0] = segments[0] with { Start = 0 };   // rows before the first booked one stay under it
+            var shown = segments.ToArray();
+            for (int i = 0; i < shown.Length; i++)
+                shown[i] = shown[i] with { Count = (i + 1 < shown.Length ? shown[i + 1].Start : count) - shown[i].Start };
+            var still = (QueueRowProps[])rows.Clone();
+            for (int k = 0; k < count && start + k < still.Length; k++) still[start + k] = still[start + k] with { Draggable = false };
+            return model with { Rows = still, Segments = shown };
         }
 
         /// <summary>How many "played before this" rows the props carry.</summary>

@@ -34,15 +34,18 @@ public static partial class Lyrics
             var d = UseProps<MiniDraw>();
             var current = Playback.Current.Value;
             string trackId = current.Kind == EntityKind.Track && !current.IsNone ? Store.IdOf(new Track(current.Slot)) : "";
+            // AI DJ (plan-dj §2.8): a narration has no lyrics; while the DJ talks its words are the reel's one line, a reel per narration.
+            Doc? spoken = trackId.Length == 0 ? Spoken.Line(Spoken.Now()) : null;
+            string key = spoken?.TrackId ?? trackId;
             return new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch, Direction = 1, ClipToBounds = true, HitTestVisible = false,
-                Children = [Embed.Comp(new MiniReelProps(trackId, d.Draw, d.Visible), static () => new MiniReel()) with { Key = "mini-lyrics:" + trackId }],
+                Children = [Embed.Comp(new MiniReelProps(trackId, d.Draw, d.Visible, spoken), static () => new MiniReel()) with { Key = "mini-lyrics:" + key }],
             };
         }
     }
 
-    sealed record MiniReelProps(string TrackId, Func<MiniLyricsFrame, Element> Draw, Func<bool> Visible);
+    sealed record MiniReelProps(string TrackId, Func<MiniLyricsFrame, Element> Draw, Func<bool> Visible, Doc? Spoken = null);
 
     /// <summary>One track's reel: the document, the state, the line clock.</summary>
     sealed class MiniReel : Component
@@ -62,7 +65,7 @@ public static partial class Lyrics
             var tick = _tick ??= Tick;
             UseLayoutEffect(() => { if (trackId.Length > 0) Store.Ensure(trackId); }, DepKey.Empty);
             _ = Store.Changed.Value;
-            var doc = trackId.Length > 0 ? Store.Doc(trackId) : null;
+            var doc = p.Spoken ?? (trackId.Length > 0 ? Store.Doc(trackId) : null);
             bool synced = PeekClock.ShouldShow(doc) && !SyncGate.SyncSuppressed(Playback.VideoActive.Value);
             _doc = synced ? doc : null;
             bool visible = p.Visible();

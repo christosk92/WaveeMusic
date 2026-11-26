@@ -364,10 +364,10 @@ public static partial class Spotify
         }
 
         /// <summary>"Switch the row you play to its video / back to its audio" on the device that owns playback — the desktop's
-        /// `signal` envelope (itsover.saz 772). Blocks; api threads only.</summary>
-        public static bool Signal(string targetDeviceId, Decode.VideoSignal signal, CancellationToken ct)
+        /// `signal` envelope (itsover.saz 772) — or "Let DJ pick" on a DJ player (<c>jump</c>, plan-dj §1.8). Blocks; api threads only.</summary>
+        public static bool Signal(string targetDeviceId, Decode.PlayerSignal signal, CancellationToken ct)
         {
-            if (signal == Decode.VideoSignal.None) return false;
+            if (signal == Decode.PlayerSignal.None) return false;
             var buffer = new ArrayBufferWriter<byte>(384);
             SignalBody(buffer, signal, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
             return PostCommand("signal", targetDeviceId, buffer.WrittenSpan, ct);
@@ -375,7 +375,7 @@ public static partial class Spotify
 
         /// <summary>The `signal` envelope body, field for field as the official client sends it: endpoint, <c>signal_id</c>, the
         /// three option bools, the logging params, then <c>connection_type</c> and <c>intent_id</c>. PURE.</summary>
-        public static void SignalBody(IBufferWriter<byte> into, Decode.VideoSignal signal, string deviceId, string commandId,
+        public static void SignalBody(IBufferWriter<byte> into, Decode.PlayerSignal signal, string deviceId, string commandId,
             string intentId, long nowMs)
         {
             using var w = new Utf8JsonWriter(into);

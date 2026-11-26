@@ -95,7 +95,8 @@ public static partial class Stage
         var tf = PlayerVerbs.TransportFacts();
         bool primary = Transport.PrimaryEnabled(track.IsValid, loading);
         var lib = Controls.Library;
-        string uri = track.IsValid ? track.Uri.Text : "";
+        // An AI DJ narration clip is nothing to save: no uri, so the heart draws unpressable in its place.
+        string uri = track.IsValid && !Playback.Dj.IsNarrationRow(Playback.Current.Value) ? track.Uri.Text : "";
         string title = track.IsValid ? track.Title : "";
         bool saved = lib is not null && uri.Length > 0 && lib.IsSaved(uri);
         Action? like = lib is { } seam && uri.Length > 0 ? () => seam.ToggleSaved(uri, title) : null;
@@ -106,8 +107,12 @@ public static partial class Stage
         bool hasSource = source is { Length: > 0 };
         // a formatted key: the generated method formats; Loc.Get would render "[…]" (V-D15). No source ⇒ no label (never "Playing from search" for nothing).
         string playingFrom = hasSource ? Strings.Stage.PlayingFrom(Queue.ContextKindLabel(contextId)) : "";
+        // While AI DJ plays here the source is its segment line ("DJ · Vibes"), where every theme draws the source.
+        DjChrome? dj = PlayerVerbs.Dj();
+        if (dj is not null) source = dj.Line;
         return new StageTransportFacts(playing, primary, tf.CanTransport, tf.PrevEnabled, tf.NextEnabled, Playback.Shuffle.Value,
-            repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "");
+            repeat != RepeatMode.Off, repeat == RepeatMode.Track, saved, like, playingFrom, source ?? "")
+        { ShuffleLock = PlayerVerbs.ShuffleLock(), RepeatLock = PlayerVerbs.RepeatLock(), Dj = dj };
     }
 
     static readonly Func<StageNextFacts> s_nextFacts = NextFacts;
@@ -123,7 +128,11 @@ public static partial class Stage
         _ = Entities.Current.Artists.Changed.Value;
         _ = Entities.Current.Edges.TrackArtists.Changed.Value;
         if (!Queue.UpNext(out int start, out int length) || length == 0) return default;
-        var r = Queue.RefAt(start);
+        // An AI DJ narration ahead is no "next" track (it is hidden in the queue, plan-dj §1.5): the track after it is.
+        int at = start;
+        while (at < start + length - 1 && Playback.Dj.IsNarrationRow(Queue.RefAt(at))) at++;
+        var r = Queue.RefAt(at);
+        if (Playback.Dj.IsNarrationRow(r)) return default;
         if (r.IsNone || r.Kind != EntityKind.Track) return default;
         var track = new Track(r.Slot);
         if (!track.IsValid || !Transport.UsesTitle(track.Title, track.Uri.Text)) return default;

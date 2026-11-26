@@ -171,8 +171,10 @@ internal static partial class WinUiPlayerBar
             Animate = PL.MoveMotion,
             Children = identityKids.ToArray(),
         };
-        var leftKids = new List<Element>(2) { identity };
+        var leftKids = new List<Element>(3) { identity };
         if (v.ShowLikeSlot) leftKids.Add(heart);
+        // AI DJ: "Let DJ pick" at the identity's end (the column's free room, after the heart: it comes and goes without moving what is before it).
+        if (!mini && v.Dj is { } dj) leftKids.Add(Item(PL.DjPickKey, DjPick(dj)));
         BoxEl left = new BoxEl
         {
             Key = PL.LeftKey, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
@@ -192,8 +194,8 @@ internal static partial class WinUiPlayerBar
         {
             if (!mini && !v.Episode && (v.Slots & RightSlot.Shuffle) != 0)
                 transport.Add(Lit(PL.ShuffleKey, (v.Lit & RightSlot.Shuffle) != 0, ToolTip.Wrap(
-                    Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
-                    Loc.Get(Strings.Player.Shuffle))));
+                    Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
+                    v.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
             if (!mini && v.ShowPrevNext)
                 transport.Add(Item(PL.PrevKey, ToolTip.Wrap(
                     Button(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Previous))));
@@ -206,8 +208,8 @@ internal static partial class WinUiPlayerBar
                     Loc.Get(Strings.Player.Next))));
             if (!mini && !v.Episode && (v.Slots & RightSlot.Repeat) != 0)
                 transport.Add(Lit(PL.RepeatKey, (v.Lit & RightSlot.Repeat) != 0, ToolTip.Wrap(
-                    Button(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport, v.RepeatOn, PL.TransportW, PL.TransportH, PL.Glyph),
-                    Loc.Get(Strings.Player.Repeat))));
+                    Button(v.RepeatGlyph, () => verbs.CycleRepeat(), v.CanTransport && v.RepeatLock is null, v.RepeatOn, PL.TransportW, PL.TransportH, PL.Glyph),
+                    v.RepeatLock ?? Loc.Get(Strings.Player.Repeat))));
         }
         var centreKids = new List<Element>(2)
         {
@@ -493,6 +495,8 @@ internal static partial class WinUiPlayerBar
                 Key = "remote-device-line", Direction = 1, Animate = PL.ItemMotion, MinWidth = 0f,
                 Children = [Embed.Comp(new RemoteProps(props, Accent: false), static () => new WinUiRemoteLine())],
             });
+        // AI DJ: the segment line ("DJ · Vibes") in the "playing on" line's place and look.
+        else if (!mini && v.Dj is { } dj) kids.Add(DjLine(dj));
 
         // The full bar's lines are one slot of the level's width (`WinUiBarLook.MetaW`, narrower only where the window leaves less), never
         // the text's: a short title and a long one put the heart in the same place, so a skip moves nothing. The Mini bar's door takes the row.

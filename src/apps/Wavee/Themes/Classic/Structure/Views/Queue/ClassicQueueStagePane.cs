@@ -174,7 +174,8 @@ internal sealed class ClassicQueueStagePane : Component
         if (slot.Kind == QueueSlotKind.More) return ShowMore(props, slot.Section);
         // the open list's header row names the lead section (Theatre): its own caption is a zero-height slot (its extent is 0 too)
         if (slot.Kind == QueueSlotKind.Header)
-            return _video && slot.Section == _lead ? new BoxEl { Key = "stagehdr:" + QueueSections.Tag(slot.Section), Height = 0f, BlocksDragArm = true } : StageHeader(slot.Section);
+            return _video && slot.Section == _lead && !slot.IsSegmentHeader ? new BoxEl { Key = "stagehdr:" + QueueSections.Tag(slot.Section), Height = 0f, BlocksDragArm = true }
+                 : _queue.SegmentOf(slot) is { } segment ? SegmentHeader(segment) : StageHeader(slot.Section);
         return _queue.TryRow(slot.Section, slot.Pos, out var row)
             ? lane.Lane(item, RowOf(props, row, _art), lane.RowKey("s", row.ItemId, row.Index))
             : new BoxEl { Key = "stagegap:" + i };
@@ -500,6 +501,24 @@ internal sealed class ClassicQueueStagePane : Component
                     ],
                 },
             ],
+        };
+    }
+
+    /// <summary>AI DJ: a segment's caption in the section caption's grammar (its label for the name), "Let DJ pick starts here" in the stage's ink
+    /// at its end where the button lands (the queue by segment, plan-dj §2.8).</summary>
+    Element SegmentHeader(QueueSegment segment)
+    {
+        string mark = QueueProps.SegmentMark(segment);
+        var kids = new List<Element>(2) { R.Type.Eyebrow(QueueProps.SegmentTitle(segment)) with { Size = Px(ClassicQueueRules.StageCaptionSize), Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis } };
+        if (mark.Length > 0)
+            kids.Add(new TextEl(mark) { Size = Px(ClassicQueueRules.StageCaptionSize), LineHeight = Px(ClassicQueueRules.StageCaptionLine), Weight = 600, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f });
+        return new BoxEl
+        {
+            Key = "stagehdr:" + segment.Key,
+            Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, Height = Px(ClassicQueueRules.StageHeaderH),
+            Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.S), Px(Spacing.XS)),
+            Layout = LayoutTransition.Slide, BlocksDragArm = true,
+            Children = kids.ToArray(),
         };
     }
 

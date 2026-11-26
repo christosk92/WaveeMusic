@@ -117,6 +117,8 @@ internal static class ZuneStageTransport
                 Children = [kit.Source()],
             });
         else sides.Add(heart);
+        // AI DJ: "let dj pick", a word lit in the DJ's colour, after the source (the air beside it takes it: nothing else moves).
+        if (kit.DjPick() is { } pick) sides.Add(pick with { Layout = slide });
         sides.Add(new BoxEl { Key = "stage:plate:air", Grow = 1f, MinWidth = 0f, HitTestVisible = false });
         int right = 2;   // the device and the "…"
         if (full)
@@ -418,9 +420,11 @@ internal static class ZuneStageTransport
             ? Embed.Comp(new ZuneStageNext.Props(next, form, size.SourceSize, size.SourceLine) { Open = open }, static () => new ZuneStageNext())
             : new BoxEl { HitTestVisible = false };
 
-        public Element Shuffle() => ToolTip.Wrap(Latch(Icons.Shuffle, props.Verbs.ToggleShuffle, facts.CanTransport, facts.Shuffle), Loc.Get(Strings.Player.Shuffle));
+        public Element Shuffle() => ToolTip.Wrap(Latch(Icons.Shuffle, props.Verbs.ToggleShuffle, facts.CanTransport && facts.ShuffleLock is null, facts.Shuffle),
+            facts.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle));
 
-        public Element Repeat() => ToolTip.Wrap(Latch(facts.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, props.Verbs.CycleRepeat, facts.CanTransport, facts.RepeatOn), Loc.Get(Strings.Player.Repeat));
+        public Element Repeat() => ToolTip.Wrap(Latch(facts.RepeatOne ? Icons.RepeatOne : Icons.RepeatAll, props.Verbs.CycleRepeat, facts.CanTransport && facts.RepeatLock is null, facts.RepeatOn),
+            facts.RepeatLock ?? Loc.Get(Strings.Player.Repeat));
 
         public Element Previous() => ToolTip.Wrap(Glyph(Icons.Previous, props.Verbs.Previous, facts.PrevEnabled, Ink.Ink), Loc.Get(Strings.Player.Previous));
 
@@ -475,6 +479,22 @@ internal static class ZuneStageTransport
             : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
 
         public Element Device() => Embed.Comp(new ZuneStageDevice.Props(props, size.DeviceH, size.SourceSize, size.SourceLine), static () => new ZuneStageDevice());
+
+        /// <summary>"let dj pick" (AI DJ) while DJ plays here, else null: a word in the command case at a full target, lit in the DJ's icon colour
+        /// (<c>narration.jump.icon.color</c>; the surface's accent text when none), fading in and out with the swap fade.</summary>
+        public BoxEl? DjPick()
+        {
+            if (facts.Dj is not { } dj) return null;
+            ColorF ink = !dj.CanPick ? Ink.InkTertiary : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : set.Text;
+            return new BoxEl
+            {
+                Key = "stage:plate:dj-pick", Height = size.Box, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(G.DevicePadX, 0f, G.DevicePadX, 0f), Enter = ZuneMotion.SwapFade, Exit = ZuneMotion.SwapFade,
+                Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = dj.CanPick,
+                Cursor = dj.CanPick ? CursorId.Hand : (CursorId?)null, OnClick = dj.CanPick ? dj.Jump : null,
+                Children = [ToolTip.Wrap(new TextEl(dj.Pick) { Size = size.WordSize, LineHeight = size.WordLine, Color = ink, HoverColor = dj.CanPick ? Ink.Ink : ink, Case = R.Case.For(LabelKind.Command), MaxLines = 1 }, dj.PickTip)],
+            };
+        }
 
         /// <summary>A word action at the foot of the Compact stack (the face's word, the layout's word): the secondary ink, a full target.</summary>
         public Element Word(string text, Action onClick, string key) => new BoxEl

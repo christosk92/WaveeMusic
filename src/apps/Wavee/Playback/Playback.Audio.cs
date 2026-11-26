@@ -632,6 +632,13 @@ public static partial class Playback
 
         static int EffectiveFadeMs => EffectiveFadeMsFor(s_crossfadeEnabled, s_crossfadeMs);
 
+        /// <summary>The boundary at hand touches an AI DJ narration clip (the playing voice or the prepared one is a <c>wavee:tts:</c> clip):
+        /// it is joined gapless, never crossfaded.</summary>
+        static bool NarrationBoundary()
+        {
+            lock (s_gate) return s_id.Provider == EntityProvider.Tts || s_prepId.Provider == EntityProvider.Tts || s_prepBuildingId.Provider == EntityProvider.Tts;
+        }
+
         /// <summary>The crossfade as the pump will actually apply it: 0 means gapless.</summary>
         public static int CrossfadeMs => EffectiveFadeMs;
 
@@ -1103,7 +1110,9 @@ public static partial class Playback
             // A real load that will play hands the outgoing stream over (DisposeSessionAsync): its next open adopts it. A fake one
             // renders into its own silent session, and a paused one (a paused restore or reload) would only stop the adopted stream
             // again, so both stop the outgoing stream as before.
-            bool fake = id.Provider == EntityProvider.Fake || Platform.Args.Fake;
+            // An AI DJ narration clip (SourceRoute.Tts) is real bytes even under --fake: the fake TTS service served them, so they decode; so
+            // is a DJ fixture track (Playback.Audio.FakeTracks.cs), so its talk-over and radio joins run headless.
+            bool fake = id.Provider == EntityProvider.Fake || (Platform.Args.Fake && !FakeHasBytes(id));
             bool play;
             lock (s_gate) play = s_playIntent;
             await DisposeSessionAsync(forLoad: true, handOver: !fake && play).ConfigureAwait(false);
@@ -1255,7 +1264,9 @@ public static partial class Playback
                 s_activeStartMs = 0;
                 s_activeDurMs = opened.DurationMs;
                 s_crossfadeInFlight = false;
+                s_retireAtFrame = 0;
                 s_joinPending = false;
+                DropMixJoinLocked();
                 s_activeJoinFrame = 0;
                 s_clockStale = false;                       // the new session owns the clock from here
                 if (pcm is not null)
@@ -1470,8 +1481,9 @@ public static partial class Playback
                 s_prepId = default;
                 s_recovering = false;
                 s_joinPending = false;
-                DropMixJoinLocked();                        // #48: a mix join pending at a load goes with the session, its state too
+                DropMixJoinLocked(session?.SampleClock ?? -1);   // #48: a mix join pending at a load goes with the session, its state too
                 s_crossfadeInFlight = false;
+                s_retireAtFrame = 0;
                 s_prepOverlap = false;
                 s_activePrimaryId = 0;
                 s_activeJoinFrame = 0;
@@ -2980,6 +2992,9 @@ public static partial class Playback
             float[] _src = [];
             float[] _pull = [];        // NLayer speaks float[] only; ONE buffer, never one per block (P8)
             int _hold, _srcChannels;
+            // The source rate, read once at open: on a forward-only stream NLayer drops each frame it has decoded, so at the stream's
+            // end it holds none and its own SampleRate throws (a narration clip read while it downloads reaches that end).
+            int _srcRate;
 
             readonly PullSamples _pullFn;
 
@@ -3012,6 +3027,7 @@ public static partial class Playback
                     _file = new NLayer.MpegFile(stream);
                     _srcChannels = Math.Max(1, _file.Channels);
                     int rate = _file.SampleRate > 0 ? _file.SampleRate : target.SampleRate;
+                    _srcRate = rate;
                     _resampler = rate != target.SampleRate ? new PolyphaseResampler(rate, target.SampleRate, target.Channels) : null;
                     _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
                     // NLayer's Length is what ReadSamples delivers, trimmed already (a counted frame total: the Xing frame count,
@@ -3058,7 +3074,7 @@ public static partial class Playback
                 try { n = _file.ReadSamples(_pull, 0, into.Length); } catch { return 0; }
                 // NLayer reads its Stream inside this call, so the MP3 figure includes the byte seam's waits — an honest
                 // floor for the decoder, not a pure CPU number like the Vorbis and FLAC ones.
-                RecordDecode(DecodeMp3, n > 0 ? n / _srcChannels : 0, _file.SampleRate,
+                RecordDecode(DecodeMp3, n > 0 ? n / _srcChannels : 0, _srcRate,
                     System.Diagnostics.Stopwatch.GetTimestamp() - t0);
                 if (n > 0) _pull.AsSpan(0, n).CopyTo(into);
                 return n;
@@ -3246,6 +3262,8 @@ public static partial class Playback
                 bool silent, activeExact;
                 lock (s_gate) { session = s_session; backend = s_backend; activeKind = s_activeKind; silent = s_silent; activeExact = s_opened.DurationExact; }
                 if (session is null || backend is null || silent || token.IsCancellationRequested) return;   // nothing to hand off from
+                // Under --fake only a narration clip has bytes (a clip playing before a demo track): the track loads silently at the boundary.
+                if (id.Provider == EntityProvider.Fake || (Platform.Args.Fake && !FakeHasBytes(id))) return;
 
                 // `prepared`: the next ring is sized for the hand-off out of the shared read-ahead budget (Vorbis plan §5.3).
                 bytes = Open(id, token, out Opened opened, out Fault fault, prepared: true);
@@ -3394,7 +3412,9 @@ public static partial class Playback
         {
             if (sess.VoiceLengthIsExact) return sess.ExactVoiceEndFrame;
             IAudioDecoder? decoder;
-            lock (s_gate) decoder = s_activeDecoder;
+            long ttsFrames;
+            lock (s_gate) { decoder = s_activeDecoder; ttsFrames = TtsLateFramesLocked(); }
+            if (ttsFrames > 0) return ttsFrames;   // a narration clip that opened while it downloaded (Playback.Audio.Tts.cs)
             return decoder is VorbisAudioDecoder vorbis ? vorbis.LateExactFrames(sess.Format.SampleRate) : -1;
         }
 
@@ -3435,15 +3455,17 @@ public static partial class Playback
                 s_activeDurMs = s_joinDurMs;
                 s_id = s_joinId;
                 s_activeKind = s_joinKind;
-                // #48 Mix: a mix join announces when A is over, with B already InStart + OutDuration in (0 for gapless and a fade).
-                joinedAtMs = AnnouncedMixLocked();
+                // #48 Mix: a mix join announces when A is over, with B already InStart + what it covered of itself over A's window (0
+                // for gapless and a fade); an AI DJ join that announces when B starts, with B at its InStart (−1: not a mix).
+                long mixAtMs = AnnouncedMixLocked(sess.SampleClock);
+                joinedAtMs = Math.Max(0, mixAtMs);
                 // The playhead (raw − s_activeStartMs) starts where B already is: InStart + what B covered over A's window, plus how
                 // late this tick runs past the join frame. A gapless join keeps its start at the announce, as before. A beatmatched B
                 // (#48 E4) covers its own media at its rate plan's pace, so the lateness and B's end are taken along that plan.
                 int mixRate = Math.Max(1, sess.Format.SampleRate);
                 var bRate = sess.VoiceRatePlanOf(s_joinVoiceId);
                 long lateFrames = Math.Max(0, sess.SampleClock - s_joinFrame);
-                if (joinedAtMs > 0)
+                if (mixAtMs >= 0)
                     s_activeStartMs = rawPos - joinedAtMs - (bRate is null ? lateFrames * 1000 / mixRate
                         : (long)(bRate.SourceFramesBetween(s_joinFrame, s_joinFrame + lateFrames) * 1000 / mixRate));
                 long leftFrames = GaplessJoinClock.MsToFrames(Math.Max(0, s_joinDurMs - joinedAtMs), mixRate);
@@ -3990,9 +4012,13 @@ public static partial class Playback
                 : silent || p is null ? sess.PlayedFrames * 1000L / Math.Max(1, sess.Format.SampleRate)
                 : (long)p.Position.Peek().TotalMilliseconds;
             long pos = ActivePositionMs();
-            int fadeMs = MixBaseFadeMs(EffectiveFadeMs);       // #48: 0 for a Spotify "no transition" pair (Playback.Audio.Mix.cs)
+            // #48: 0 for a Spotify "no transition" pair (Playback.Audio.Mix.cs). No crossfade into or out of an AI DJ narration clip,
+            // whatever the setting: a boundary the talk-over joins (plan-dj D3, the Mix join: MixEndgame and TickMix own it) overlaps by its
+            // own curves; one it cannot (a voice into a voice, a clip whose length came too late) is gapless.
+            int fadeMs = NarrationBoundary() ? 0 : MixBaseFadeMs(EffectiveFadeMs);
 
             DrainXruns(sess, pos, state);
+            if (!silent) LearnTtsLength(sess);              // a streamed narration clip's length, once its body ended (Playback.Audio.Tts.cs)
 
             if (!s_errorReported && !silent && p?.Error.Peek() is { } err) { PostFault(MapError(err), epoch); return; }
 
@@ -4066,10 +4092,11 @@ public static partial class Playback
                 if (state == PlaybackState.Ended) AbandonPendingJoin(sess, "ended-before-join");
                 else if (sess.SampleClock >= s_joinFrame) { AnnounceGaplessJoin(sess, rawPos); pos = ActivePositionMs(); }
             }
-            else if (s_crossfadeInFlight && rawPos - s_activeStartMs >= fadeMs)
+            else if (s_crossfadeInFlight && rawPos - s_activeStartMs >= fadeMs && sess.SampleClock >= s_retireAtFrame)
             {
+                // (An AI DJ join announced when B started: A plays on under B to its window's end, so its bytes close only then.)
                 IMediaByteSource? retiring;
-                lock (s_gate) { s_crossfadeInFlight = false; retiring = s_retiringBytes; s_retiringBytes = null; }
+                lock (s_gate) { s_crossfadeInFlight = false; retiring = s_retiringBytes; s_retiringBytes = null; s_djTail = null; }
                 if (retiring is not null) { try { retiring.Close(); } catch { } }
             }
 
@@ -4518,6 +4545,8 @@ public static partial class Playback
             Silent,
             /// <summary>Not playable.</summary>
             None,
+            /// <summary>An AI DJ narration clip, cached or still downloading (<c>Spotify.DjTts</c>, Playback.Audio.Tts.cs).</summary>
+            Tts,
         }
 
         /// <inheritdoc cref="SourceRoute"/>
@@ -4536,6 +4565,7 @@ public static partial class Playback
             EntityProvider.Local => SourceRoute.Local,
             EntityProvider.Module => SourceRoute.Module,
             EntityProvider.Fake => SourceRoute.Silent,
+            EntityProvider.Tts => SourceRoute.Tts,
             _ => SourceRoute.None,
         };
 
@@ -4548,6 +4578,7 @@ public static partial class Playback
         {
             opened = default;
             fault = Fault.None;
+            if (Platform.Args.Fake && id.Provider == EntityProvider.Spotify && FakeTrackSource(id, out opened) is { } fakeTrack) return fakeTrack;
             switch (RouteOf(id))
             {
                 case SourceRoute.Spotify:
@@ -4567,6 +4598,8 @@ public static partial class Playback
                 }
                 case SourceRoute.Module:
                     return ModuleSource(id, ct, out opened, out fault);
+                case SourceRoute.Tts:
+                    return TtsSource(id, out opened, out fault);
                 case SourceRoute.Silent:
                     // ch 31 GAP 6: the demo catalog has no bytes at all. The pump substitutes the silent sink and the
                     // ticker advances position off the frame clock — ten surfaces light up with no network.

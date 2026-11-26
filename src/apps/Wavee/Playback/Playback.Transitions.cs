@@ -36,7 +36,7 @@ using System.Globalization;
 using FluentGpu.Foundation;
 
 using RemoteCmd = Wavee.Spotify.Decode.RemoteCmd;
-using VideoSignal = Wavee.Spotify.Decode.VideoSignal;
+using PlayerSignal = Wavee.Spotify.Decode.PlayerSignal;
 using RepeatMode = Wavee.Spotify.Decode.RepeatMode;
 
 namespace Wavee;
@@ -104,10 +104,12 @@ public static partial class Playback
     /// up), when the document carried it; <c>null</c> for a point the reducer's state produced (<see cref="Of"/>) or a
     /// document written before rows were persisted — the HOST attaches rows, and <see cref="CursorIndex"/> indexes
     /// THEM when they are present. The array compares by reference, so a persisted point is compared through the
-    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para></summary>
+    /// document's shape (<c>Shell.SessionDeck.Same</c>), never through record equality.</para>
+    /// <para><paramref name="ContextUrl"/> is the lexicon url a DJ deck plays from (plan-dj D4; null for every other context): the
+    /// restore resolves the session from it before the list's own attributes are read again.</para></summary>
     public readonly record struct RestorePoint(
         EntityId Track, EntityId Context, int CursorIndex, int PositionMs, int DurationMs, bool Shuffle, RepeatMode Repeat,
-        RestoreRow[]? Rows = null)
+        RestoreRow[]? Rows = null, string? ContextUrl = null)
     {
         public bool IsEmpty => Track.IsEmpty;
         /// <summary>The document carried the queue's rows, not just the deck.</summary>
@@ -115,10 +117,21 @@ public static partial class Playback
 
         /// <summary>The point a state persists. Empty unless the deck is OURS to restore: a foreign device's mirrored
         /// row (or the one it left behind) is not this device's session and must not come back as one.</summary>
+        /// <para>An AI DJ narration on the deck is never the point (its <c>wavee:tts:</c> clip is this session's): the point is the track
+        /// it belongs to, from its start, as Previous would land (<see cref="Dj.NarrationSkipTarget"/>); none when that row is gone.</para>
         public static RestorePoint Of(in State s, long nowMs)
-            => !s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)
-                ? default
-                : new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, s.Shuffle, s.Repeat);
+        {
+            if (!s.HasCurrent || !s.CurrentId.IsPlayable || !Ownership.ShowsLocalNowPlaying(in s.Own, hasLocalSession: true)) return default;
+            bool shuffle = s.Locks.Holding ? s.Locks.HeldShuffle : s.Shuffle;   // the user's own modes
+            RepeatMode repeat = s.Locks.Holding ? s.Locks.HeldRepeat : s.Repeat;
+            if (!s.ClipCurrent) return new(s.CurrentId, s.Context, s.Cursor.Index, s.Position(nowMs), s.DurationMs, shuffle, repeat);
+            int track = Dj.NarrationSkipTarget(Queue.Rows, s.Cursor.Index, forward: false);
+            EntityRef row = track >= 0 ? Queue.RefAt(track) : default;
+            if (row.IsNone || !row.Id.IsPlayable || Dj.IsNarrationId(row.Id)) return default;
+            int duration = row.Kind == EntityKind.Track && Entities.Current is { } scope && (uint)row.Slot < (uint)scope.Tracks.Count
+                ? new Track(row.Slot).DurationMs : 0;
+            return new(row.Id, s.Context, track, 0, duration, shuffle, repeat);
+        }
     }
 
     // ── 3. the inbound load planner (G-071 host half, G-070) ───────────────────────────────────────────────────────
@@ -1130,6 +1143,80 @@ public static partial class Playback
         fx.AutoplayContext = s.Context;
     }
 
+    /// <summary>"Let DJ pick" (AI DJ, plan-dj §1.8, §2.6): the rest of the playing segment is skipped (its rows stay behind the cursor:
+    /// history, as a controller's named skip leaves them) and the next segment's first row, its <c>dj.jump_target</c>
+    /// (<see cref="Dj.NextJumpTarget"/>), plays. Then one page is fetched, as the official client fetches one after every jump (unless
+    /// the advance's own refill already asked for it). Refused, and the page asked for, while no later segment is loaded: the press
+    /// that follows the page lands. Only a deck this device plays (a remote DJ player's jump is a Connect signal, D4).
+    /// <para>The voice: the host laid the target's <c>narration.jump</c> clip right before it (<see cref="LayJumpClip"/>), and the deck lands on
+    /// that clip; <see cref="Effects.DjJump"/> still names the target. The talk-over into it is D3's.</para></summary>
+    static void DoDjJump(ref State s, in Input i, ref Effects fx)
+    {
+        // Another device plays a DJ (its cluster's locks say dj-disallow): "Let DJ pick" is the Connect signal `jump` to it (plan-dj §1.8).
+        if (s.Own.Kind == Owner.Foreign && s.HasCurrent && s.LiveLockReason == LockReason.Dj)
+        {
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)PlayerSignal.Jump, false);
+            return;
+        }
+        if (!s.RoutesLocal || !s.HasCurrent || Dj.Of(s.Context) is null) { fx.Refused = Refusal.NoJumpTarget; return; }
+        int target = Dj.NextJumpTarget(Queue.Rows, s.Cursor.Index);
+        if (target < 0)
+        {
+            fx.Refused = Refusal.NoJumpTarget;
+            if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+            return;
+        }
+        ulong targetItem = Queue.Rows[target].ItemId;
+        // The target's jump clip, laid right before it by the host (Playback.LayJumpClip), plays first; the target follows it (§1.8).
+        int land = target > 0 && Dj.NarrationOf(Queue.Rows[target - 1].ItemId) is { Slot: Dj.Slot.Jump } clip && clip.BelongsTo == targetItem
+            ? target - 1 : target;
+        Advance(ref s, in i, ref fx, forward: true, PlayReason.ForwardButton, jumpTo: land);
+        if (s.Cursor.Index != land) return;                // the walk refused it (a restriction) or stepped past a dead target
+        if (s.MorePages && s.Autoplay == AutoplayPhase.None) { s.Autoplay = AutoplayPhase.Requested; fx.Page = true; fx.PageContext = s.Context; }
+        fx.DjJump = true;
+        fx.DjJumpTarget = targetItem;
+    }
+
+    /// <summary>The context about to play states its own toggle restrictions (AI DJ, plan-dj §2.5; <see cref="State.Locks"/>). Locks
+    /// that forbid shuffle or a repeat HOLD the user's own shuffle and repeat (once: a second locked context keeps the first hold) and
+    /// turn them off; a context that forbids nothing gives them back (<see cref="ReleaseLocks"/>). The host lays the queue in the order
+    /// this leaves (<c>StartContext</c>), so no reorder follows.</summary>
+    static void DoContextLocks(ref State s, in Input i, ref Effects fx)
+    {
+        var locks = (ToggleLock)(i.IntArg & 0xFF);
+        if (locks == ToggleLock.None) { if (ReleaseLocks(ref s)) Announce(ref s, ref fx, PublishReason.PlayerStateChanged); return; }
+        if (!s.Locks.Holding)
+        {
+            s.Locks.Holding = true;
+            s.Locks.HeldShuffle = s.Shuffle;
+            s.Locks.HeldRepeat = s.Repeat;
+        }
+        s.Locks.Context = i.Context;
+        s.Locks.Bits = locks;
+        s.Locks.Reason = (LockReason)((i.IntArg >> 8) & 0xFF);
+        if ((locks & ToggleLock.Shuffle) != 0) s.Shuffle = false;
+        if ((s.Repeat == RepeatMode.Context && (locks & ToggleLock.RepeatContext) != 0)
+            || (s.Repeat == RepeatMode.Track && (locks & ToggleLock.RepeatTrack) != 0)) s.Repeat = RepeatMode.Off;
+        Bump(ref s);
+        fx.Snapshot = true;
+    }
+
+    /// <summary>The playing context's restrictions end (another context plays): the user's own shuffle and repeat, held while they
+    /// applied, come back. True when anything was held.</summary>
+    static bool ReleaseLocks(ref State s)
+    {
+        if (!s.Locks.Holding && s.Locks.Bits == ToggleLock.None) return false;
+        bool held = s.Locks.Holding;
+        if (held)
+        {
+            s.Shuffle = s.Locks.HeldShuffle;
+            s.Repeat = s.Locks.HeldRepeat;
+        }
+        s.Locks = default;
+        Bump(ref s);
+        return held;
+    }
+
     /// <summary>A new context on the deck: every "more rows" fact belongs to the old one.</summary>
     static void ResetRefill(ref State s)
     {
@@ -1176,6 +1263,7 @@ public static partial class Playback
         if (!i.Cursor.IsNone && Entities.Current is not null && Queue.RefAt(in i.Cursor) == s.Current) s.Cursor = i.Cursor;
         bool waiting = s.Autoplay == AutoplayPhase.Waiting;
         ResetRefill(ref s);
+        if (!i.Context.Equals(s.Locks.Context)) ReleaseLocks(ref s);
         s.Context = i.Context;
         if (waiting) Advance(ref s, in i, ref fx, forward: true, PlayReason.TrackDone);
         else ArmNext(ref s, ref fx);
@@ -1298,6 +1386,7 @@ public static partial class Playback
         s.CurrentId = id;
         s.Kind = kind;
         s.Cursor = cursor;
+        s.TargetUnder = false;                            // AI DJ: a talk-over's target under the voice is that voice's fact
         s.Phase = paused ? Phase.Paused : Phase.Loading;
         s.Buffering = false;
         s.Error = Fault.None;
@@ -1406,7 +1495,7 @@ public static partial class Playback
         {
             if (s.Own.Kind != Owner.Foreign || !explicitSwitch || wanted == (s.Kind == PlayableKind.Video)) return;
             if (wanted && !s.Video.HasVideo) { fx.Refused = Refusal.NoVideo; return; }
-            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? VideoSignal.ToVideo : VideoSignal.ToAudio), false);
+            Forward(ref s, RemoteCmd.Signal, ref fx, (long)(wanted ? PlayerSignal.ToVideo : PlayerSignal.ToAudio), false);
             return;
         }
         // On video already and still wanted: nothing to re-decide (a row whose association flag has not landed would read audio).

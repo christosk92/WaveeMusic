@@ -41,4 +41,39 @@ public static class RhythmCards
     /// <summary>A card's node key in a rhythm template: its uri, or a blank seed card's own code (blanks share the empty uri). A rhythm template draws
     /// its zone's every card, a blank one too: a section whose answer is on its way is its template over blank cards, derived flat.</summary>
     public static string KeyOf(in HomeCard c) => c.IsBlank ? "blank" + c.DedupeKey.ToString(System.Globalization.CultureInfo.InvariantCulture) : c.Uri;
+
+    // ── the DJ card (AI DJ, plan-dj §1.1, §2.8) ─────────────────────────────────────────────────────────────────────────────
+    //
+    // The DJ's Home card states its own look (`home.card.*`): a background colour, three "jellyfish" colours (the official card animates a
+    // jellyfish in them over the background) and the colour of its words. A theme's lead draws the DJ as that colour field with the card's words
+    // over it, in its own type and arrangement; these are only the colours.
+
+    /// <summary>Does the card draw as the DJ (the DJ card, with the colours its answer stated)?</summary>
+    public static bool DrawsDj(in HomeCard c) => c.IsDj && !c.DjColors.IsEmpty;
+
+    /// <summary>The DJ field: the jellyfish's glow over the DJ's background colour (the official card's jellyfish, still): its top colour at the
+    /// <paramref name="shape"/>'s origin, its middle colour fainter, the background at the far end. Each colour is laid over the background by its
+    /// own alpha and at most <see cref="DjGlow"/> of the way (the stops are opaque: what shows through is the DJ's blue, never the page's).</summary>
+    public static GradientSpec DjWash(DjCardColors k, GradientShape shape, float angleDeg)
+    {
+        ColorF back = DjBack(k);
+        return new GradientSpec(shape, angleDeg,
+            [new GradientStop(0f, Over(back, k.Top, DjGlow)), new GradientStop(0.5f, Over(back, k.Mid, DjGlow * 0.5f)), new GradientStop(1f, Over(back, k.Bottom, DjGlow * 0.25f))]);
+    }
+
+    /// <summary>How far the jellyfish colours reach over the background at their strongest.</summary>
+    const float DjGlow = 0.6f;
+
+    /// <summary>The DJ field's base colour (its background; the middle jellyfish colour when it stated none).</summary>
+    public static ColorF DjBack(DjCardColors k) => ColorScience.ToColor(k.Background != 0 ? k.Background | 0xFF000000u : k.Mid | 0xFF000000u);
+
+    /// <summary>The colour of the DJ card's words: its stated text colour, else the base's own readable ink.</summary>
+    public static ColorF DjInk(DjCardColors k)
+    {
+        if (k.Text != 0) return ColorScience.ToColor(k.Text);
+        ColorF b = DjBack(k);
+        return 0.2126f * b.R + 0.7152f * b.G + 0.0722f * b.B < 0.5f ? ColorF.FromRgba(255, 255, 255) : ColorF.FromRgba(0, 0, 0);
+    }
+
+    static ColorF Over(ColorF back, uint argb, float reach) => argb == 0 ? back : ColorF.Lerp(back, ColorScience.ToColor(argb | 0xFF000000u), (argb >> 24) / 255f * reach);
 }

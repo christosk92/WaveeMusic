@@ -84,6 +84,7 @@ public static partial class Playback
     static void DrainConnect(long now)
     {
         FoldFakePush(now);                                 // `--fake`'s Connect stand-in answers a transfer as a push would (FakeConnect)
+        FoldInspectClusters(now);                          // the inspector's `dj do=cluster` (FakeConnect)
         StartResolved(now);
         while (true)
         {

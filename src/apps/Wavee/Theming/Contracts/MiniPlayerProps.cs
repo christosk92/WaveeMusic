@@ -103,6 +103,10 @@ public sealed record MiniPlayerProps
     public required Func<string> ArtistText { get; init; }
     /// <summary>The third line (album · year, or "Playing on …" when another device plays).</summary>
     public required Func<string> DetailText { get; init; }
+    /// <summary>AI DJ (plan-dj §2.8, "a caption line"): the DJ's words while it talks, "" otherwise. The title block's second line shows them
+    /// in place of the artist line (the same slot, so nothing moves); a bleed of the artist's name keeps the name. Reactive. Appended
+    /// (contract additive): a host that does not set it shows the artist line as before.</summary>
+    public Func<string> SpokenText { get; init; } = static () => "";
     /// <summary>Pick a face (the options panel).</summary>
     public required Action<int> SetFace { get; init; }
     /// <summary>Back to the full window (the mini player closes; the music never stops).</summary>

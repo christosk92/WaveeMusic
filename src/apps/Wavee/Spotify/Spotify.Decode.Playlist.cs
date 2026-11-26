@@ -161,12 +161,23 @@ public static partial class Spotify
 
             ReadOnlySpan<byte> format = new ProtoReader(attributes).Bytes(11);
             bool daylist = Is(format, "daylist"), chart = Is(format, "chart");
+            // DJ (plan-dj §1.1): a list read with attributes speaks for the lexicon pair, so a list that stopped being one clears it.
+            row.FlagsMask |= (uint)PlaylistFlags.YourDj;
             for (var a = new ProtoReader(attributes); a.Next();)
             {
                 if (a.Field != 12 || a.Wire != 2) { a.Skip(); continue; }
                 a.Message().Fields(1, 2, out var key, out var value);
                 if (key.IsEmpty || value.IsEmpty) continue;
-                if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
+                if (Is(key, "lexicon_set_type")) { if (Is(value, "your_dj")) row.Flags |= (uint)PlaylistFlags.YourDj; }
+                else if (Is(key, "lexicon_context_url")) row.LexiconUrl = s.AddText(value);
+                // The DJ card's words and colours (home.card.*), as the Home feed's DJ card carries them.
+                else if (Is(key, "home.card.dj.transcript_text")) row.DjTranscript = s.AddText(value);
+                else if (Is(key, "home.card.background_color")) row.DjColors = row.DjColors with { Background = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_top_color")) row.DjColors = row.DjColors with { Top = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_mid_color")) row.DjColors = row.DjColors with { Mid = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.jellyfish_bottom_color")) row.DjColors = row.DjColors with { Bottom = DjCardColors.Argb(value) };
+                else if (Is(key, "home.card.text_color")) row.DjColors = row.DjColors with { Text = DjCardColors.Argb(value) };
+                else if (daylist && Is(key, "expires")) row.DaylistExpiresAt = InstantSeconds(value);
                 else if (daylist && Is(key, "created")) row.DaylistCreatedAt = InstantSeconds(value);
                 // The edition's words (the Home card's tags and "Based on" line), as the feed's daylist card carries them.
                 else if (daylist && Is(key, "localized_terms")) row.DaylistTerms = s.AddText(value);
@@ -177,6 +188,8 @@ public static partial class Spotify
                 else if (chart && Is(key, "last_updated")) row.ChartUpdatedAt = InstantSeconds(value);
                 else if (chart && Is(key, "rank_type")) row.ChartRankType = s.AddText(value);
             }
+            // DJ: the whole attribute map, for the context metadata a DJ play names (plan-dj §1.9, §2.7); a DJ list only.
+            if ((row.Flags & (uint)PlaylistFlags.YourDj) != 0) row.DjAttributes = DjAttributesJson(attributes, s);
 
             // Tuning: a 24-byte revision and at least one signal, or the playlist is not tunable (0.2.9 TuningOf).
             var tunings = s.PlaylistTuningOptions;

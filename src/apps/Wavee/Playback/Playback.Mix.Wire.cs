@@ -30,10 +30,21 @@ public static partial class Playback
         static MixWire? s_wire;
         static (int Plan, EntityId Context, uint Flags, bool Without, uint Queue, int Cursor, bool Shuffle, int Data, int Overrides, uint List) s_wireKey;
 
+        static MixWire? s_djWire;
+        static (int Plan, EntityId Context, uint Queue) s_djWireKey;
+
         /// <summary>The PUT's Mix half for the deck's context, rebuilt only when the plan, the context, its flags, the queue or the list's
-        /// mix data change. Null outside a mixed playlist. UI thread (the capture).</summary>
+        /// mix data change. Null outside a mixed playlist and outside an AI DJ seam that joins. UI thread (the capture).</summary>
         internal static MixWire? WireNow(in State s)
         {
+            if (Dj.Of(s.Context) is not null)
+            {
+                // AI DJ: the seam's fade keys (Dj.WireOf: A's on the current item, B's on the row it joins), rebuilt when the plan moved.
+                var djKey = (Changed.Peek(), s.Context, Queue.Version);
+                if (djKey == s_djWireKey) return s_djWire;
+                s_djWireKey = djKey;
+                return s_djWire = Dj.WireOf(in s_djSeam);
+            }
             if (s.Context.Kind != EntityKind.Playlist || !Entities.Current.Playlists.TryGetSlot(s.Context, out int slot)) return null;
             var p = new global::Wavee.Playlist(slot);
             bool without = MixOptOut.Is(p);
@@ -114,7 +125,7 @@ public static partial class Playback
         public static bool InOverlap(in State s, long frameNowMs)
         {
             var t = Current;
-            if (!t.Mix || CurrentNext.IsEmpty || !s.HasCurrent || Audio.MixRefusedFor(s.CurrentId)) return false;
+            if (!t.IsPlaylistMix || CurrentNext.IsEmpty || !s.HasCurrent || Audio.MixRefusedFor(s.CurrentId)) return false;
             long pos = s.Position(frameNowMs);
             return pos >= t.OutStartMs && pos < t.AudibleEndMs;
         }
@@ -125,7 +136,8 @@ public static partial class Playback
         internal static Snapshot OnWire(in Snapshot snap, in State s, long frameNowMs)
         {
             var t = Current;
-            if (!snap.IsActive || !snap.HasTrack || !t.Mix || snap.Wire.Mix is not { } mix || Audio.MixRefusedFor(s.CurrentId)
+            // A playlist join only: an AI DJ join keeps its own current item (the reducer's narration semantics, Playback.Dj.TalkOver.cs).
+            if (!snap.IsActive || !snap.HasTrack || !t.IsPlaylistMix || snap.Wire.Mix is not { } mix || Audio.MixRefusedFor(s.CurrentId)
                 || !snap.Track.Equals(s.CurrentId)) return snap;
             long pos = s.Position(frameNowMs);
             var window = snap.Wire.Window;

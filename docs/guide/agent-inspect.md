@@ -986,6 +986,118 @@ decode path=C:/music/a.wav out=C:/scratch/a.f32
 decode path=C:/music/a.aiff out=C:/scratch/a.seek.f32 seekMs=1234
 ```
 
+### `dj {do?, uri?, pages?, ms?, until?, file?, track?, on?, try?}`
+
+AI DJ (plan `docs/plans/wavee/dj-implementation.md`). Plain `dj` (`do=status`) reads the fake DJ list (`spotify:playlist:pldj`),
+the lexicon session playing it (pages, segments, the lookahead), the DJ book per queue row, the context's toggle locks, and
+`narration` (D2): `current` (the deck's item, its position and length as the reducer holds them, `narrating`, `canSeek`, the
+`published` position and duration the surfaces see: 0 while a narration plays, and the plain-text `caption`), `rows` (each
+narration row the planner laid: `slot` welcome / intro / outro, the track it `belongsTo`, its `mediaUri` and `provider` as the
+wire names them, the clip `key`, the clip's state, length and bytes, when and why it was asked for, `dropped`), `first` (the deck
+and the next two rows), `nextJumpTarget`, `made` (every narration this session, the prefetched jump clips included), `prefetch`
+(each ask: frame ms, `why` = `resolve` / `item+5s` / `reached`, slot, segment, key, the clip before the ask), `playLog`
+and `playLogNarrations` (must stay 0), and `timeline` (each deck item: start and end on the frame clock, its length).
+`do=play` starts the list as a click does; `do=answers` decodes the fake lexicon answers; `do=expire` ends the session's
+validity. `do=run ms=<n>` plays on in REAL time (16 ms frames paced to the wall clock, so a clip's download and its playback
+keep their live proportions) for `n` ms of the frame clock, `until=change` stopping when the deck moves. `do=transfer` asks a
+transfer to the first other Connect device (`mount connect=nearby`); during a narration it is refused. In the fake service the
+welcome is 3.4 s (whole), page 1's intro the 24.5 s streamed clip (its length is learned when its body ends and pushed),
+page 2's jump 4.9 s, page 2's outro the broken fixture (dropped) and page 3's the flaky one. A track's end is
+`transport do=end`; the controls during a clip are `transport do=next|prev|seek|repeat` and `dj do=transfer`, each answered in
+`status log="intent refused"` (`Narration`). Headless, the silent endpoint holds 2 s ahead of the played count, so a boundary
+announced on the render clock can read up to ~2 s off a clip's length on the frame clock; the lengths themselves are exact.
+
+Talk-over and radio automix (D3, D3b, `Playback/Playback.Dj.TalkOver.cs`): `narration.seams` plans every seam from the deck on
+(`kind` `TalkOver` a voice over its track, `Outro` a track ducked under the voice after it, `Sequential` a voice into a voice,
+`Radio` two DJ tracks; the timing, the cues it read, and its `events` on A's clock: `trackStarts` / `trackStartsAtPosition`,
+`duckStart` / `duckLands` / `voiceStarts`, `fadeOutStarts` / `bStarts` / `bFadeInEnds`, `bCurrentAt` and `bPositionWhenCurrent`;
+`refused` with the reason, `NoData` while a streamed voice has no length) and `narration.joins` lists what the pump scheduled (A's
+position from the mixer frames at the window, at B's start, at the announce and at the window's end; `heard`, `announced`,
+`cancelled`, `lateShifted`, `overlapMs` and `cutAtFrame`, and `reportedA` / `reportedB` once the play report took the overlap). `do=seams samples=250 n=12` adds each side's curve JSON and its gain sampled over its window.
+`current.narrating` is "the DJ talks" (the clip is current and its track has not started under it: the f17 `narration`
+restrictions, the device picker's and a transfer's lock), `clipCurrent` the clip is the deck (no seek, no progress, no heart, the
+caption shows), `targetUnder` the track sounds under the voice. Under
+`--fake` the tracks of the first six fake DJ pages carry kind 28 cues covering every rule and play as silent MP3 bytes while a DJ
+session plays (`Playback/Playback.Audio.FakeTracks.cs`), so the joins run through the real pump; reach a seam with
+`transport do=next` and `transport do=seek ms=` (a track's window starts about 5 s before its end cue), then `dj do=run until=change`.
+
+```text
+dj do=play
+dj do=run ms=6000 until=change     # welcome -> page 1's intro (24.5 s; its track has a human cue at 8932: starts 17.2 s in)
+dj do=run ms=18000                 # targetUnder: narrating false, the clip still current; transport do=putstate lifts 3/9/13
+transport do=next                  # one skip ends the voice and its started track
+dj do=seams samples=250 n=7        # the radio seams of page 1, its outro, the next intro over its track
+```
+
+`current.restorePoint` is what the session document would keep for the next launch (during a clip: the track it belongs to,
+from 0). `do=jump` presses "Let DJ pick" (D5): the rest of the segment goes to history, the user's queued rows wait behind the
+target, and the deck lands on the target's prefetched jump clip right before it (`first` = `jump:<segment>`, the target, ...);
+`do=starve on=true|false` makes the fake service answer no more pages. The Connect half (D4,
+`Screens/Diagnostics.Inspect.DjConnect.cs`): `do=envelope uri=` (the play body a start sends another device), `do=cluster file=`
+(ClusterUpdates as dealer pushes, then the mirror; a foreign DJ shows "Let DJ pick", which sends the `jump` signal),
+`do=transfer file=` (a controller's transfer body; a current item `spotify:media:<id>` lands on that track from 0, the welcome's on
+the session's first row), `do=restore track=` (the launch restore), `do=bodies`, and `do=signal` (a made-up inbound
+`{"endpoint":"signal","signal_id":"jump"}` routed as the dealer glue routes it, plus the `outbound` body Wavee sends as a
+controller). `transport do=putstate` during a clip shows the narration item as the official player sends it (f7 `spotify:media:`,
+`narration/<slot>`, no f6, f17 3/9/13 `narration`, `suppress_progress`, `media.manifest`); f33 carries `jump` while DJ plays.
+`do=cluster`'s mirror also reads `surfaces` (D5b): the deck's row (an owner's `spotify:media:` narration item shows as a staged
+`wavee:tts:remote:<id>` row: "Up next", the DJ's name, no fetch), `caption` (the words every caption lane shows), the bar's DJ facts
+(`djSegment` from the playing row's `station_subtitle`, a narration's from its target row; `djCanJump` = the owner's signals offer `jump`,
+or with no signals stated a later segment's `dj.jump_target` is listed; `djPickTip` says why when it is off) and `progressShown`.
+
+`do=telemetry` (D5b, plan §2.9): `on=true` arms a tap on every event the play report hands `Spotify.Telemetry.Enqueue` (nothing is sent
+under `--fake`), then `dj do=telemetry` lists the tapped `RawCoreStream` and `RawCoreStreamSegment` payloads decoded field by field
+(`all=true` adds every other event by name and size). A narration reports under its wire name (`spotify:media:<id>`, provider
+`narration/<slot>`, format `MP3 160 kbps`, its `dj~` decision id and attribution); a DJ track carries its `ssp~` decision id and
+attribution. The overlap fields come from the pump's joins (`narration.joins[].overlapMs`, the ms both sides sounded from the mixer
+frames): `msPlayedOverlapping` (16) and `msOverlappingSecondary` (67) on a narration (over its track, and over the ducked track of
+the outro join it is the B of: summed) and on both tracks of a radio seam, `msNarrationOverlapping` (46) on a track a voice talked
+over or ducked. A registration that closes while its join still sounds (a skip) counts up to the skip (`cutAtFrame`); side A of a join
+announced when B starts (a jump clip, an outro's track, a radio A) closes at that announce and reports the tail the pump scheduled.
+
+```text
+mount w=1440 h=960 theme=winui route=home
+transport do=clear                 # the fake boot's queued rows would play between the welcome and the intro
+dj do=play                         # welcome on the deck, the first intro and the first track after it
+dj do=run ms=6000 until=change     # welcome -> intro
+dj do=run ms=40000 until=change    # intro -> its track
+dj do=run ms=6000                  # the next segment's jump clip is prefetched 5 s into the item
+dj do=jump                         # the jump clip, then the target, then the user's queue
+dj do=signal                       # the same from a controller's `jump` signal
+dj do=telemetry                    # (after `dj do=telemetry on=true` before the play) the reports, decoded
+```
+
+### `djtts {do, fixture?, ssml?, manifest?, via?, key?, seconds?, n?, wait?, pace?, rate?, ms?, every?, disk?}`
+
+The AI DJ's text-to-speech client (`Spotify/Spotify.DjTts.cs`). The inspector is `--fake`, so the fulfil and the CDN are the in-process
+transports of `Spotify.DjTts.Fake.cs` (silent MPEG-1 Layer III clips of exact length); everything above the wire is the real code. No
+mount. Fixtures: `welcome` (3.4 s), `jump` (4.9 s), `intro` (24.5 s, a cache MISS streamed with no Content-Length over 5.3 s), `flaky`
+(the fulfil fails once), `broken` (fails twice: dropped).
+
+- `djtts fulfil fixture=welcome`: the body built from the narration keys (`body` hex, `fields`, `tail` against the spec's
+  `18 05 28 01 30 06 38 c4 d8 02`), what the transport received (`request`: verb, url, headers, `receivedEqualsSent`), the `status` and
+  `location`, `clientFollowsRedirects` (the live handler's setting) and `cdnRequestsDuringFulfil` / `followed`. `via=manifest` (or
+  `manifest=<base64>`) sends a `media.manifest`'s field 1.1.4 verbatim (built here in reverse field order, so it differs from `keysBody`).
+- `djtts ensure fixture=intro wait=8000`: `Ensure`, then up to `wait=` ms for the clip (and a spill pass) to settle: its state, `why`,
+  attempts, bytes, `contentLength` (−1 streamed), frames, `durationMs`, memory and disk, the CDN's `X-Cache`, first byte and done times;
+  `wasCached` says whether it was a hit. `seconds=200 n=9` makes distinct clips of that length (the 64 MB cap's proof). The twice-failing
+  `broken` logs `narration dropped why=` (`status log="narration dropped"`).
+- `djtts cache`: the counters (hits, misses, fulfils, retries, dropped, spills, reloads, evictions, disk adopts), memory against the cap,
+  the spill folder and its files, the fake wire's request counts (`cdnRequestsWithCredentials` must stay 0), every clip (least recently
+  used first).
+- `djtts play fixture=intro` (or `key=`): opens the clip through `SourceRoute.Tts` (a fixture is ensured first, so a MISS plays while it
+  downloads) and decodes it with the pump's `CreateDecoderFor`, paced at 1x (`pace=false`: as fast as the bytes land; `ms=` stops early):
+  `route`, `format`, `openedComplete` (seekable), `length` (`decodedFrames` against `expectedFrames` and the decoder's `exactFrames`),
+  `gain` (the decoder's folded factor against `NormalizationFactor` for the current setting), `timing` (`firstAudioMs`,
+  `bytesLandedAtFirstAudio`, `startedBeforeDownloadDone`, the position when the download ended) and the position `series`.
+- `djtts gain`: the narration's gain (−16 LUFS, −3 dBTP) under off, Quiet, Normal and Loud. `djtts reset disk=true` forgets the session.
+
+```text
+djtts fulfil fixture=welcome
+djtts ensure fixture=broken wait=5000
+djtts play fixture=intro every=2000
+```
+
 ### `hint {do, id?, blob?}` and `recent {clear?}`
 
 The in-app hints (settings rework phase 3: `Shell/Hints.cs`, the table of design 6.3, and the budget of 6.2) and Recently changed.
@@ -1460,6 +1572,7 @@ frame clock: frames are not real time, and the `ms` fields are the CPU cost of e
 | `every` | Emit every Nth row; the summary always covers every frame. `rows=false` leaves only the summary. |
 | `curves` | `curves=true`: per watched key its motion curve (`curves[{key, frames, x\|y\|w\|h\|opacity: {v[], spark}}]`, only the channels that moved) and `motionFindings[{key, channel, kind, frame, delta, before, after}]`: `step` (one frame moves over 2.5x both neighbours), `reversal` (it turns back within 2 frames: a spring's overshoot does on purpose), `stall` (a still frame between visible moves), `snap` (the whole change in one frame); `motionCounts`. |
 | `jump`, `snap` | Thresholds in DIP: 2 and 0.5. |
+| `realtime` | `true` paces the frames to the wall clock (16 ms each), so what runs on wall time keeps its proportions to the traced frames: the audio pump's announce of a join (a DJ voice ending into the track under it), a download. Off by default (frames run as fast as they render). |
 | `census` | `true` turns the host's render census on: a slow frame's row then carries `census`, the components that made it slow. Off by default (it costs frame time). |
 | `flights` | `true`: each row carries the connected navigation flights (a card's cover flying into its page's hero, and back) and the summary their take-off and hand-off (`flight`, below). Off by default. |
 | `wheel`, `wheelEvery`, `wheelCount`, `wheelKey`, `wheelX`, `wheelY` | Mouse-wheel input during the trace: notches (a number, or a list that cycles: `3,3,-6` or `[3,3,-6]`), one event every `wheelEvery` frames, `wheelCount` events, aimed at `wheelKey`, a point, or the traced scroller. |

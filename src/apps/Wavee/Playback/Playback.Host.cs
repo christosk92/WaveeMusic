@@ -178,8 +178,27 @@ public static partial class Playback
     public static readonly Signal<bool> VolumeFixed = new(false) { DebugName = "playback.volumeFixed" };
     public static readonly Signal<bool> Shuffle = new(false);
     public static readonly Signal<RepeatMode> Repeat = new(RepeatMode.Off);
+    /// <summary>The toggles the playing context forbids here and why (<see cref="State.LiveLocks"/>; the DJ forbids shuffle and repeat,
+    /// plan-dj §2.5): every shuffle and repeat button reads it and draws disabled, its tooltip saying why.</summary>
+    public static readonly Signal<LockFacts> LockedToggles = new(default) { DebugName = "playback.lockedToggles" };
+
+    /// <summary>The DJ playing here, as the surfaces draw it (<see cref="Dj.Facts"/>: "Let DJ pick", the segment line); default while no DJ
+    /// session is the deck's context on this device.</summary>
+    public static readonly Signal<Dj.Facts> DjNow = new(default) { DebugName = "playback.djNow" };
+
+    /// <summary>What <see cref="LockedToggles"/> states.</summary>
+    public readonly record struct LockFacts(ToggleLock Bits, LockReason Reason)
+    {
+        /// <summary>Shuffle may not be toggled.</summary>
+        public bool Shuffle => (Bits & ToggleLock.Shuffle) != 0;
+        /// <summary>Repeat may not be turned on (either repeat is forbidden: the button cycles through both).</summary>
+        public bool Repeat => (Bits & (ToggleLock.RepeatContext | ToggleLock.RepeatTrack)) != 0;
+    }
     /// <summary>The FOLDED enablement — restrictions, phase, error and (while live) the DVR window, decided once.</summary>
     public static readonly Signal<bool> CanSeek = new(false);
+    /// <summary>May playback move to another device (or here) right now? False while a foreign owner refuses a transfer (a DJ while it
+    /// talks, <see cref="State.TransferRestricted"/>): the device picker reads it and says why instead of offering the move.</summary>
+    public static readonly Signal<bool> CanTransfer = new(true) { DebugName = "playback.canTransfer" };
     public static readonly Signal<bool> CanSkipNext = new(false);
     public static readonly Signal<bool> CanSkipPrev = new(false);
     /// <summary>The context's own Next / Previous permission, NOT folded with the error state — what the player bar
@@ -615,6 +634,7 @@ public static partial class Playback
                     s_fx.Lap = false;
                     if (FollowsQueue(in s_state, Queue.RefAt(s_state.Cursor.Index)) && Queue.Lap(in s_state.Cursor)) WatchQueue(now);
                 }
+                PlanNarration(now);                        // AI DJ: the narration rows around the deck (Playback.Dj.Narration.cs)
                 FollowQueue(now);
                 ObserveVideoFacts(now);                    // the deck row's video facts, before the PUT this drain sends
                 Execute();
@@ -732,10 +752,16 @@ public static partial class Playback
     {
         Spotify.Decode.ClusterBuffer? buffer = item.Buffer;
         if (buffer is null) return;
-        ref readonly Spotify.Decode.ClusterDelta d = ref item.Delta;
+        FoldCluster(buffer, in item.Delta, now);
+    }
 
+    /// <summary><see cref="FoldCluster(in Spotify.Connect.Item, long)"/>'s body over a decoded cluster: the dealer's push, or the
+    /// inspector's (`dj do=cluster`, folded at the top of a drain as a push is). The caller returns the buffer.</summary>
+    static void FoldCluster(Spotify.Decode.ClusterBuffer buffer, in Spotify.Decode.ClusterDelta d, long now)
+    {
         ulong active = DeviceHash(buffer.Utf8(d.ActiveDeviceId));
         Devices.Update(buffer, in d, active);
+        Dj.NoteRemoteFace(buffer, in d);                    // AI DJ: an owner's narration item, staged as a row when the fold asks for it
         Spotify.Connect.NoteLikedCluster(buffer, in d);     // a cluster playing the account's Liked Songs playlist names it (1.2b)
 
         var frame = new ClusterFrame(d.Origin, d.PutMsgId, active, d.ServerTimestampMs, d.UpdateReason,
@@ -750,7 +776,9 @@ public static partial class Playback
             ContextOf(buffer.Utf8(d.ContextUri)),   // the owner's context: what a takeover adopts (A4); Liked folded (5.1)
             d.HasTrack && d.Track.IsVideo, (VideoSignals)d.VideoOffered, (VideoSignals)d.VideoDisallowed,
             d.HasTrack ? RemoteManifest(buffer.Utf8(d.Track.AssociatedVideoId), buffer.Utf8(d.Track.Uri)) : StringId.Empty,
-            d.ActiveVolumeFixed);
+            d.ActiveVolumeFixed,
+            // AI DJ (plan-dj §2.7): the owner's toggle locks and their reason, a transfer it refuses, a narration on its deck
+            Dj.LocksOf(buffer, in d, out LockReason lockReason), lockReason, d.NoTransfer, d.HasTrack && d.Track.Narration);
 
         StepOne(Input.Cluster(in frame, in remote, now));
         s_state.ActiveDeviceSlot = Devices.SlotOf(s_state.ActiveDevice);
@@ -762,11 +790,15 @@ public static partial class Playback
             CaptureForeignOrigin(buffer, in d, remote.Context);   // what a takeover publishes on as the owner
             NoteRemoteListCluster(remote.Context, buffer.Utf8(d.SessionId));   // a list it plays in Wavee's order (5.3)
             Mix.NoteRemote(buffer, in d, remote.Track);    // #48 M7: the owner's published transition and preview signals
+            Dj.NoteRemoteNarration(buffer, in d);                // AI DJ: its narration's caption, for the caption surfaces
+            Dj.NoteRemoteDj(buffer, in d);                       // AI DJ: its segment and whether "Let DJ pick" may be sent, for the bar
         }
         else if (s_state.Own.Kind != Owner.Foreign)
         {
             Mix.ForgetRemote();
             s_foreign.Clear();
+            Dj.NoteRemoteNarration(null, default);
+            Dj.NoteRemoteDj(null, default);
             ForgetRemoteList();
             if (s_state.Own.Kind == Owner.Us) s_contextWire = default;   // Nobody keeps the departed owner's snapshot, label included
         }
@@ -918,6 +950,8 @@ public static partial class Playback
         if (s_fx.Autoplay) RequestAutoplay(s_fx.AutoplayContext);
         if (s_fx.AutoplayPage) RequestAutoplayPage(s_fx.AutoplayPageContext);
         if (s_fx.Page) RequestPage(s_fx.PageContext);
+        if (s_fx.DjJump) Dj.Jumped(s_fx.DjJumpTarget);
+        if (s_fx.DjJumpAsked) DjJump("connect.signal");   // a controller's "Let DJ pick": the same press as the button's (posts its input)
         if (s_fx.VideoIntent) OnVideoIntent?.Invoke(s_fx.VideoIntentOn, s_fx.VideoIntentWhy);
         if (s_fx.SkippedUnavailable)
         {
@@ -1087,7 +1121,12 @@ public static partial class Playback
     {
         if (id.IsEmpty || Entities.Current is null) return;
         Table? table = Entities.TableFor(id.Kind);
-        if (table is null) return;
+        if (table is null)
+        {
+            // An owner's AI DJ narration item (spotify:media:<id>) has no kind a table answers: its staged row (Playback.Dj.Surfaces.cs).
+            if (id.Equals(s_state.CurrentId) && Dj.RemoteNarrationRow(id) is { IsNone: false } narration) s_state.Current = narration;
+            return;
+        }
         int slot = table.Slot(id);
         if (slot <= Table.None) return;
         // Re-point the deck slot whenever it does not yet name the identity that is on it — not only from IsNone: a
@@ -1226,11 +1265,12 @@ public static partial class Playback
         }
         if (s_fx.RemoteCmd == RemoteCmd.Signal)
         {
-            // The owner's audio ⇄ video switch (itsover.saz 772): RemoteArg carries the VideoSignal.
-            var signal = (Spotify.Decode.VideoSignal)s_fx.RemoteArg;
-            Log.Info("playback", "video signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
-            RunForward(RemoteVerb.Video, device, () => Answered(RemoteVerb.Video, device,
-                Spotify.Connect.Signal(target, signal, CancellationToken.None)));
+            // The owner's audio ⇄ video switch (itsover.saz 772), or "Let DJ pick" on its DJ (plan-dj §1.8): RemoteArg carries the
+            // PlayerSignal. A failed jump reads as a skip that did not go through.
+            var signal = (Spotify.Decode.PlayerSignal)s_fx.RemoteArg;
+            RemoteVerb signalVerb = signal == Spotify.Decode.PlayerSignal.Jump ? RemoteVerb.Skip : RemoteVerb.Video;
+            Log.Info("playback", "signal forwarded to the owner: " + Spotify.Decode.SignalId(signal));
+            RunForward(signalVerb, device, () => Answered(signalVerb, device, Spotify.Connect.Signal(target, signal, CancellationToken.None)));
             return;
         }
         // Shuffle and repeat (remote-play plan 3.2): ONE `set_options` to an owner that advertises capability 25 (all.saz 2044,
@@ -1331,8 +1371,15 @@ public static partial class Playback
         Buffering.Value = s_state.Buffering;
         Error.Value = s_state.Error;
         Recovery.Value = s_state.Recovery;
-        PositionMs.Value = s_state.Position(now);
-        DurationMs.Value = s_state.DurationMs;
+        // An AI DJ narration's progress is suppressed while its clip is current (plan-dj §1.8, `suppress_progress`): the surfaces show no
+        // times and no fill, also while its talk-over's track already plays under the voice. So is the owner's narration while another
+        // device's DJ talks (`suppress_progress` on its item; Dj.VoiceCurrent is the surfaces' read). `Narrating` is the narrower "the DJ
+        // talks" (its talk-over's track has not started yet): the move and Connect locks.
+        Narrating.Value = s_state.Narrating;
+        ClipCurrent.Value = s_state.ClipCurrent;
+        bool suppressed = s_state.ClipCurrent || s_state.RemoteNarrating;
+        PositionMs.Value = suppressed ? 0 : s_state.Position(now);
+        DurationMs.Value = suppressed ? 0 : s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
         Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
         HeardVolume.Value = Muted.Peek() ? 0f : s_state.SliderVolume;
@@ -1342,6 +1389,9 @@ public static partial class Playback
         ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
+        LockedToggles.Value = new LockFacts(s_state.LiveLocks, s_state.LiveLocks == ToggleLock.None ? LockReason.None : s_state.LiveLockReason);
+        CanTransfer.Value = !s_state.TransferRestricted;
+        DjNow.Value = Dj.FactsOf(in s_state);
         CanSeek.Value = s_state.CanSeek;
         CanSkipNext.Value = s_state.CanSkipNext;
         CanSkipPrev.Value = s_state.CanSkipPrev;
@@ -1613,6 +1663,22 @@ public static partial class Playback
     /// fault: on 2026-11-17 two audiobook chapter changes right after a seek read as "a seek advanced the chapter", and only the
     /// reducer's end position (the playhead, where a natural end reports the duration) said a skip had run.</summary>
     public static void Next(string cause) { LogSkip(cause, "next"); Post(Input.Next(FrameNowMs())); }
+    /// <summary>"Let DJ pick" (<see cref="InputKind.DjJump"/>): the next DJ segment, from <paramref name="cause"/> (the UI entry).</summary>
+    /// <para>The user's queued songs are kept: the queue is laid out first as a click on the target row lays it (<see cref="Queue.SkipTo"/>: the
+    /// segment's rows skipped over become history, the queued run moves behind the target), the target's jump clip goes right before it, then
+    /// the reducer moves the deck onto the clip. The skipped boundary's narration rows (an outro, an intro) are dropped by the planner.</para>
+    public static void DjJump(string cause)
+    {
+        LogSkip(cause, "dj-jump");
+        if (s_state.RoutesLocal && Dj.Of(s_state.Context) is not null && Entities.Current is not null
+            && Dj.NextJumpTarget(Queue.Rows, s_state.Cursor.Index) is int target and >= 0
+            && Queue.SkipTo(target, s_state.Cursor, out QueueCursor landed))
+        {
+            LayJumpClip(landed.Index);   // the target's jump clip before it: the deck lands on the clip, the target follows (Playback.Dj.Narration.cs)
+            Entities.Publish();
+        }
+        Post(Input.DjJump(FrameNowMs()));
+    }
     public static void Previous(string cause)
     {
         LogSkip(cause, "previous");

@@ -159,10 +159,16 @@ public static partial class Spotify
         /// server's own track count) and the header text of its nested <c>ListAttributes</c> (field 2) — name,
         /// description, cover. Revision/timestamp are not read here: a rootlist decoration is a SUMMARY, and
         /// <c>PlaylistRevision</c>'s full read is what owns those.</summary>
-        readonly struct RootlistMeta(StagedId owner, TextRef name, TextRef description, TextRef image, int length)
+        readonly struct RootlistMeta(StagedId owner, TextRef name, TextRef description, TextRef image, int length,
+            bool formatAttributes = false, bool dj = false, TextRef lexicon = default, TextRef djAttributes = default)
         {
             public readonly StagedId Owner = owner;
             public readonly TextRef Name = name, Description = description, Image = image;
+            /// <summary>The decoration carried format attributes (field 12), so it speaks for the DJ pair: <see cref="Dj"/> is
+            /// <c>lexicon_set_type=your_dj</c>, <see cref="Lexicon"/> the <c>lexicon_context_url</c> (plan-dj §1.1), and
+            /// <see cref="DjAttributes"/> a DJ list's whole attributes as JSON (<see cref="DjAttributesJson"/>).</summary>
+            public readonly bool FormatAttributes = formatAttributes, Dj = dj;
+            public readonly TextRef Lexicon = lexicon, DjAttributes = djAttributes;
             /// <summary>MetaItem.length (field 3). -1 when the wire did not carry the field at all (S2) — a real
             /// answer is never negative, so "unanswered" and "the server said zero" stay distinguishable, which
             /// matters because 0 is a legitimate track count for a genuinely empty playlist.</summary>
@@ -172,15 +178,17 @@ public static partial class Spotify
         static RootlistMeta ReadRootlistMeta(ProtoReader item, Staging s)
         {
             StagedId owner = default;
-            TextRef name = default, description = default, rawPicture = default, sizedPicture = default;
+            TextRef name = default, description = default, rawPicture = default, sizedPicture = default, lexicon = default, djAttributes = default;
             int length = -1, pictureRank = -1;
+            bool formatAttributes = false, dj = false;
             while (item.Next())
             {
                 if (item.Field == 3 && item.Wire == 0) length = item.Int32();
                 else if (item.Field == 5 && item.Wire == 2) owner = UserUri(s, item.Bytes());
                 else if (item.Field == 2 && item.Wire == 2)
                 {
-                    var attributes = item.Message();
+                    ReadOnlySpan<byte> listAttributes = item.Bytes();
+                    var attributes = new ProtoReader(listAttributes);
                     while (attributes.Next())
                     {
                         if (attributes.Field == 1 && attributes.Wire == 2) name = s.AddText(attributes.Bytes());
@@ -201,13 +209,47 @@ public static partial class Spotify
                                 : target.SequenceEqual("small"u8) ? 2 : target.SequenceEqual("xsmall"u8) ? 1 : 0;
                             if (!url.IsEmpty && rank >= pictureRank) { sizedPicture = s.AddText(url); pictureRank = rank; }
                         }
+                        else if (attributes.Field == 12 && attributes.Wire == 2)
+                        {
+                            formatAttributes = true;
+                            attributes.Message().Fields(1, 2, out var key, out var value);
+                            if (Is(key, "lexicon_set_type")) dj = Is(value, "your_dj");
+                            else if (Is(key, "lexicon_context_url") && !value.IsEmpty) lexicon = s.AddText(value);
+                        }
                         else attributes.Skip();
                     }
+                    if (dj) djAttributes = DjAttributesJson(listAttributes, s);   // only a DJ list pays for its whole map
                 }
                 else item.Skip();
             }
             // The pre-sized url first, the raw picture file id as fallback (0.2.9 `CoverOf`, same order).
-            return new RootlistMeta(owner, name, description, sizedPicture.IsEmpty ? rawPicture : sizedPicture, length);
+            return new RootlistMeta(owner, name, description, sizedPicture.IsEmpty ? rawPicture : sizedPicture, length,
+                formatAttributes, dj, lexicon, djAttributes);
+        }
+
+        /// <summary>A DJ list's format attributes (a <c>ListAttributes</c>' field-12 entries) as one JSON object of strings, in wire order,
+        /// staged as text: what a DJ play names as its context metadata (plan-dj §1.9 f21, §2.7 the controller's envelope). Empty when the
+        /// list states none. Allocates; called for a DJ list only.</summary>
+        internal static TextRef DjAttributesJson(ReadOnlySpan<byte> listAttributes, Staging s)
+        {
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>(1024);
+            int entries = 0;
+            try
+            {
+                using var w = new System.Text.Json.Utf8JsonWriter(buffer);
+                w.WriteStartObject();
+                for (var a = new ProtoReader(listAttributes); a.Next();)
+                {
+                    if (a.Field != 12 || a.Wire != 2) { a.Skip(); continue; }
+                    a.Message().Fields(1, 2, out var key, out var value);
+                    if (key.IsEmpty) continue;
+                    w.WriteString(key, value);
+                    entries++;
+                }
+                w.WriteEndObject();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return default; }   // not UTF-8: none kept
+            return entries == 0 ? default : s.AddText(buffer.WrittenSpan);
         }
 
         /// <summary>Stage a Thin <see cref="PlaylistFields.Identity"/> header for every rootlist row <c>meta_items</c>
@@ -263,6 +305,11 @@ public static partial class Spotify
                 row.Description = meta.Description;
                 row.Image = meta.Image;
                 row.TrackCount = meta.Length;
+                if (!meta.FormatAttributes) return;
+                row.FlagsMask |= (uint)PlaylistFlags.YourDj;
+                if (meta.Dj) row.Flags |= (uint)PlaylistFlags.YourDj;
+                row.LexiconUrl = meta.Lexicon;
+                row.DjAttributes = meta.DjAttributes;
             }
         }
 

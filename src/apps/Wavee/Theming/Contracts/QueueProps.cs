@@ -46,6 +46,11 @@ public readonly record struct QueueAutoplay(bool Enabled, int Count, EntityRef P
 public readonly record struct QueueRowProps(ulong ItemId, int Index, EntityRef Ref, QueueSection Section, int Position,
     bool Removable, bool Draggable);
 
+/// <summary>One segment of an AI DJ continuation: its key (the segment's id, stable while its rows advance), its label (<c>station_subtitle</c>,
+/// "Vibes"), where its rows start in "Next up" and how many it lists, and whether "Let DJ pick" lands on its first row (the next segment).
+/// Appended (contract additive).</summary>
+public readonly record struct QueueSegment(string Key, string Label, int Start, int Count, bool NextPick);
+
 /// <summary>One track played before the current one ("played before this"): the row it plays as, its uri, the context it was played from (empty: a bare
 /// track play) and when it started (unix ms). Appended (contract 1.46).</summary>
 public readonly record struct QueueHistoryRow(EntityRef Ref, string Uri, string Context, long PlayedAtMs);
@@ -58,6 +63,27 @@ public sealed record QueueProps(bool Viewer, EntityRef NowPlaying, QueuePlayingF
     /// <summary>The tracks played before the current one, most recent first (at most <see cref="Shell.QueueModel.HistoryCap"/>; the play log the app already keeps, so a
     /// sign-out clears it). Filled by the stage's Up next host only; empty on the rail. Appended (contract 1.46).</summary>
     public QueueHistoryRow[] History { get; init; } = [];
+
+    /// <summary>Shuffle may not be toggled now, and why (the playing context forbids it: the DJ's "Not available with DJ"): a surface's own shuffle
+    /// toggle draws disabled with this tooltip. Null while it may be pressed. Appended (contract additive).</summary>
+    public string? ShuffleLock { get; init; }
+
+    /// <summary>The repeat toggle's twin of <see cref="ShuffleLock"/>. Appended (contract additive).</summary>
+    public string? RepeatLock { get; init; }
+
+    /// <summary>AI DJ: the continuation ("Next up") grouped by the DJ's segments, in list order, each under its own label; empty for any other
+    /// context. A surface draws each segment's header where <see cref="QueueSlot"/> names one (a NextUp header whose <c>Pos</c> is the segment's
+    /// index) in place of the section's one header. Appended (contract additive).</summary>
+    public QueueSegment[] Segments { get; init; } = [];
+
+    /// <summary>The segment a header slot heads (<see cref="QueueSlot.IsSegmentHeader"/>), or null for a section's own header.</summary>
+    public QueueSegment? SegmentOf(QueueSlot slot) => slot.IsSegmentHeader && slot.Pos < Segments.Length ? Segments[slot.Pos] : null;
+
+    /// <summary>A segment header's words: its label, else the product's name ("DJ").</summary>
+    public static string SegmentTitle(QueueSegment segment) => segment.Label.Length > 0 ? segment.Label : FluentGpu.Localization.Loc.Get(Strings.Player.DjName);
+
+    /// <summary>The mark a segment header wears where "Let DJ pick" lands ("Let DJ pick starts here"), else "".</summary>
+    public static string SegmentMark(QueueSegment segment) => segment.NextPick ? FluentGpu.Localization.Loc.Get(Strings.Player.DjJumpsHere) : "";
 
     /// <summary>"Next in queue": the rows the user queued.</summary>
     public int NextInQueue => Counts.Queue;

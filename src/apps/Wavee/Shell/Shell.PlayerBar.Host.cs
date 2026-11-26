@@ -251,15 +251,17 @@ public static partial class Shell
             bool faceIsEpisode = faceRef.Kind == EntityKind.Episode;
             string? playingUri = NowPlayingFace.UriOf(faceRef);
             var episode = faceIsEpisode ? new Episode(faceRef.Slot) : default;
+            // An AI DJ narration is nothing to save or drag (its clip is not a catalogue item): the heart's slot stays, unlit.
+            bool narration = Playback.Dj.IsNarrationRow(faceRef);
             bool liked = faceIsEpisode ? Spotify.Podcasts.IsSaved(episode)
-                : playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
+                : !narration && playingUri is not null && Controls.Library is { } library && library.IsSaved(playingUri);
             bool saveReady = !faceIsEpisode || episode.IsValid && Spotify.Podcasts.SavedReady && !Spotify.Podcasts.SavedBusy;
             uint savedEpoch = Entities.ScopeEpoch.Value;
             hooks.UseLayoutEffect(() =>
             {
                 if (isEpisode) PlayerVerbs.Default.DemandSaved();   // the saved-episodes read, once, if nobody has asked
             }, DepKey.From((int)savedEpoch, isEpisode ? 1 : 0));
-            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State, identityShowing);
+            bool likeLit = PlayerBarRules.LikeFaceVisible(L, facts.State, identityShowing) && !narration;
             // Lit but INERT while held: the held row is no longer the deck row, and `IPlayerVerbs.ToggleLike` saves the DECK.
             // The slot is reserved either way, so this costs no geometry.
             bool likeEnabled = likeLit && saveReady && !holding;
@@ -348,9 +350,13 @@ public static partial class Shell
                 Shuffle = shuffle,
                 RepeatOn = repeat != RepeatMode.Off,
                 RepeatGlyph = PlayerBarRules.RepeatGlyph(repeat),
+                ShuffleLock = PlayerVerbs.ShuffleLock(),
+                RepeatLock = PlayerVerbs.RepeatLock(),
+                Dj = PlayerVerbs.Dj(),
                 OwnsTransport = ownsTransport,
                 SeekStepEnabled = seekStepEnabled,
                 TopEdgeSweeps = sweeps,
+                ProgressSuppressed = Playback.Dj.VoiceCurrent(),
                 ShowTitleBlock = L.ShowTitleBlock,
                 ShowLikeSlot = L.ShowLikeSlot,
                 ShowArtistLine = PlayerBarRules.ShowsArtistLine(facts.State, L.ShowSubtitle),
@@ -362,7 +368,7 @@ public static partial class Shell
                 ArtUrl = artUrl,
                 ArtNav = artNav,
                 TitleNav = titleNav,
-                Draggable = isTrack,
+                Draggable = isTrack && !narration,
                 FaceIsEpisode = faceIsEpisode,
                 Liked = liked,
                 LikeLit = likeLit,

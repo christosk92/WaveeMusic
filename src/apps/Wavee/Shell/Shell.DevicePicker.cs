@@ -93,7 +93,8 @@ public static partial class Shell
             Playback.Audio.Opened observed,
             Spotify.Audio.Quality asked,
             SoundState sound,
-            int stamp)
+            int stamp,
+            bool moveLocked = false)
         {
             int remoteSlot = DeviceRoster.RemoteSlot(owner, activeSlot, connect);
             bool remote = remoteSlot >= 0;
@@ -106,6 +107,8 @@ public static partial class Shell
             bool matchWindows = chosen < 0 && !chosenGone;
 
             // ── This PC: Match Windows (while this PC plays), then the outputs ──
+            // While another device's DJ talks, pulling playback here is a transfer it refuses (D4: restriction 13): the outputs say why.
+            bool pullLocked = remote && moveLocked;
             var thisPc = new List<DevicePickerEntry>(local.Length + 1);
             if (!remote)
             {
@@ -122,9 +125,9 @@ public static partial class Shell
                 ref readonly var d = ref local[i];
                 bool unresponsive = unresponsiveId is { Length: > 0 } && string.Equals(d.Id, unresponsiveId, StringComparison.OrdinalIgnoreCase);
                 var pick = new DeviceIntent(DeviceIntentKind.SelectLocal, LocalId: d.Id, TakeOver: takeOver);
-                string? detail = Join(ConnectionWords(d.Connection), remote && d.IsDefault ? Loc.Get(P.WindowsDefault) : null,
-                    unresponsive ? Loc.Get(P.NotResponding) : null);
-                thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, CapLabel(d.Name), DeviceRoster.LookGlyph(d.Look), localSupported,
+                string? detail = pullLocked ? Loc.Get(Strings.Player.DjSegmentEnding)
+                    : Join(ConnectionWords(d.Connection), remote && d.IsDefault ? Loc.Get(P.WindowsDefault) : null, unresponsive ? Loc.Get(P.NotResponding) : null);
+                thisPc.Add(new DevicePickerEntry(DevicePickerEntryKind.Command, CapLabel(d.Name), DeviceRoster.LookGlyph(d.Look), localSupported && !pullLocked,
                     localSupported && !remote && i == chosen, unavailable, localSupported ? () => DeviceVerbs.Run(pick) : null)
                 {
                     Chosen = localSupported && i == chosen, Detail = detail, Unresponsive = unresponsive, Id = d.Id,
@@ -143,15 +146,18 @@ public static partial class Shell
             // ── Other devices: Spotify Connect, this device filtered out ──
             var others = new List<DevicePickerEntry>(connect.Length);
             string connectWord = Loc.Get(Strings.Player.SpotifyConnect);
+            // An AI DJ narration current (<paramref name="moveLocked"/>: here, or on the owner's deck): no move until it ends (plan-dj §1.8), and the
+            // rows say why.
+            bool narrating = moveLocked;
             for (int i = 0; i < connect.Length; i++)
             {
                 ref readonly var d = ref connect[i];
                 if (d.Kind == Spotify.Decode.DeviceKind.ThisDevice) continue;
                 var transfer = new DeviceIntent(DeviceIntentKind.TransferTo, ConnectId: d.Id ?? "");
-                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), true,
+                others.Add(new DevicePickerEntry(DevicePickerEntryKind.Radio, CapLabel(d.Name ?? ""), DeviceRoster.ConnectGlyph(d.Kind), !narrating,
                     i == remoteSlot, null, () => DeviceVerbs.Run(transfer))
                 {
-                    Detail = connectWord, Id = d.Id ?? "",
+                    Detail = narrating ? Loc.Get(Strings.Player.DjSegmentEnding) : connectWord, Id = d.Id ?? "",
                 });
             }
 
@@ -164,7 +170,7 @@ public static partial class Shell
                 card = new DevicePickerCard
                 {
                     Name = r.Name ?? "", Glyph = DeviceRoster.ConnectGlyph(r.Kind), Connection = RemoteOutput(in r) ?? connectWord, Remote = true,
-                    PlayHere = localSupported ? () => DeviceVerbs.Run(home) : null,
+                    PlayHere = localSupported && !pullLocked ? () => DeviceVerbs.Run(home) : null,
                     HereName = inUse >= 0 ? local[inUse].Name : null,
                     HereGlyph = inUse >= 0 ? DeviceRoster.LookGlyph(local[inUse].Look) : null,
                 };

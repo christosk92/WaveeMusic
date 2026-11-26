@@ -132,7 +132,8 @@ public static partial class Playback
 
     /// <summary>A NotLiked play as the owner is sent it: the context uri, the play_origin feature (null = from the uri), the
     /// start row's uid and index, and the page inline.</summary>
-    readonly record struct RemotePlay(string ContextUri, string? Feature, string? SkipUid, int SkipIndex, Spotify.Connect.PlayPage? Page);
+    readonly record struct RemotePlay(string ContextUri, string? Feature, string? SkipUid, int SkipIndex, Spotify.Connect.PlayPage? Page,
+        Spotify.Connect.DjPlay? Dj = null);
 
     /// <summary>THE play forward, for both intakes: the reducer's row click (SendRemote's PlayContext arm) and
     /// <see cref="ForwardPlayToOwner"/>. <paramref name="context"/> is already the <see cref="ForwardPlayEnvelope.For"/> answer;
@@ -154,11 +155,12 @@ public static partial class Playback
                         + (play.SkipIndex >= 0 ? " index=" + play.SkipIndex : "")
                         + (play.Page is { } page ? " page=" + page.Uris.Length + (page.Sorting.Length > 0 ? " sorted" : "")
                             + (page.Filter.Length > 0 ? " filtered" : "") : "")
+                        + (play.Dj is { } djPlay ? " dj url=lexicon metadata=" + djPlay.Metadata.Length : "")
                         + (video ? " video" : ""));
                     if (play.Page is { } sent) NoteRemoteListPlayed(context, sent.SessionId);   // 5.3: the owner plays Wavee's order
                     RunForward(RemoteVerb.Play, device, () => Answered(RemoteVerb.Play, device,
                         Spotify.Connect.PlayContext(target, play.ContextUri, trackUri, shuffle, CancellationToken.None, fromMs, play.SkipUid,
-                            play.SkipIndex, video, play.Feature, play.Page)));
+                            play.SkipIndex, video, play.Feature, play.Page, play.Dj)));
                     return;
                 }
             case ForwardPlayEnvelope.LikedVerdict.Playlist:
@@ -188,6 +190,9 @@ public static partial class Playback
     static RemotePlay ShapePlay(EntityId context, string? skipUid, ReadOnlySpan<EntityRef> rows, int start, PageFacts? facts)
     {
         string contextUri = context.Text;
+        // A DJ list (its lexicon_context_url attribute) starts as the official desktop starts DJ on another device (plan-dj §2.7): the
+        // lexicon url, the list's attributes, one empty page, from its head. It has no rows of its own to name.
+        if (Dj.PlayOf(context) is { } dj) return new RemotePlay(contextUri, "playlist", null, -1, null, dj);
         if (context.Kind == EntityKind.Artist && Spotify.Connect.PopularListOf(contextUri) is { } popular)
             return new RemotePlay(popular, "artist", skipUid, -1, null);
         if (facts is null || (uint)start >= (uint)rows.Length || facts.Uids.Length != rows.Length || facts.Origins.Length != rows.Length)
@@ -196,6 +201,18 @@ public static partial class Playback
         if (context.Kind != EntityKind.Playlist) return new RemotePlay(contextUri, null, skipUid, -1, null);
         if (rows.Length > Spotify.Connect.MaxPageRows) return new RemotePlay(contextUri, null, ListUid(facts.Uids[start]), -1, null);
         return PagePlay(contextUri, rows, start, facts);
+    }
+
+    /// <summary>The inspector's `dj do=envelope`: the `play` body a play of <paramref name="context"/> (from its head) would send the owner,
+    /// shaped by the one send's own rule (<see cref="ShapePlay"/>) and writer, with fixed ids and clock so two builds compare. Nothing is
+    /// sent. UI thread.</summary>
+    public static string ForwardEnvelopeForInspect(EntityId context, bool shuffle = false)
+    {
+        RemotePlay play = ShapePlay(ForwardPlayEnvelope.For(context, default), null, default, -1, null);
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>(2560);
+        Spotify.Connect.PlayBody(buffer, play.ContextUri, "", shuffle, "inspect-device", "inspect-command", "inspect-intent", 0, -1,
+            play.SkipUid, play.SkipIndex, false, play.Feature, play.Page, play.Dj);
+        return System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     /// <summary>A playlist play with its page inline (4.2, all.saz 1169, bigone.saz 1391, 1628): every row Wavee shows that can
