@@ -310,7 +310,7 @@ public static partial class Spotify
             {
                 bool handledLocally = Playback.OnSpeedSettings(message.Uri, message.Truncated ? default : message.Payload)
                     || Telemetry.OnDealerProgress(message.Uri, message.Truncated ? default : message.Payload)
-                    || Friends.OnDealerPush(message.Uri);
+                    || Friends.OnDealerPush(message.Uri, frame);
                 if (!handledLocally)
                 {
                     NoteUnreadTopic(message.Uri);

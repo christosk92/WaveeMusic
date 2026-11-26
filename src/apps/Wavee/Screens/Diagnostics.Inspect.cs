@@ -453,6 +453,8 @@ public static partial class Diagnostics
                     return DecodeVerb(id, name, a);   // a file through its decoder; needs no mount
                 case Inspect.Verb.Nudge:
                     return Nudge(id, name, a);   // fixtures need no mount; fire, tick, refresh and expectCard say so when unmounted
+                case Inspect.Verb.Friends:
+                    return FriendsVerb(id, name, a);   // reads the run without a mount; with one the reply settles
                 case Inspect.Verb.Timecode:
                     return Timecode(id, name, a);   // the tap is read off the playback statics: no mount
                 case Inspect.Verb.MixStyles:

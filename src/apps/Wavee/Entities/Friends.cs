@@ -2,7 +2,8 @@
 //
 // `Edges.Friends` is ONE run under the synthetic parent `Rail.Friends.Feed`. A worker cannot resolve slots (C1), so a
 // decoded friend crosses as three identities, a start time and a playing flag; the commit resolves them and rewrites the
-// run playing first, then newest. Every answer is the WHOLE feed, so a batch always replaces the run. The
+// run playing first, then newest. A feed answer is the WHOLE feed and replaces the run; a push (one friend's change)
+// replaces only that friend's row (`Staging.FriendsPushed`). The
 // listening-activity feed names only the user, the track and the context, so a friend's album and artist come from the
 // TRACK row once it has loaded: the commit takes them when the row already knows them, and `RefillFriends` fills the
 // rest as track rows land. Session-only: never
@@ -39,6 +40,19 @@ public sealed partial class Staging
     }
 
     internal bool AnswersFriends => _friendsMarker is { Count: > 0 };
+
+    StagedList<StagedFriend>? _friendsPushMarker;
+
+    /// <summary>This batch is a PUSH (one friend's change, `hm://listening-activity/`): the commit puts its friends into the
+    /// run as it stands, replacing that user's row, rather than replacing the run.</summary>
+    public void FriendsPushed()
+    {
+        var m = _friendsPushMarker ??= Register(new StagedList<StagedFriend>());
+        m.Clear();
+        m.Add();
+    }
+
+    internal bool PushesFriends => _friendsPushMarker is { Count: > 0 };
 }
 
 public static partial class Entities
@@ -52,13 +66,22 @@ public static partial class Entities
     static FriendEdge[] s_friendPayload = new FriendEdge[32];
 
     /// <summary>Land a friends feed after the rows it names: the run becomes the staged friends, one per user (the
-    /// newest), playing first and then newest, Complete (empty included).</summary>
+    /// newest), playing first and then newest, Complete (empty included). A push instead updates the run in place: its user's
+    /// row is replaced by what the push says (a pause keeps the start time and clears Playing), a user the run lacks is added.</summary>
     static partial void CommitFriends(Staging s)
     {
-        if (!s.AnswersFriends) return;
+        bool push = !s.AnswersFriends && s.PushesFriends;
+        if (!s.AnswersFriends && !push) return;
         var staged = s.StagedFriends is { } f ? f.Span : default;
-        GrowFriends(staged.Length);
         int n = 0, dropped = 0;
+        if (push)
+        {
+            var held = Current.Edges.Friends.Payload(Rail.Friends.Feed);
+            GrowFriends(held.Length + staged.Length);
+            held.CopyTo(s_friendPayload);
+            n = held.Length;
+        }
+        else GrowFriends(staged.Length);
         string dropKinds = "";
         foreach (ref readonly var x in staged)
         {
@@ -78,7 +101,7 @@ public static partial class Entities
             int dup = -1;
             for (int i = 0; i < n; i++) if (s_friendPayload[i].UserSlot == user) { dup = i; break; }
             if (dup < 0) s_friendPayload[n++] = edge;
-            else if (edge.TimestampMs > s_friendPayload[dup].TimestampMs) s_friendPayload[dup] = edge;
+            else if (push || edge.TimestampMs > s_friendPayload[dup].TimestampMs) s_friendPayload[dup] = edge;   // a push is the latest word
         }
         LastFriendsDropped = (dropped, dropKinds);
         LandFriends(n);

@@ -100,7 +100,7 @@ public static partial class Diagnostics
         {
             None, Help, Status, Mount, Unmount, GoTo, Resize, Frames, Settle, Reset,
             Click, Hover, Key, Type, Scroll, Play, Option, Theme, Find, Dump, Render, Tiers, Lint, Crossing, Trace, State, Dialog,
-            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Dj, Timecode, Drop, LocalScan, LocalIndex, Decode,
+            Views, Crossings, Setting, Settings, Hint, Recent, Drag, Skeleton, Window, Transport, Home, Hold, Focus, Said, Perf, Film, Pointer, PodcastPages, Nudge, Mix, Dj, Timecode, Drop, LocalScan, LocalIndex, Decode, Friends,
             MixStyles, DjTts, Quit,   // Quit stays last: the spec table is sized by it
         }
 
@@ -832,6 +832,16 @@ public static partial class Diagnostics
                              Arg("scale", ArgType.Float, "with film: each cell's scale of the frame", "0.5"),
                              Arg("crop", ArgType.Key, "with film: cells show only this node's drawn rect")], s_settleArgs),
             },
+            new(Verb.Friends, "friends", "Read the friend-activity run, or land a friend's change the way the dealer pushes it (hm://listening-activity/, the captured shape) through the real decoder and commit: that row is replaced in place and the run re-sorts playing first, then newest. With a mount the reply settles (trace= sees the change)", "friends push=sam-okafor track=spotify:track:tr7 playing=true")
+            {
+                Acts = true,
+                Args = Join([Arg("push", ArgType.String, "the friend whose activity changed: a bare username (christos, sam-okafor, alex-rivers, mia-solace, jun-park) or spotify:user:<id>"),
+                             Arg("track", ArgType.String, "with push: the spotify:track: uri the push names"),
+                             Arg("playing", ArgType.Bool, "with push: isPlaying (false is a pause: same track, same start)", "true"),
+                             IntArg("agoMs", "with push: the activity started this long ago", "0", 0, 1_000_000_000),
+                             Arg("context", ArgType.String, "with push: the contextUri (a spotify:playlist: one lands as the row's context)"),
+                             Arg("raw", ArgType.Path, "land this frame file as received instead (a captured push)")], s_settleArgs),
+            },
             new(Verb.Nudge, "nudge", "Read or drive the rate/star nudge: the decision with every check, the ledger, the card. Load a fixture, pin a fact, fake the Store, fire a track boundary; expect= turns a mismatch into ok:false", "nudge fixture=eligible channel=store")
             {
                 Acts = true,
@@ -934,6 +944,7 @@ public static partial class Diagnostics
             "djtts" => Verb.DjTts,
             "quit" or "exit" => Verb.Quit,
             "mixstyles" => Verb.MixStyles,
+            "friends" => Verb.Friends,
             _ => Verb.None,
         };
 
