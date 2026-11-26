@@ -85,6 +85,8 @@ public static partial class Shell
         // #48 Mix: the transition editor full-page (`transition:<playlist uri>`; the pair is the editor session's), the panel editor's
         // expand. Appended before NotFound like the rows above it.
         MixTransition,
+        // #48 Mix: the lesson, "Build a transition together" (`learn-mix`; Entities/Mix.Lesson.cs). Appended before NotFound.
+        LearnMix,
         // the fall-through `PageFor` paints when nothing above claims the key
         NotFound,
     }
@@ -212,6 +214,8 @@ public static partial class Shell
         new(RouteKind.Logs,                "logs",                 false, Strings.Nav.Logs,             Icons.List,        false, false, false),
         // The Mix transition editor full-page (#48): a playlist's pair, the session's (Entities/Mix.Editor.Session.cs); claims no material.
         new(RouteKind.MixTransition,       "transition:",          true,  Strings.Mix.Editor.Title,     Icons.Equalizer,   false, false, false),
+        // The Mix lesson (#48): a normal user route, opened from the editor's "Learn how", Settings › Help and the Mix tip; claims no material.
+        new(RouteKind.LearnMix,            "learn-mix",            false, Strings.Nav.LearnMix,         Icons.Equalizer,   false, false, false),
         new(RouteKind.NotFound,           "",                     false, Strings.Nav.PageNotFound,     Icons.MusicNote,   false, false, false),
     ];
 

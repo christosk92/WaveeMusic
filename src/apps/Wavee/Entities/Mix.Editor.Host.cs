@@ -212,6 +212,7 @@ internal sealed class MixEditorHost(int playlistSlot, int index, bool expanded) 
             Previewing = false, TogglePreview = _preview!, SaveLine = "", Saving = false, ShowRetry = false, Retry = _retry!, Dirty = false,
             CanReset = false, Reset = _reset!, Save = _save!, UndoLabel = Loc.Get(Strings.Mix.Editor.Undo), RedoLabel = Loc.Get(Strings.Mix.Editor.Redo),
             ResetLabel = "", SaveLabel = "", RetryLabel = Loc.Get(Strings.Mix.Retry),
+            Learn = MixLesson.Open, LearnLabel = Loc.Get(Strings.Mix.Lesson.Learn),
         };
     }
 

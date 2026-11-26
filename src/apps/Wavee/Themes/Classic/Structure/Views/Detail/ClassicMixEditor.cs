@@ -28,6 +28,8 @@ internal static class ClassicMixEditor
     public static Element Template(MixEditorProps p, in ViewContext ctx)
     {
         var window = ctx.Tier().Window;
+        // The Mix lesson's editor: the same editor in its teaching mode (its head and the timeline's layer view; the guide holds the rest).
+        if (p.Teach is { } teach) return CommonMixTeach.Editor(p, teach, E.TeachLook(window, ctx.Tier().Content), E.Teach(ctx.Tier().Content));
         float target = E.TargetFor(window);
         bool page = p.Expanded;
         var rows = new List<Element>(12);
@@ -67,6 +69,7 @@ internal static class ClassicMixEditor
         {
             R.Type.RailHeader(p.Title) with { Key = "mix:ed:title", Grow = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
         };
+        if (p.Learn is { } learn) kids.Add(ToolTip.Wrap(Controls.IconAction(Icons.Help, learn, size: target) with { Key = "mix:ed:learn" }, p.LearnLabel));
         if (page) kids.AddRange(UndoRedo(p, target));
         if (p.SaveLabel.Length > 0)
             kids.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving && p.PromptTitle.Length == 0)

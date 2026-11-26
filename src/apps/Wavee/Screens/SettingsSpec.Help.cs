@@ -84,6 +84,11 @@ public static partial class SettingsSpec
                     value: static _ => RateNudge.Current.Enabled,
                     visible: static _ => RateNudge.CardAsk(RateNudge.Channel) == RateNudge.Ask.Star)),
 
+            // The Mix lesson (#48): "Build a transition together", a hands-on lesson in the Mix editor.
+            Group("learn", Strings.Settings.Groups.Help.Learn, null,
+                Make("help.learn.mix", K.Action, Strings.Mix.Lesson.Settings.Row, SettingsWriter.OfAction("learn.mix", static () => { MixLesson.Open(); return true; }),
+                    captionKey: Strings.Mix.Lesson.Settings.Caption, glyph: "Equalizer")),
+
             Group("feedback", Strings.Settings.Groups.Help.Feedback, Strings.Settings.Feedback.Subtitle,
                 Make("help.feedback.report", K.Action, Strings.Settings.Feedback.ReportProblem,
                     SettingsWriter.OfAction("feedback.report", SettingsVerbs.ReportProblem), legacy: ["reportProblem"],

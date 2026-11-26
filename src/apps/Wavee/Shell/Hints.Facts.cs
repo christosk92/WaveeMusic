@@ -52,6 +52,7 @@ public static class HintFacts
     static bool s_daylistRolled, s_appModeWhileMica;
     static long s_audiobookMs, s_audiobookSince;
     static bool s_byHand, s_signInAsked;
+    static bool s_mixTurnedOn;   // Mix was turned on in a playlist this session (the lesson's offer)
     static bool s_losslessBadge;   // the bar's Lossless badge has a format to show (the state now, not a count: a reset keeps it)
 
     /// <summary>Forget the session's facts (the inspector's <c>hint reset</c>).</summary>
@@ -63,7 +64,7 @@ public static class HintFacts
         Array.Clear(s_volumeAt);
         s_volumeNext = 0;
         s_lastCommit = 0;
-        s_daylistRolled = s_appModeWhileMica = false;
+        s_daylistRolled = s_appModeWhileMica = s_mixTurnedOn = false;
         s_audiobookMs = 0;
         s_audiobookSince = s_audiobookSince > 0 ? Now : 0;
     }
@@ -202,6 +203,17 @@ public static class HintFacts
         if (!string.Equals(cause, PlayButtonCause, StringComparison.Ordinal)) return;
         if (++s_playClicks == HintRules.PlayPauseClicks) Hints.Bump();
     }
+
+    /// <summary>Mix was turned on in a playlist (MixMenu.Toggle): the Mix lesson's tip may offer itself at the Mix button.</summary>
+    public static void MixOn()
+    {
+        if (s_mixTurnedOn) return;
+        s_mixTurnedOn = true;
+        Hints.Bump();
+    }
+
+    /// <summary>The first time Mix is turned on (this session).</summary>
+    public static bool MixTurnedOn() => s_mixTurnedOn;
 
     /// <summary>The daylist rolled over to its next part of the day (a known window replaced by the next one).</summary>
     public static void DaylistRolled()

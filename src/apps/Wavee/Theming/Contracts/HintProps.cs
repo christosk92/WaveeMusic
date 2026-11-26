@@ -52,6 +52,8 @@ public static class HintSurfaces
     public const string TitleBar = "titleBar";
     /// <summary>The daylist tile's "..." menu (a dot on its options item).</summary>
     public const string DaylistMenu = "home.daylist.menu";
+    /// <summary>A mixed playlist's list bar, pointing at its Mix button (the Mix lesson's offer, the first time Mix is turned on).</summary>
+    public const string MixBar = "mix.bar";
     /// <summary>The Settings home's Suggestions (never in the app).</summary>
     public const string SettingsHome = "settings.home";
 }

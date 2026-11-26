@@ -35,6 +35,7 @@ public sealed partial class WinUiStructure
         views.Add(ViewKeys.LikedChipBar, WinUiLikedChipBar.Template, "winui.liked.chip-bar");
         views.Add(ViewKeys.PlaylistTune, WinUiPlaylistTune.Template, "winui.playlist.tune");
         views.Add(ViewKeys.MixEditor, WinUiMixEditor.Template, "winui.playlist.mix-editor");
+        views.Add(ViewKeys.MixLesson, WinUiMixLesson.Template, "winui.mix.lesson");
         views.Add(ViewKeys.MixSeam, WinUiMixEditor.Seam, "winui.playlist.mix-seam");
         CommonNothing.Register(views, ViewKeys.DetailRail);
         CommonNothing.Register(views, ViewKeys.DetailCompactRail);

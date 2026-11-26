@@ -2,6 +2,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using Wavee.Theming;
 using Wavee.Theming.Contracts;
 using Wavee.Themes.Common;
 
@@ -45,6 +46,45 @@ internal static class ClassicMixEditorRules
     public static LayoutTransition Reveal => Design.Reveal.Drawer;
 
     public static float TargetFor(WidthTier window) => window == WidthTier.Compact ? CompactTarget : Target;
+
+    // ── the Mix lesson: the editor's teaching mode and the lesson's page (Themes/Common/CommonMixLesson.cs; Classic = WinUI's family) ──
+
+    /// <summary>The teaching editor's layer view: the label column (0 below Standard), song and layer lanes (wide, narrow), the gaps; the editor
+    /// card's padding and head; the status chip.</summary>
+    public const float TeachLabelColumn = 132f, TeachSongH = 76f, TeachLayerH = 46f, TeachNarrowSongH = 52f, TeachNarrowLayerH = 34f,
+        TeachSectionGap = 24f, TeachNarrowSectionGap = 10f, TeachLayerGap = 6f, TeachNarrowLayerGap = 4f, TeachPad = 16f, TeachNarrowPad = 10f,
+        TeachHeadH = 52f, TeachChipH = 28f, TeachChipPadX = 10f, TeachMutedAlpha = 0.28f;
+    /// <summary>The lesson page: the gap between the editor and the guide, the guide's width beside the editor (Standard, and wider).</summary>
+    public const float LessonColumnGap = 28f, LessonGuide = 340f, LessonGuideWide = 392f;
+
+    public static bool LessonStacked(WidthTier window) => window < WidthTier.Standard;
+
+    /// <summary>The layer view in the lesson: its form follows the CONTENT tier (the page's own stacked or side-by-side form); the handle's hit box
+    /// is the touch target at every tier (it never resizes on a crossing).</summary>
+    public static MixTimelineLook TeachLook(WidthTier window, WidthTier content)
+    {
+        bool narrow = LessonStacked(content);
+        return Look(window, page: true) with
+        {
+            LabelColumn = narrow ? 0f : TeachLabelColumn, SongHeight = narrow ? TeachNarrowSongH : TeachSongH, LayerHeight = narrow ? TeachNarrowLayerH : TeachLayerH,
+            SectionGap = narrow ? TeachNarrowSectionGap : TeachSectionGap, LayerGap = narrow ? TeachNarrowLayerGap : TeachLayerGap,
+            Muted = Tok.TextPrimary with { A = TeachMutedAlpha }, TipFill = Tok.FillSolidTertiary, TipStroke = Tok.StrokeCardDefault, HandlePlate = Tok.FillControlSolid,
+            HandleHit = CompactTarget,
+            NameText = static t => Ui.BodyStrong(t), ReadoutText = static t => Ui.Caption(t), CaptionText = static t => Ui.Caption(t),
+        };
+    }
+
+    public static MixTeachLook Teach(WidthTier content) => new()
+    {
+        Card = Tok.FillCardDefault, CardStroke = Tok.StrokeCardDefault, Corner = Radii.Card, Pad = LessonStacked(content) ? TeachNarrowPad : TeachPad,
+        HeadHeight = TeachHeadH, HeadRule = Tok.StrokeDividerDefault, ShowPair = !LessonStacked(content),
+        Title = static t => R.Type.RailHeader(t), Meta = static t => Ui.Caption(t) with { Color = Tok.TextSecondary },
+        ChipFill = Tok.FillControlAltSecondary, ChipStroke = Tok.StrokeCardDefault, ChipCorner = Radii.Control, ChipHeight = TeachChipH, ChipPadX = TeachChipPadX,
+    };
+
+    public static FluentLessonParts Lesson(WidthTier window) => new(PagePad, LessonColumnGap, window >= WidthTier.Standard ? LessonGuideWide : LessonGuide, Gap,
+        Tok.FillCardDefault, Tok.StrokeCardDefault, Radii.Card, Tok.FillControlAltSecondary, Tok.TextDisabled, Tok.FillControlStrong,
+        ClassicTierMotion.SwapFade, ClassicTierMotion.SwapFadeMotion);
 
     public static MixTimelineLook Look(WidthTier window, bool page) => new()
     {

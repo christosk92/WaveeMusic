@@ -42,6 +42,45 @@ internal static class ZuneMixEditorRules
     /// <summary>Disclosures ease in and out as the app's do.</summary>
     public static LayoutTransition Reveal => Design.Reveal.Drawer;
 
+    // ── the Mix lesson: the editor's teaching mode and the lesson's page in Zune's voice (Views/Playlist/ZuneMixLesson.cs) ──
+
+    /// <summary>The teaching editor's layer view: the label column (0 below Standard), song and layer lanes (wide, narrow), the gaps; the head and
+    /// the status chip (a flat square of ink); square handles, badges and beacons.</summary>
+    public const float TeachLabelColumn = 140f, TeachSongH = 76f, TeachLayerH = 46f, TeachNarrowSongH = 52f, TeachNarrowLayerH = 36f,
+        TeachSectionGap = 26f, TeachNarrowSectionGap = 10f, TeachLayerGap = 6f, TeachNarrowLayerGap = 4f, TeachHeadH = 56f, TeachChipH = 28f, TeachChipPadX = 10f,
+        TeachMutedAlpha = 0.28f, TeachChipAlpha = 0.06f, TeachSquare = 0f;
+    /// <summary>The lesson page: the gap between the editor and the guide, the guide's width beside it (Standard, and wider), the gap between a body's
+    /// parts and the hero's, a check's side, the current task's ink, the stepper's line.</summary>
+    public const float LessonColumnGap = 40f, LessonGuide = 392f, LessonGuideWide = 420f, LessonGap = 16f, LessonHeroGap = 14f, LessonCheck = 20f,
+        LessonNowAlpha = 0.06f, LessonLineAlpha = 0.24f, LessonTrackAlpha = 0.16f, LessonNodeMarker = 13f;
+
+    public static bool LessonStacked(WidthTier window) => window < WidthTier.Standard;
+
+    /// <summary>The layer view in the lesson: its form follows the CONTENT tier (the page's own stacked or side-by-side form); the handle's hit box
+    /// is the touch target at every tier (it never resizes on a crossing).</summary>
+    public static MixTimelineLook TeachLook(WidthTier content)
+    {
+        bool narrow = LessonStacked(content);
+        return Look(CompactTarget, page: true) with
+        {
+            LabelColumn = narrow ? 0f : TeachLabelColumn, SongHeight = narrow ? TeachNarrowSongH : TeachSongH, LayerHeight = narrow ? TeachNarrowLayerH : TeachLayerH,
+            SectionGap = narrow ? TeachNarrowSectionGap : TeachSectionGap, LayerGap = narrow ? TeachNarrowLayerGap : TeachLayerGap,
+            Muted = Tok.TextPrimary with { A = TeachMutedAlpha }, TipFill = Tok.FillSolidTertiary, TipStroke = Tok.TextPrimary with { A = TeachChipAlpha },
+            HandlePlate = Tok.TextPrimary, SquareCorner = TeachSquare, HandleHit = MathF.Max(HandleHit, CompactTarget),
+            NameText = static t => R.Type.DenseTitle(t) with { Case = R.Case.For(LabelKind.Label) },
+            ReadoutText = static t => R.Type.DenseMeta(t) with { Case = R.Case.For(LabelKind.Label) },
+            CaptionText = static t => R.Type.MicroMeta(t) with { Case = R.Case.For(LabelKind.Label) },
+        };
+    }
+
+    public static MixTeachLook Teach(WidthTier content) => new()
+    {
+        Corner = 0f, Pad = 0f, HeadHeight = TeachHeadH, ShowPair = !LessonStacked(content),
+        Title = static t => R.Type.RailHeader(t) with { Case = R.Case.For(LabelKind.Heading) },
+        Meta = static t => R.Type.DenseMeta(t) with { Color = Tok.TextSecondary, Case = R.Case.For(LabelKind.Label) },
+        ChipFill = Tok.TextPrimary with { A = TeachChipAlpha }, ChipCorner = 0f, ChipHeight = TeachChipH, ChipPadX = TeachChipPadX,
+    };
+
     /// <summary>The timeline in Zune's tokens: flat lanes, the accent band and incoming curve, the primary ink for the outgoing one.</summary>
     public static MixTimelineLook Look(float target, bool page) => new()
     {

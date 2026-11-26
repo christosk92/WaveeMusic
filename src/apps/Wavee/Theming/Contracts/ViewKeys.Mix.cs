@@ -18,4 +18,8 @@ public static partial class ViewKeys
     /// <summary>The transition chip between two rows of a mixed playlist, on its connector. Mounted by `MixSeamLane` (Entities/Mix.Seams.cs).
     /// Props: <see cref="MixSeamProps"/>.</summary>
     public static readonly ViewKey<MixSeamProps> MixSeam = new("Playlist.MixSeam");
+
+    /// <summary>The Mix lesson's page, "Build a transition together": the editor in its teaching mode (placed as given) and the guide.
+    /// Mounted by `MixLessonPage` (Entities/Mix.Lesson.Host.cs). Props: <see cref="MixLessonProps"/>.</summary>
+    public static readonly ViewKey<MixLessonProps> MixLesson = new("Mix.Lesson");
 }

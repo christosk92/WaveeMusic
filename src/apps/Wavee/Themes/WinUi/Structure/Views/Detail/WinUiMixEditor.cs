@@ -38,6 +38,8 @@ internal static class WinUiMixEditor
     public static Element Template(MixEditorProps p, in ViewContext ctx)
     {
         var window = ctx.Tier().Window;
+        // The Mix lesson's editor: the same editor in its teaching mode (its head and the timeline's layer view; the guide holds the rest).
+        if (p.Teach is { } teach) return CommonMixTeach.Editor(p, teach, E.TeachLook(window, ctx.Tier().Content), E.Teach(ctx.Tier().Content));
         float target = E.TargetFor(window);
         bool page = p.Expanded;
         var rows = new List<Element>(12);
@@ -88,6 +90,7 @@ internal static class WinUiMixEditor
                 Key = page ? WinUiFrameLayout.PageTitleKey : "mix:ed:title", Grow = 1f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             },
         };
+        if (p.Learn is { } learn) kids.Add(ToolTip.Wrap(Sized(IconButton.Create(Icons.Help, learn), target) with { Key = "mix:ed:learn" }, p.LearnLabel));
         if (page) kids.AddRange(UndoRedo(p, target));
         if (p.SaveLabel.Length > 0)
             kids.Add(Button.Create(p.SaveLabel, p.Save, ButtonAppearance.Accent, isEnabled: p.Dirty && !p.Saving && p.PromptTitle.Length == 0)

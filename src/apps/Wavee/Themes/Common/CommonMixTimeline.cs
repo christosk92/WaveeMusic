@@ -42,7 +42,7 @@ public static class MixTimelineView
         => Embed.Comp(new MixTimelineProps(model, look, centre, overview), static () => new MixTimeline()) with { Key = "mix:tl" };
 }
 
-internal sealed class MixTimeline : Component
+internal sealed partial class MixTimeline : Component
 {
     enum Gesture : byte { None, Out, In, Length, BendOut, BendIn }
 
@@ -78,6 +78,8 @@ internal sealed class MixTimeline : Component
         _live = UseSignal<MixTimelineModel?>(null);
         _bendDy = UseFloatSignal(0f);
         Wire();
+        // The layer view (the lesson's teaching mode): what you hear over a fixed window and one lane per layer (CommonMixTimeline.Layers.cs).
+        if (p.Model.Heard is not null || !p.Model.Layers.IsDefaultOrEmpty) return Layered(p.Model, p.Look, width.Value);
 
         // A drag shows its preview; a new model from the editor (the commit, an undo, another preset) ends any stale one.
         var live = _live.Value;

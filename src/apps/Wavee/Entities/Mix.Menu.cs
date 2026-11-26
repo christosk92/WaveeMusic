@@ -85,8 +85,15 @@ public static class MixMenu
     public static void Toggle(Playlist p)
     {
         if (!p.IsValid || Upsell) return;
-        if (p.MixOn) { ListenWithout(p, !MixOptOut.Is(p)); return; }
-        if (Spotify.Mixes.CanWrite(p)) TurnOn(p);
+        // Turning Mix on (or back on) is when the lesson's tip may offer itself (once: Shell/Hints.cs, "learn-mix").
+        if (p.MixOn)
+        {
+            bool on = MixOptOut.Is(p);
+            ListenWithout(p, !MixOptOut.Is(p));
+            if (on) HintFacts.MixOn();
+            return;
+        }
+        if (Spotify.Mixes.CanWrite(p)) { TurnOn(p); HintFacts.MixOn(); }
     }
 
     /// <summary>Listen without Mix, synced to the account: the choice applies here at once; when Spotify cannot take it now, one quiet

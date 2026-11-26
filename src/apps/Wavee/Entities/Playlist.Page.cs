@@ -64,6 +64,7 @@ public readonly partial struct Playlist
     {
         Shell.SetPage(Shell.RouteKind.Playlist, PageFor);
         Shell.SetPage(Shell.RouteKind.MixTransition, static (in Shell.Route _) => Embed.Comp(static () => new MixEditorPage()));   // #48 Mix: the editor full-page
+        Shell.SetPage(Shell.RouteKind.LearnMix, static (in Shell.Route _) => Embed.Comp(static () => new MixLessonPage()));   // #48 Mix: the lesson
         Shell.SetPage(Shell.RouteKind.Local, LocalCollectionPage.PageFor);   // #240 P2: "On this PC", the collection page (Songs = this list's table)
         Shell.SetPage(Shell.RouteKind.Liked, User.LikedPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryAlbums, User.LibraryPageFor);

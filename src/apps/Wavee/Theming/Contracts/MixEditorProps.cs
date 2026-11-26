@@ -84,6 +84,30 @@ public sealed record MixTimelineModel
     /// <summary>The bend each side's handle shows (0 = the style's own curve).</summary>
     public required float BendOut { get; init; }
     public required float BendIn { get; init; }
+
+    // ── the layer view (MixLessonProps.cs: the lesson's teaching mode draws with these; the timeline draws the band and the curves without) ──
+
+    /// <summary>A fixed window in A's time (ms) instead of the span around the band: the view holds still while a value changes.</summary>
+    public MixTimelineWindow? Window { get; init; }
+    /// <summary>What you HEAR, in A's time: both songs' waveforms after every layer (the whole sound and its lows), and the echo's tail.
+    /// Null: the songs' own waveforms around the band.</summary>
+    public MixHeardLevels? Heard { get; init; }
+    /// <summary>One lane per layer under the songs (Volume, EQ, Filter, Effects, Beatmatching), each with its picture, its readout and its
+    /// one handle. Empty: none.</summary>
+    public System.Collections.Immutable.ImmutableArray<MixLayerLane> Layers { get; init; } = [];
+    /// <summary>The bar ruler under the lanes: each mark's time in A's ms and its label ("bar 4", "5", …). Empty: none.</summary>
+    public System.Collections.Immutable.ImmutableArray<MixRulerMark> Ruler { get; init; } = [];
+    /// <summary>A hard cut drawn across both songs at this time (ms in A's time; negative: none), with its label.</summary>
+    public long CutAtMs { get; init; } = -1;
+    public string CutLabel { get; init; } = "";
+    /// <summary>The playhead (ms in A's time; NaN: nothing plays), bound: it moves without a re-render.</summary>
+    public FluentGpu.Signals.FloatSignal? PlayheadMs { get; init; }
+    /// <summary>The section captions over the songs and over the layers ("What you hear", "Layers"); "" for none.</summary>
+    public string HeardCaption { get; init; } = "";
+    public string LayersCaption { get; init; } = "";
+    /// <summary>The song lanes' second lines ("124 BPM · 8A").</summary>
+    public string FactsA { get; init; } = "";
+    public string FactsB { get; init; } = "";
 }
 
 /// <summary>The props of <see cref="ViewKeys.MixEditor"/>.</summary>
@@ -175,6 +199,15 @@ public sealed record MixEditorProps
     public Action? Duplicate { get; init; }
     public string SaveHereLabel { get; init; } = "";
     public Action? SaveHere { get; init; }
+
+    /// <summary>"Learn how" (the editor's "?"): opens the Mix lesson. Null: no button.</summary>
+    public Action? Learn { get; init; }
+    public string LearnLabel { get; init; } = "";
+
+    /// <summary>The lesson's teaching mode (null: the editor as it edits a pair): the head shows the pair and what plays now instead of the
+    /// edit commands, the timeline shows its layer lanes, and the presets, the ingredient rows and the save foot rest (the guide beside the
+    /// editor holds every word and every button).</summary>
+    public MixTeachModel? Teach { get; init; }
 }
 
 /// <summary>What a transition chip says (<see cref="MixSeamProps.Kind"/>): Spotify's "Auto" (a sparkle), a preset by name or "Custom" (a

@@ -42,6 +42,8 @@ internal static class ZuneMixEditor
     {
         var tier = ctx.Tier();
         float target = ZunePlaylistTiers.Of(tier).Target;
+        // The Mix lesson's editor: the same editor in its teaching mode (its head and the timeline's layer view; the guide holds the rest).
+        if (p.Teach is { } teach) return CommonMixTeach.Editor(p, teach, E.TeachLook(tier.Content), E.Teach(tier.Content));
         bool page = p.Expanded;
         var rows = new List<Element>(12);
         if (p.Presets.IsDefaultOrEmpty)
@@ -90,6 +92,7 @@ internal static class ZuneMixEditor
                 MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
             },
         };
+        if (p.Learn is { } learn) kids.Add(ToolTip.Wrap(Controls.IconAction(Icons.Help, learn, size: target) with { Key = "mix:ed:learn" }, p.LearnLabel));
         if (page) kids.AddRange(UndoRedo(p, target));
         if (p.SaveLabel.Length > 0)
             kids.Add(Word("mix:ed:save", p.SaveLabel, p.Dirty && !p.Saving && p.PromptTitle.Length == 0 ? p.Save : null, target, primary: true));
@@ -319,7 +322,7 @@ internal static class ZuneMixEditor
     }
 
     /// <summary>A Zune command word: lowercase in the command voice, the accent when primary or lit, a quiet wash on hover; receded and inert without a verb.</summary>
-    static Element Word(string key, string label, Action? click, float target, bool primary = false, bool lit = false, string? glyph = null)
+    internal static Element Word(string key, string label, Action? click, float target, bool primary = false, bool lit = false, string? glyph = null)
     {
         bool on = click is not null;
         var ink = !on ? Tok.TextDisabled : primary || lit ? R.Ink.AccentAction : Tok.TextPrimary;

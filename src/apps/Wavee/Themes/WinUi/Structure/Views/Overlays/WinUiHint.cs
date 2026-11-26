@@ -95,6 +95,7 @@ internal static class WinUiHint
         HintSurfaces.QueuePanel => TeachingTip.PlacementMode.Left,          // the pane sits on the right: the tip opens over the page, pointing in
         HintSurfaces.PageHead => TeachingTip.PlacementMode.BottomRight,     // under the back button, its tail on the button
         HintSurfaces.TitleBar => TeachingTip.PlacementMode.Bottom,          // under the bar, its tail on the bar's middle
+        HintSurfaces.MixBar => TeachingTip.PlacementMode.Bottom,            // under the list bar's Mix button, over the list
         _ => TeachingTip.PlacementMode.Top,                                 // the player bar's controls: above them
     };
 
