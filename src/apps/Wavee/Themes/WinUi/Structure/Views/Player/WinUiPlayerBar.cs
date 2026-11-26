@@ -173,8 +173,6 @@ internal static partial class WinUiPlayerBar
         };
         var leftKids = new List<Element>(3) { identity };
         if (v.ShowLikeSlot) leftKids.Add(heart);
-        // AI DJ: "Let DJ pick" at the identity's end (the column's free room, after the heart: it comes and goes without moving what is before it).
-        if (!mini && v.Dj is { } dj) leftKids.Add(Item(PL.DjPickKey, DjPick(dj)));
         BoxEl left = new BoxEl
         {
             Key = PL.LeftKey, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center,
@@ -192,10 +190,18 @@ internal static partial class WinUiPlayerBar
         var transport = new List<Element>(7);
         if (v.OwnsTransport)
         {
+            // AI DJ: "Let DJ pick" takes the shuffle slot's face while the DJ plays (the DJ locks shuffle anyway): a transport button like its
+            // neighbours, so the identity's column keeps its width for the title. The slot node stays, so nothing in the row moves when the DJ
+            // starts or ends; a level without the shuffle slot gives the DJ its own.
+            DjChrome? dj = !mini && !v.Episode ? v.Dj : null;
             if (!mini && !v.Episode && (v.Slots & RightSlot.Shuffle) != 0)
-                transport.Add(Lit(PL.ShuffleKey, (v.Lit & RightSlot.Shuffle) != 0, ToolTip.Wrap(
-                    Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
-                    v.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
+                transport.Add(Lit(PL.ShuffleKey, dj is not null || (v.Lit & RightSlot.Shuffle) != 0, dj is not null
+                    ? DjPick(dj) with { Key = PL.DjPickKey }
+                    : ToolTip.Wrap(
+                        Button(Icons.Shuffle, () => verbs.ToggleShuffle(), v.CanTransport && v.ShuffleLock is null, v.Shuffle, PL.TransportW, PL.TransportH, PL.Glyph),
+                        v.ShuffleLock ?? Loc.Get(Strings.Player.Shuffle))));
+            else if (dj is not null)
+                transport.Add(Item(PL.DjPickKey, DjPick(dj)));
             if (!mini && v.ShowPrevNext)
                 transport.Add(Item(PL.PrevKey, ToolTip.Wrap(
                     Button(Icons.Previous, () => verbs.Previous(), v.PrevEnabled, false, PL.TransportW, PL.TransportH, PL.Glyph), Loc.Get(Strings.Player.Previous))));

@@ -59,7 +59,8 @@ public static class WinUiPlayerLayout
     /// identity's end (the transport's 32 height, its glyph in the DJ's icon colour, the label in the title's ink at the line size), keyed so it
     /// fades in and out in place.</summary>
     public const string DjLineKey = "winui-bar-dj-line", DjPickKey = "winui-bar-dj-pick";
-    public const float DjPickPadX = 10f, DjPickGap = 6f;
+    /// <summary>The DJ mark's disc in the transport's "Let DJ pick" button (the official client's round DJ button).</summary>
+    public const float DjMark = 24f;
 
     /// <summary>The app's marquee setting on: an overflowing title and credits line pass now and then (the engine control's behaviour: the
     /// start at rest, two passes after a track change, a pass on hover, one line moving at a time). WinUI picks the pace (DIP per second) and

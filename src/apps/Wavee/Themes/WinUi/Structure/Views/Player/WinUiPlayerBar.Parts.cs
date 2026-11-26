@@ -17,6 +17,7 @@ using FluentGpu.Signals;
 using FluentGpu.Theming;
 using Wavee.Theming;
 using Wavee.Theming.Contracts;
+using Wavee.Themes.Common;
 using Wavee.Theming.Roles;
 
 using PL = Wavee.Themes.WinUi.WinUiPlayerLayout;
@@ -104,26 +105,13 @@ internal static partial class WinUiPlayerBar
         };
     }
 
-    /// <summary>"Let DJ pick" (AI DJ): a subtle labelled button in the bar's own grammar (transparent at rest, the subtle fill on hover), its sparkle
-    /// in the DJ's icon colour (<c>narration.jump.icon.color</c>; the accent ink when none is stated), disabled while the next segment is still on
-    /// its way. The tooltip says what it does.</summary>
+    /// <summary>"Let DJ pick" (AI DJ): a transport button in the shuffle slot while the DJ plays (the DJ locks shuffle), the bar's own button
+    /// (transparent at rest, the subtle fill on hover) carrying the DJ's mark (<see cref="CommonDjMark"/>: the disc and ring in the session's own
+    /// colours), greyed while the next segment is still on its way. The tooltip names it, or says why it waits.</summary>
     internal static Element DjPick(DjChrome dj, CanvasInk ink = default)
     {
-        ColorF glyph = !dj.CanPick ? Tok.TextDisabled : dj.PickInk != 0 ? ColorScience.ToColor(dj.PickInk) : Tok.AccentTextPrimary;
-        return ToolTip.Wrap(new BoxEl
-        {
-            Height = PL.TransportH, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Gap = PL.DjPickGap,
-            Padding = new Edges4(PL.DjPickPadX, 0f, PL.DjPickPadX, 0f), Corners = CornerRadius4.All(PL.ButtonCorner),
-            Fill = ColorF.Transparent, HoverFill = dj.CanPick ? ink.Hover : ColorF.Transparent, PressedFill = dj.CanPick ? ink.Pressed : ColorF.Transparent,
-            BrushTransitionMs = Design.Motion.Faster,
-            Role = AutomationRole.Button, Focusable = true, AllowFocusOnInteraction = false, IsEnabled = dj.CanPick,
-            OnClick = dj.CanPick ? dj.Jump : null, Cursor = dj.CanPick ? CursorId.Hand : null,
-            Children =
-            [
-                new TextEl(Icons.RefineSparkle) { Size = PL.Glyph, FontFamily = Tok.Definition.Fonts.Icon, Color = glyph },
-                new TextEl(dj.Pick) { Size = PL.SubSize, LineHeight = PL.SubLine, Weight = PL.TitleWeight, Color = dj.CanPick ? Tok.TextPrimary : Tok.TextDisabled, MaxLines = 1 },
-            ],
-        }, dj.PickTip);
+        var button = Button(Icons.RefineSparkle, dj.Jump, dj.CanPick, false, PL.TransportW, PL.TransportH, PL.Glyph, ink: ink);
+        return ToolTip.Wrap(button with { Children = [CommonDjMark.Create(dj, PL.DjMark)] }, dj.CanPick ? dj.Pick : dj.PickTip);
     }
 
     /// <summary>The DJ's segment line ("DJ · Vibes"): the "playing on" line's look and place (the secondary ink under the artists), the sparkle in the
