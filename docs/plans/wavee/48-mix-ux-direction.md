@@ -1,4 +1,28 @@
-# Wavee Mix: UX direction, revision 2 (owner request 2026-11-23)
+# Wavee Mix: UX direction, revision 3 (owner request 2026-11-26; revision 2 of 2026-11-23 below where it still holds)
+
+> **Revision 3 (owner, 2026-11-26): transitions inline, the editor in the right panel.** The owner, on revision 2 as
+> built: "i really dont like how mixing is done … its super crowded, its a seperate list when it should just be done
+> inline … this is how spotify does it", and the curve handle only moved on release. Revision 3 replaces the quiet
+> seams, "Show transitions", the Transitions list and the seam card under the list bar outright:
+>
+> - **The list is the timeline.** With Mix on, each row carries a lane under it: a thin line runs from the row's artwork
+>   to the next row's, and the pair's chip sits on it: "✦ Auto", the preset ("Fade") or "Custom" when edited (the line in
+>   the accent), "No transition" (the line breaks), "· This PC" / "· Not saved" for an edit Spotify does not have yet.
+>   BPM · Key replaces Date added. The chip is focusable; Enter or a click opens the pair's editor; the open pair's chip
+>   shows a pencil. A sort or a filter breaks the pairs, so the lanes go with it.
+> - **Turning Mix on animates it into existence:** the rows make room (FLIP), each lane draws its stretch of the line in
+>   and its chip arrives, staggered down the screen; the cover's "Mixed" badge grows out of its corner and the meta line
+>   hands its words over. Off reverses it.
+> - **"Edit transition" in the right panel** (Spotify's side panel): the head (title, Save, expand, close; undo and redo),
+>   each song with tempo and key (a caution mark when far apart), the two-lane waveform editor with Hear it between the
+>   lanes, the points and the overlap stepper, Presets, and Volume · EQ · Filter · Effects · Looping · Beatmatching as rows.
+>   **Expand** opens the same editor full-page (an overview strip of both songs, larger lanes, the ingredients in a grid);
+>   collapse returns it to the panel with every unsaved edit. Close drops an unsaved edit.
+> - **Every drag is live:** the curve, the band, the waveforms and the numbers follow the pointer; the release commits.
+> - Each theme draws the chip, the line and the editor in its own voice (WinUI's control plate and settings rows, Classic's
+>   toggle plate, wrapping chips and picker grid, Zune's flat chip, lowercase words and pivot-word presets).
+>
+> Principles 2 and 3 below are void; the Track list, Transitions view and seam card sections describe revision 2.
 
 **Revision 2 (2026-11-23, later the same day).** The owner: revision 1 was "too barebones, it's missing a lot" next
 to the Spotify app. Wavee now offers **everything Spotify's Mix offers**, and keeps revision 1's quiet layout as the

@@ -22,20 +22,21 @@ does. The curves are Spotify's, the sound is Wavee's own mixer, so a transition 
 identical with, the official app.
 
 
-**Edit a transition the way Spotify does.** Open a pair from its seam, the Transitions list or the Mix menu and the
-transition editor opens under the list, in each theme's own look: every preset by Spotify's name (Auto, Fade, Rise,
+**Edit a transition the way Spotify does.** Click a transition's chip in the list and "Edit transition" opens in the right
+panel, in each theme's own look: both songs with their tempo and key, then every preset by Spotify's name (Auto, Fade, Rise,
 Blend, Wave, Melt, Slam, Dissolve, Surge, Afterglow, No transition, and under More the thirteen Spotify uses for Auto),
 both songs' waveforms around the join with their beats and the volume curves, where you drag the outgoing song to move
 the mix-out point, the incoming song to move where it comes in, the end of the overlap to lengthen it, and a curve's
-handle to bend it, every point snapping to the beat. The length steps by beats, or by bars when the pair is
-beatmatched. Customize picks the volume, EQ, filter, effects and looping style, and turns Beatmatching on or off.
-Hear it plays the transition as you have it, unsaved edits included, round and round until you stop it, then puts back
-what was playing. Undo, Redo, Cancel and Reset to Auto are there; Save writes the transition to Spotify on a playlist you
-can edit. On a mixed playlist you can't edit, Save asks first, as Spotify does: Duplicate Mix makes your own copy with
+handle to bend it, every point snapping to the beat; the curve, the waveforms and the numbers follow your pointer as you
+drag. The length steps by beats, or by bars when the pair is beatmatched. Volume, EQ, Filter, Effects and Looping each
+pick their style, and Beatmatching turns on or off. Hear it, between the two waveforms, plays the transition as you have it,
+unsaved edits included, round and round until you stop it, then puts back what was playing. Undo, Redo and Reset to Auto
+are there, and closing the editor drops an unsaved edit; the expand button opens the same editor across the whole page, with
+an overview of both songs and larger waveforms, and brings it back to the panel with your edits. Save writes the transition
+to Spotify on a playlist you can edit. On a mixed playlist you can't edit, Save asks first, as Spotify does: Duplicate Mix makes your own copy with
 this transition in it and opens it, or Save on this PC keeps it here only. A curve you drew in Wavee or in Spotify now
 plays as drawn. A pair set to No transition, in Spotify or with Wavee's "Don't mix into the next song", goes straight into
-the next song without your Crossfade. The editor scrolls with the page under the list's header, so all of it is in reach
-on a small window, and opening it from a song further down brings it into view.
+the next song without your Crossfade.
 
 **Mix previews and Mix over Connect.** When Wavee is the device playing and you edit a transition in Spotify's app on
 another device, each preview now plays on Wavee (the end of the outgoing song, the transition, then the incoming song),
